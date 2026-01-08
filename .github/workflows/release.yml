@@ -6,6 +6,10 @@ on:
       - 'v*'  # 当推送以 v 开头的 tag 时触发
   workflow_dispatch:  # 允许手动触发
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
