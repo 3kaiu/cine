@@ -119,40 +119,22 @@ jobs:
 
       - name: Install fnpack
         run: |
-          # 尝试安装 fnpack 工具
-          # 注意：fnpack 可能需要从飞牛OS官方源获取
-          # 如果以下方法都失败，将回退到创建 tar.gz 包
+          # 飞牛OS 官方 fnpack 工具下载地址
+          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.0-linux-amd64"
+          echo "从 $FNPACK_URL 下载 fnpack..."
           
-          FPK_AVAILABLE=false
-          
-          # 方法1: 检查是否已安装
-          if command -v fnpack &> /dev/null; then
-            echo "fnpack 已安装"
-            fnpack --version || true
-            FPK_AVAILABLE=true
-          fi
-          
-          # 方法2: 尝试从 npm 安装（如果发布到 npm）
-          if [ "$FPK_AVAILABLE" = "false" ] && command -v npm &> /dev/null; then
-            echo "尝试从 npm 安装 fnpack..."
-            npm install -g @fnos/fnpack 2>/dev/null && FPK_AVAILABLE=true || echo "npm 安装失败"
-          fi
-          
-          # 方法3: 尝试下载预编译二进制（需要配置实际下载地址）
-          if [ "$FPK_AVAILABLE" = "false" ]; then
-            echo "尝试下载 fnpack 二进制..."
-            # 取消注释并配置实际的下载地址
-            # FNPACK_URL="https://github.com/fnos/fnpack/releases/latest/download/fnpack-linux-amd64"
-            # curl -L -o /tmp/fnpack "$FNPACK_URL" && chmod +x /tmp/fnpack && sudo mv /tmp/fnpack /usr/local/bin/fnpack && FPK_AVAILABLE=true || echo "二进制下载失败"
-            echo "提示: 如需自动生成 fpk，请配置 fnpack 下载地址或使用 Docker 镜像"
-          fi
-          
-          # 设置环境变量
-          if [ "$FPK_AVAILABLE" = "true" ] && command -v fnpack &> /dev/null; then
-            echo "✅ fnpack 可用"
-            echo "FPK_BUILD=true" >> $GITHUB_ENV
+          if curl -L -o /tmp/fnpack "$FNPACK_URL"; then
+            chmod +x /tmp/fnpack
+            sudo mv /tmp/fnpack /usr/local/bin/fnpack
+            if fnpack --version || true; then
+              echo "✅ fnpack 安装成功"
+              echo "FPK_BUILD=true" >> $GITHUB_ENV
+            else
+              echo "⚠️ fnpack 运行失败，回退到 tar.gz"
+              echo "FPK_BUILD=false" >> $GITHUB_ENV
+            fi
           else
-            echo "⚠️ fnpack 不可用，将创建 tar.gz 包（用户可手动使用 fnpack 生成 fpk）"
+            echo "❌ fnpack 下载失败，将创建 tar.gz 包"
             echo "FPK_BUILD=false" >> $GITHUB_ENV
           fi
 
