@@ -8,7 +8,7 @@ use tempfile::TempDir;
 pub async fn create_test_db() -> (SqlitePool, TempDir) {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
     let db_path = temp_dir.path().join("test.db");
-    let database_url = format!("sqlite:{}", db_path.to_string_lossy());
+    let database_url = format!("sqlite:{}?mode=rwc", db_path.to_string_lossy());
 
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -17,7 +17,7 @@ pub async fn create_test_db() -> (SqlitePool, TempDir) {
         .expect("Failed to create test database");
 
     // 运行迁移
-    sqlx::migrate!("../migrations")
+    sqlx::migrate!("./migrations")
         .run(&pool)
         .await
         .expect("Failed to run migrations");
@@ -28,6 +28,9 @@ pub async fn create_test_db() -> (SqlitePool, TempDir) {
 /// 创建测试文件
 pub fn create_test_file(dir: &TempDir, name: &str, content: &[u8]) -> PathBuf {
     let file_path = dir.path().join(name);
+    if let Some(parent) = file_path.parent() {
+        std::fs::create_dir_all(parent).expect("Failed to create parent directory");
+    }
     std::fs::write(&file_path, content).expect("Failed to write test file");
     file_path
 }

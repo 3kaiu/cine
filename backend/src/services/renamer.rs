@@ -25,10 +25,24 @@ pub fn generate_new_name(file: &MediaFile, template: &str) -> Option<String> {
 
     // {year} - 年份
     if let Some(year) = metadata.as_ref()
-        .and_then(|m| m.get("year").or_else(|| m.get("release_date"))
-            .and_then(|y| y.as_str())
-            .and_then(|s| s.split('-').next())
-            .and_then(|y| y.parse::<u32>().ok())) {
+        .and_then(|m| {
+            // 优先尝试直接获取年份（支持数字或字符串）
+            if let Some(y) = m.get("year") {
+                if let Some(n) = y.as_u64() {
+                    return Some(n as u32);
+                }
+                if let Some(s) = y.as_str() {
+                     if let Ok(n) = s.parse::<u32>() {
+                         return Some(n);
+                     }
+                }
+            }
+            // 尝试从 release_date 提取
+            m.get("release_date")
+                .and_then(|y| y.as_str())
+                .and_then(|s| s.split('-').next())
+                .and_then(|y| y.parse::<u32>().ok())
+        }) {
         new_name = new_name.replace("{year}", &year.to_string());
     }
 

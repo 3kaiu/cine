@@ -23,6 +23,8 @@ interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   queryClient?: QueryClient
 }
 
+import userEvent from '@testing-library/user-event'
+
 export function renderWithProviders(
   ui: ReactElement,
   { queryClient = createTestQueryClient(), ...renderOptions }: CustomRenderOptions = {}
@@ -37,7 +39,11 @@ export function renderWithProviders(
     )
   }
 
-  return { ...render(ui, { wrapper: Wrapper, ...renderOptions }), queryClient }
+  return {
+    user: userEvent.setup(),
+    ...render(ui, { wrapper: Wrapper, ...renderOptions }),
+    queryClient,
+  }
 }
 
 // 重新导出所有内容

@@ -1,7 +1,9 @@
 //! API 集成测试
 
 use axum::http::StatusCode;
-use cine_backend::tests::common::{create_test_db, create_test_file};
+#[path = "../common/mod.rs"]
+mod common;
+use common::{create_test_db, create_test_file};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use cine_backend::handlers::AppState;

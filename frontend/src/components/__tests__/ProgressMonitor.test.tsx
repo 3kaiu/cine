@@ -10,7 +10,7 @@ const mockWebSocket = {
   removeEventListener: vi.fn(),
 }
 
-global.WebSocket = vi.fn(() => mockWebSocket as any) as any
+vi.stubGlobal('WebSocket', vi.fn(() => mockWebSocket as any))
 
 describe('ProgressMonitor', () => {
   beforeEach(() => {
@@ -28,12 +28,12 @@ describe('ProgressMonitor', () => {
 
   it('应该连接 WebSocket', () => {
     render(<ProgressMonitor taskId="test-task" />)
-    expect(global.WebSocket).toHaveBeenCalled()
+    expect(WebSocket).toHaveBeenCalled()
   })
 
   it('应该显示进度百分比', async () => {
     render(<ProgressMonitor taskId="test-task" />)
-    
+
     // 模拟 WebSocket 消息
     const messageHandler = (mockWebSocket.addEventListener as any).mock.calls.find(
       (call: any[]) => call[0] === 'message'
@@ -57,7 +57,7 @@ describe('ProgressMonitor', () => {
 
   it('应该在任务完成时显示完成消息', async () => {
     render(<ProgressMonitor taskId="test-task" />)
-    
+
     const messageHandler = (mockWebSocket.addEventListener as any).mock.calls.find(
       (call: any[]) => call[0] === 'message'
     )?.[1]

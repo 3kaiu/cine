@@ -1,6 +1,8 @@
 use cine_backend::services::hasher;
 use cine_backend::services::cache::FileHashCache;
-use cine_backend::tests::common::{create_test_db, create_test_file};
+#[path = "../common/mod.rs"]
+mod common;
+use common::{create_test_db, create_test_file};
 use cine_backend::models::MediaFile;
 use chrono::Utc;
 use std::sync::Arc;

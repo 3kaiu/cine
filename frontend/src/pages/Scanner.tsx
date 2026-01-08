@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, Button, Input, Table, Space, message } from 'antd'
+import { Card, Button, Input, Space, message } from 'antd'
 import { FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from 'react-query'

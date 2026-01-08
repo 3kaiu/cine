@@ -1,6 +1,6 @@
-import { useState } from 'react'
+
 import { Card, Button, Table, Space, message, Popconfirm, Tag } from 'antd'
-import { DeleteOutlined, RestoreOutlined, ClearOutlined } from '@ant-design/icons'
+import { DeleteOutlined, RestOutlined, ClearOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
 import { useQuery, useMutation } from 'react-query'
 import LoadingWrapper from '@/components/LoadingWrapper'
@@ -103,7 +103,7 @@ export default function Trash() {
         <Space>
           <Button
             size="small"
-            icon={<RestoreOutlined />}
+            icon={<RestOutlined />}
             onClick={() => handleRestore(record.id)}
             loading={restoreMutation.isLoading}
           >
@@ -175,5 +175,5 @@ function formatSize(bytes: number): string {
     unitIndex++
   }
 
-  return `${size.toFixed(2)} ${units[unitIndex]}`
+  return `${size.toFixed(2)} ${units[unitIndex]} `
 }

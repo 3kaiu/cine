@@ -1,5 +1,7 @@
 use cine_backend::services::trash;
-use cine_backend::tests::common::{create_test_db, create_test_file};
+#[path = "../common/mod.rs"]
+mod common;
+use common::{create_test_db, create_test_file};
 use chrono::Utc;
 
 #[tokio::test]

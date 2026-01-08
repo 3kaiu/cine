@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Card, Button, Table, Space, message, Tag, Select, Checkbox, Modal, Image, Row, Col, Typography } from 'antd'
-import { CloudDownloadOutlined, PictureOutlined, FileTextOutlined } from '@ant-design/icons'
+import { CloudDownloadOutlined, PictureOutlined } from '@ant-design/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from 'react-query'
 
@@ -67,7 +67,7 @@ export default function Scraper() {
         // 如果失败，继续自动匹配
       }
     }
-    
+
     scrapeMutation.mutate({
       file_id: fileId,
       source,
@@ -91,7 +91,7 @@ export default function Scraper() {
     })
   }
 
-  const handleSelectMetadata = (metadata: any) => {
+  const handleSelectMetadata = () => {
     const file = files?.files.find(f => f.id === selectedFile)
     if (!file) return
 
@@ -240,7 +240,7 @@ export default function Scraper() {
               key={index}
               style={{ marginBottom: 16 }}
               hoverable
-              onClick={() => handleSelectMetadata(item)}
+              onClick={() => handleSelectMetadata()}
             >
               <Row gutter={16}>
                 <Col span={6}>

@@ -1,7 +1,9 @@
 //! 文件扫描批量插入测试
 
 use cine_backend::services::scanner;
-use cine_backend::tests::common::{create_test_db, create_test_directory_structure, create_test_file};
+#[path = "../common/mod.rs"]
+mod common;
+use common::{create_test_db, create_test_directory_structure, create_test_file};
 
 #[tokio::test]
 async fn test_scan_directory_batch_insert() {

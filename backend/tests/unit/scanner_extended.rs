@@ -1,7 +1,9 @@
 //! 文件扫描服务扩展测试 - 更多边界条件和错误场景
 
 use cine_backend::services::scanner;
-use cine_backend::tests::common::{create_test_db, create_test_directory_structure, create_test_file};
+#[path = "../common/mod.rs"]
+mod common;
+use common::{create_test_db, create_test_directory_structure, create_test_file};
 use std::fs;
 
 #[tokio::test]

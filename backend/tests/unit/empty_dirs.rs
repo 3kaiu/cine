@@ -1,7 +1,9 @@
 //! 空文件夹服务测试
 
 use cine_backend::services::empty_dirs;
-use cine_backend::tests::common::create_test_db;
+#[path = "../common/mod.rs"]
+mod common;
+use common::create_test_db;
 use std::fs;
 use tempfile::TempDir;
 
@@ -48,8 +50,9 @@ async fn test_find_empty_directories_nested() {
     assert!(result.is_ok());
     let dirs = result.unwrap();
     
-    // 应该找到所有嵌套的空目录
-    assert!(dirs.len() >= 3);
+    // 应该只找到最底层的空目录
+    assert_eq!(dirs.len(), 1);
+    assert!(dirs[0].path.contains("level3"));
 }
 
 #[tokio::test]

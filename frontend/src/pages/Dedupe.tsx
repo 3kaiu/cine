@@ -1,7 +1,7 @@
-import { Card, Button, Table, Space, message, Tag, Popconfirm } from 'antd'
+import { Card, Button, Space, message, Popconfirm } from 'antd'
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
-import { useQuery, useMutation } from 'react-query'
+import { useQuery } from 'react-query'
 import VirtualizedTable from '@/components/VirtualizedTable'
 
 export default function Dedupe() {
@@ -13,7 +13,7 @@ export default function Dedupe() {
     refetch()
   }
 
-  const handleDelete = (fileId: string) => {
+  const handleDelete = (_fileId: string) => {
     // TODO: 实现删除逻辑
     message.success('删除成功')
   }

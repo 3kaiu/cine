@@ -1,8 +1,18 @@
-import { FixedSizeList as List } from 'react-window'
+import * as ReactWindow from 'react-window'
+const FixedSizeList = (ReactWindow as any).FixedSizeList
 import { Table, Spin } from 'antd'
 import type { TableProps } from 'antd/es/table'
 
-interface VirtualizedTableProps<T> extends Omit<TableProps<T>, 'components' | 'pagination'> {
+// Helper to render column title
+const renderTitle = (title: any, props: any) => {
+  if (typeof title === 'function') {
+    return title(props)
+  }
+  return title
+}
+
+
+interface VirtualizedTableProps<T> extends Omit<TableProps<T>, 'components'> {
   height?: number
   rowHeight?: number
   threshold?: number // 超过此数量才使用虚拟滚动
@@ -25,13 +35,13 @@ export default function VirtualizedTable<T extends { id: string }>({
 }: VirtualizedTableProps<T>) {
   // 如果数据量小于阈值，使用普通表格
   if (dataSource.length < threshold) {
-    return <Table 
-      dataSource={dataSource} 
-      columns={columns} 
-      rowKey="id" 
+    return <Table
+      dataSource={dataSource}
+      columns={columns}
+      rowKey="id"
       loading={loading}
       pagination={showPagination ? rest.pagination : false}
-      {...rest} 
+      {...rest}
     />
   }
 
@@ -45,8 +55,8 @@ export default function VirtualizedTable<T extends { id: string }>({
     return (
       <div style={style} className="virtual-table-row">
         {columns.map((col, colIndex) => {
-          const value = col.dataIndex
-            ? (record as any)[Array.isArray(col.dataIndex) ? col.dataIndex.join('.') : col.dataIndex]
+          const value = (col as any).dataIndex
+            ? (record as any)[Array.isArray((col as any).dataIndex) ? (col as any).dataIndex.join('.') : (col as any).dataIndex]
             : null
           const displayValue = col.render ? col.render(value, record, index) : value
 
@@ -70,10 +80,10 @@ export default function VirtualizedTable<T extends { id: string }>({
 
   return (
     <div style={{ border: '1px solid #d9d9d9', borderRadius: '4px', overflow: 'hidden' }}>
-      <div 
-        className="virtual-table-header" 
-        style={{ 
-          display: 'flex', 
+      <div
+        className="virtual-table-header"
+        style={{
+          display: 'flex',
           borderBottom: '2px solid #f0f0f0',
           backgroundColor: '#fafafa',
           position: 'sticky',
@@ -92,18 +102,18 @@ export default function VirtualizedTable<T extends { id: string }>({
               fontSize: '14px',
             }}
           >
-            {col.title}
+            {renderTitle(col.title, {})}
           </div>
         ))}
       </div>
-      <List
+      <FixedSizeList
         height={height}
         itemCount={dataSource.length}
         itemSize={rowHeight}
         width="100%"
       >
         {Row}
-      </List>
+      </FixedSizeList>
     </div>
   )
 }

@@ -7,7 +7,7 @@ import {
   EditOutlined,
   FolderOutlined,
   FolderOpenOutlined,
-  RestoreOutlined,
+  RestOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
 
@@ -46,7 +46,7 @@ const menuItems = [
   },
   {
     key: '/trash',
-    icon: <RestoreOutlined />,
+    icon: <RestOutlined />,
     label: '回收站',
   },
   {

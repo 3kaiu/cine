@@ -1,5 +1,7 @@
 use cine_backend::services::file_ops;
-use cine_backend::tests::common::{create_test_db, create_test_file};
+#[path = "../common/mod.rs"]
+mod common;
+use common::{create_test_db, create_test_file};
 use chrono::Utc;
 
 #[tokio::test]
@@ -77,7 +79,8 @@ async fn test_copy_file() {
     
     // 验证原文件还在，新文件已创建
     assert!(file_path.exists());
-    let copied_path = std::path::Path::new(&result.new_path.unwrap());
+    let new_path = result.new_path.unwrap();
+    let copied_path = std::path::Path::new(&new_path);
     assert!(copied_path.exists());
     
     // 验证内容相同

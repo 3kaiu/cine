@@ -37,6 +37,11 @@ pub fn parse_filename(filename: &str) -> (String, Option<u32>, Option<u32>, Opti
     }
     title = season_episode_re.replace_all(&title, "").to_string();
     title = Regex::new(r"EP?\d+").unwrap().replace_all(&title, "").to_string();
+    
+    // 清理残留的括号和多余空格
+    title = title.replace("()", "").replace("[]", "");
+    title = Regex::new(r"\s+").unwrap().replace_all(&title, " ").to_string();
+    
     title = title.trim().to_string();
 
     (title, year, season, episode)

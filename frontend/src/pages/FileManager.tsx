@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Card, Button, Table, Space, message, Modal, Input, Tag, Popconfirm } from 'antd'
-import { CopyOutlined, FolderOutlined, DeleteOutlined, RestoreOutlined } from '@ant-design/icons'
-import { mediaApi, MediaFile } from '@/api/media'
+import { Card, Button, Table, Space, message, Modal, Input } from 'antd'
+import { CopyOutlined, FolderOutlined, RestOutlined } from '@ant-design/icons'
+import { mediaApi } from '@/api/media'
 import { useQuery, useMutation } from 'react-query'
 import LoadingWrapper from '@/components/LoadingWrapper'
 import { handleError } from '@/utils/errorHandler'
@@ -146,7 +146,7 @@ export default function FileManager() {
         <Card title="文件管理" style={{ marginBottom: 16 }}>
           <Space>
             <Button
-              icon={<FolderOutlined />}
+              icon={<RestOutlined />}
               onClick={() => setMoveModalVisible(true)}
               disabled={selectedFiles.length === 0}
             >

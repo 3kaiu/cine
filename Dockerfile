@@ -28,16 +28,19 @@ FROM node:18-alpine as frontend-builder
 WORKDIR /app/frontend
 
 # 复制依赖文件
-COPY frontend/package.json frontend/package-lock.json* ./
+COPY frontend/package.json frontend/pnpm-lock.yaml* ./
+
+# 安装 pnpm
+RUN npm install -g pnpm
 
 # 安装依赖
-RUN npm ci
+RUN pnpm install --frozen-lockfile
 
 # 复制源代码
 COPY frontend ./
 
 # 构建前端
-RUN npm run build
+RUN pnpm run build
 
 # 阶段3: 运行镜像
 FROM debian:bookworm-slim

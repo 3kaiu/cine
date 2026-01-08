@@ -12,7 +12,7 @@ export function useWebSocket(url: string) {
   const [connected, setConnected] = useState(false)
   const [messages, setMessages] = useState<ProgressMessage[]>([])
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
     const connect = () => {

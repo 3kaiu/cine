@@ -1,7 +1,9 @@
 //! 去重服务分批查询测试
 
 use cine_backend::services::dedupe;
-use cine_backend::tests::common::create_test_db;
+#[path = "../common/mod.rs"]
+mod common;
+use common::create_test_db;
 use chrono::Utc;
 
 #[tokio::test]

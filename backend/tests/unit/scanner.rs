@@ -1,5 +1,7 @@
 use cine_backend::services::scanner;
-use cine_backend::tests::common::{create_test_db, create_test_directory_structure, create_test_file};
+#[path = "../common/mod.rs"]
+mod common;
+use common::{create_test_db, create_test_directory_structure, create_test_file};
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -8,6 +10,7 @@ async fn test_scan_directory_basic() {
     let test_dir = create_test_directory_structure(&temp_dir);
     
     // 创建测试文件
+    create_test_file(&temp_dir, "test_media/root_video.mp4", b"fake video content");
     create_test_file(&temp_dir, "test_media/movies/test.mp4", b"fake video content");
     create_test_file(&temp_dir, "test_media/tv_shows/episode.mkv", b"fake video content");
 
@@ -81,9 +84,9 @@ async fn test_scan_directory_file_type_filter() {
     let (pool, temp_dir) = create_test_db().await;
     let test_dir = create_test_directory_structure(&temp_dir);
     
-    create_test_file(&temp_dir, "test_media/movies/video.mp4", b"content");
-    create_test_file(&temp_dir, "test_media/movies/image.jpg", b"content");
-    create_test_file(&temp_dir, "test_media/movies/document.pdf", b"content");
+    create_test_file(&temp_dir, "test_media/video.mp4", b"content");
+    create_test_file(&temp_dir, "test_media/image.jpg", b"content");
+    create_test_file(&temp_dir, "test_media/document.pdf", b"content");
 
     let result = scanner::scan_directory(
         &pool,

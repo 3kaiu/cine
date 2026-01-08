@@ -1,5 +1,5 @@
-import { Card, Progress, List, Typography } from 'antd'
-import { useWebSocket, ProgressMessage } from '@/hooks/useWebSocket'
+import { Card, Progress, Typography } from 'antd'
+import { useWebSocket } from '@/hooks/useWebSocket'
 
 const { Text } = Typography
 
