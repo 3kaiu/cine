@@ -2,6 +2,10 @@ import { test, expect } from '@playwright/test'
 
 test.describe('基础流程验证 (Smoke Test)', () => {
   test.beforeEach(async ({ page }) => {
+    // 捕获浏览器日志以供 CI 调试
+    page.on('console', (msg) => console.log(`BROWSER LOG [${msg.type()}]: ${msg.text()}`))
+    page.on('pageerror', (err) => console.error(`BROWSER ERROR: ${err.message}`))
+
     // 拦截所有可能的 API 请求并返回 mock 数据，避免连接后端失败
     // 使用正则匹配，确保捕获所有 /api 开头的请求
     await page.route(/\/api\//, async (route) => {
