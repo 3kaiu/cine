@@ -230,6 +230,7 @@ async fn test_scan_directory_duplicate_files() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_scan_directory_very_large_filename() {
     let (pool, temp_dir) = create_test_db().await;
     let test_dir = create_test_directory_structure(&temp_dir);

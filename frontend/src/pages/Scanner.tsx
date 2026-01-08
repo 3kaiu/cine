@@ -96,7 +96,7 @@ export default function Scanner() {
               <Button
                 type="primary"
                 onClick={handleScan}
-                loading={scanning}
+                loading={scanning || scanMutation.isLoading}
                 icon={<ReloadOutlined />}
               >
                 开始扫描

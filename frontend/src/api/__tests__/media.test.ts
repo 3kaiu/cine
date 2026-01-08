@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mediaApi } from '../media'
-import axios from 'axios'
+import api from '../client'
 
-vi.mock('axios')
-const mockedAxios = axios as any
+vi.mock('../client', () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    interceptors: {
+      request: { use: vi.fn() },
+      response: { use: vi.fn() },
+    },
+  },
+}))
 
 describe('Media API', () => {
   beforeEach(() => {
@@ -12,9 +20,7 @@ describe('Media API', () => {
 
   describe('scanDirectory', () => {
     it('应该发送扫描请求', async () => {
-      mockedAxios.create.mockReturnValue({
-        post: vi.fn().mockResolvedValue({ data: { task_id: 'test-task' } }),
-      })
+      ; (api.post as any).mockResolvedValue({ task_id: 'test-task' })
 
       const result = await mediaApi.scanDirectory({
         directory: '/test/path',
@@ -26,9 +32,7 @@ describe('Media API', () => {
     })
 
     it('应该处理扫描错误', async () => {
-      mockedAxios.create.mockReturnValue({
-        post: vi.fn().mockRejectedValue(new Error('Scan failed')),
-      })
+      ; (api.post as any).mockRejectedValue(new Error('Scan failed'))
 
       await expect(
         mediaApi.scanDirectory({
@@ -52,9 +56,7 @@ describe('Media API', () => {
         page_size: 50,
       }
 
-      mockedAxios.create.mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: mockFiles }),
-      })
+        ; (api.get as any).mockResolvedValue(mockFiles)
 
       const result = await mediaApi.getFiles({})
 
@@ -63,27 +65,21 @@ describe('Media API', () => {
     })
 
     it('应该支持分页参数', async () => {
-      mockedAxios.create.mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: { files: [], total: 0 } }),
-      })
+      ; (api.get as any).mockResolvedValue({ data: { files: [], total: 0 } })
 
       await mediaApi.getFiles({ page: 2, page_size: 10 })
 
-      const getCall = mockedAxios.create().get
-      expect(getCall).toHaveBeenCalledWith('/files', {
+      expect(api.get).toHaveBeenCalledWith('/files', {
         params: { page: 2, page_size: 10 },
       })
     })
 
     it('应该支持文件类型过滤', async () => {
-      mockedAxios.create.mockReturnValue({
-        get: vi.fn().mockResolvedValue({ data: { files: [], total: 0 } }),
-      })
+      ; (api.get as any).mockResolvedValue({ data: { files: [], total: 0 } })
 
       await mediaApi.getFiles({ file_type: 'video' })
 
-      const getCall = mockedAxios.create().get
-      expect(getCall).toHaveBeenCalledWith('/files', {
+      expect(api.get).toHaveBeenCalledWith('/files', {
         params: { file_type: 'video' },
       })
     })
@@ -96,9 +92,7 @@ describe('Media API', () => {
         year: 2024,
       }
 
-      mockedAxios.create.mockReturnValue({
-        post: vi.fn().mockResolvedValue({ data: { metadata: mockMetadata } }),
-      })
+        ; (api.post as any).mockResolvedValue({ metadata: mockMetadata })
 
       const result = await mediaApi.scrapeMetadata({
         file_id: 'test-id',
