@@ -1,0 +1,14 @@
+pub mod scanner;
+pub mod hasher;
+pub mod hasher_parallel;
+pub mod video;
+pub mod scraper;
+pub mod renamer;
+pub mod dedupe;
+pub mod empty_dirs;
+pub mod poster;
+pub mod nfo;
+pub mod subtitle;
+pub mod file_ops;
+pub mod trash;
+pub mod cache;

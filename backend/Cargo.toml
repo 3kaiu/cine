@@ -1,0 +1,96 @@
+[package]
+name = "cine-backend"
+version = "1.2.0"
+edition = "2021"
+authors = ["Cine Team"]
+description = "Cine - 高性能影视文件管理工具后端"
+license = "MIT"
+repository = "https://github.com/yourusername/cine"
+
+[dependencies]
+# Web 框架
+axum = { version = "0.7", features = ["ws", "multipart", "json"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+
+# 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# HTTP 客户端（用于调用 TMDB API）
+reqwest = { version = "0.11", features = ["json"] }
+
+# 数据库
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate"] }
+
+# 文件操作
+walkdir = "2.4"
+futures-util = "0.3"
+futures = "0.3"
+urlencoding = "2.1"
+
+# 哈希计算
+md5 = "0.7"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+sha2 = "0.10"
+
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# 错误处理
+anyhow = "1.0"
+thiserror = "1.0"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 配置管理
+config = "0.14"
+
+# 文件路径处理
+pathdiff = "0.2"
+
+# 正则表达式（用于文件名解析）
+regex = "1.10"
+
+# 异步任务队列（可选）
+# tokio-cron-scheduler = "0.8"
+
+[dev-dependencies]
+# 测试框架
+tokio-test = "0.4"
+mockall = "0.12"
+mockito = "0.32"
+tempfile = "3.10"
+assert_matches = "1.5"
+
+# 测试工具
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+
+[lib]
+name = "cine_backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cine-backend"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[[bench]]
+name = "hash_bench"
+harness = false
+
+[[bench]]
+name = "performance_bench"
+harness = false

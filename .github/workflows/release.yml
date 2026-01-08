@@ -1,0 +1,245 @@
+name: Build and Release FPK
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送以 v 开头的 tag 时触发
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            backend/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build backend
+        working-directory: ./backend
+        run: |
+          cargo build --release
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Prepare fpk package
+        run: |
+          mkdir -p app/{frontend,backend,config}
+          
+          # 复制后端可执行文件
+          cp backend/target/release/cine-backend app/backend/
+          
+          # 复制前端构建产物
+          cp -r frontend/dist/* app/frontend/
+          
+          # 创建配置文件
+          cat > app/config/privilege <<EOF
+          {
+              "defaults": {
+                  "run-as": "root"
+              },
+              "filesystem": {
+                  "read": ["/"],
+                  "write": ["/data/cine"]
+              }
+          }
+          EOF
+          
+          cat > app/config/config.json <<EOF
+          {
+              "port": 3000,
+              "database_url": "sqlite:/data/cine.db",
+              "hash_cache_dir": "/data/cine/hash_cache",
+              "trash_dir": "/data/cine/trash"
+          }
+          EOF
+          
+          # 读取版本号
+          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
+          
+          # 创建 fnpack.json
+          cat > fnpack.json <<EOF
+          {
+              "name": "cine",
+              "version": "$VERSION",
+              "description": "Cine - 专为NAS用户打造的高性能影视文件管理工具",
+              "main": "app/backend/cine-backend",
+              "author": "Cine Team",
+              "license": "MIT"
+          }
+          EOF
+
+      - name: Get version for package
+        id: package_version
+        run: |
+          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install fnpack
+        run: |
+          # 尝试安装 fnpack 工具
+          # 注意：fnpack 可能需要从飞牛OS官方源获取
+          # 如果以下方法都失败，将回退到创建 tar.gz 包
+          
+          FPK_AVAILABLE=false
+          
+          # 方法1: 检查是否已安装
+          if command -v fnpack &> /dev/null; then
+            echo "fnpack 已安装"
+            fnpack --version || true
+            FPK_AVAILABLE=true
+          fi
+          
+          # 方法2: 尝试从 npm 安装（如果发布到 npm）
+          if [ "$FPK_AVAILABLE" = "false" ] && command -v npm &> /dev/null; then
+            echo "尝试从 npm 安装 fnpack..."
+            npm install -g @fnos/fnpack 2>/dev/null && FPK_AVAILABLE=true || echo "npm 安装失败"
+          fi
+          
+          # 方法3: 尝试下载预编译二进制（需要配置实际下载地址）
+          if [ "$FPK_AVAILABLE" = "false" ]; then
+            echo "尝试下载 fnpack 二进制..."
+            # 取消注释并配置实际的下载地址
+            # FNPACK_URL="https://github.com/fnos/fnpack/releases/latest/download/fnpack-linux-amd64"
+            # curl -L -o /tmp/fnpack "$FNPACK_URL" && chmod +x /tmp/fnpack && sudo mv /tmp/fnpack /usr/local/bin/fnpack && FPK_AVAILABLE=true || echo "二进制下载失败"
+            echo "提示: 如需自动生成 fpk，请配置 fnpack 下载地址或使用 Docker 镜像"
+          fi
+          
+          # 设置环境变量
+          if [ "$FPK_AVAILABLE" = "true" ] && command -v fnpack &> /dev/null; then
+            echo "✅ fnpack 可用"
+            echo "FPK_BUILD=true" >> $GITHUB_ENV
+          else
+            echo "⚠️ fnpack 不可用，将创建 tar.gz 包（用户可手动使用 fnpack 生成 fpk）"
+            echo "FPK_BUILD=false" >> $GITHUB_ENV
+          fi
+
+      - name: Build FPK file
+        id: build_fpk
+        run: |
+          VERSION="${{ steps.package_version.outputs.version }}"
+          
+          if [ "${{ env.FPK_BUILD }}" = "true" ]; then
+            echo "使用 fnpack 构建 fpk 文件..."
+            fnpack build
+            if [ -f "cine.fpk" ]; then
+              mv cine.fpk cine-$VERSION.fpk
+              echo "FPK_FILE=cine-$VERSION.fpk" >> $GITHUB_ENV
+              echo "FPK_EXTENSION=fpk" >> $GITHUB_ENV
+            else
+              echo "fpk 文件生成失败，回退到 tar.gz"
+              echo "FPK_BUILD=false" >> $GITHUB_ENV
+            fi
+          fi
+          
+          if [ "${{ env.FPK_BUILD }}" != "true" ]; then
+            echo "创建 tar.gz 压缩包..."
+            tar -czf cine-$VERSION.tar.gz app/ fnpack.json
+            echo "FPK_FILE=cine-$VERSION.tar.gz" >> $GITHUB_ENV
+            echo "FPK_EXTENSION=tar.gz" >> $GITHUB_ENV
+          fi
+          
+          # 创建安装说明
+          cat > INSTALL.md <<EOF
+          # Cine 安装说明
+          
+          ## 方式一：直接安装 fpk 文件（推荐）
+          
+          1. 下载 \`cine-$VERSION.fpk\` 文件
+          2. 在飞牛OS管理界面中上传并安装
+          
+          ## 方式二：使用 tar.gz 包
+          
+          1. 下载并解压 \`cine-$VERSION.tar.gz\`
+          2. 在解压后的目录中运行 \`fnpack build\` 生成 fpk 文件
+          3. 在飞牛OS管理界面中上传并安装生成的 fpk 文件
+          
+          ## 文件结构
+          
+          \`\`\`
+          app/
+          ├── backend/
+          │   └── cine-backend  # 后端可执行文件
+          ├── frontend/            # 前端静态文件
+          └── config/              # 配置文件
+          \`\`\`
+          EOF
+
+      - name: Get version and tag
+        id: get_version
+        run: |
+          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # 从 tag 或 ref 中提取版本号
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+          else
+            TAG_NAME="v$VERSION"
+          fi
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION, Tag: $TAG_NAME"
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          body: |
+            ## Cine ${{ steps.get_version.outputs.version }}
+            
+            ### 📦 下载安装包
+            
+            - **FPK 文件**: `cine-${{ steps.get_version.outputs.version }}.fpk` - 可直接安装的 fpk 文件（如果可用）
+            - **FPK 包**: `cine-${{ steps.get_version.outputs.version }}.tar.gz` - 包含完整应用文件的压缩包
+            - **后端二进制**: `cine-backend-${{ steps.get_version.outputs.version }}-linux-x86_64` - 仅后端可执行文件
+            - **安装说明**: `INSTALL.md` - 详细的安装指南
+            
+            ### 🚀 快速安装
+            
+            1. 下载 `cine-${{ steps.get_version.outputs.version }}.fpk` 文件（如果可用）
+            2. 在飞牛OS管理界面中上传并安装
+            
+            如果没有 fpk 文件，请下载 tar.gz 包，解压后运行 \`fnpack build\` 生成 fpk 文件。
+            
+            ### 📝 变更内容
+            
+            查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详细变更。
+          files: |
+            ${{ env.FPK_FILE }}
+            INSTALL.md
+            app/backend/cine-backend
+          draft: false
+          prerelease: false
