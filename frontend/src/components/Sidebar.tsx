@@ -61,7 +61,7 @@ export default function Sidebar() {
   const location = useLocation()
 
   return (
-    <Sider width={200} style={{ background: '#fff' }}>
+    <Sider width={200} style={{ background: '#fff' }} data-testid="sidebar">
       <div style={{ padding: '16px', fontSize: '18px', fontWeight: 'bold' }}>
         Media Toolbox
       </div>
