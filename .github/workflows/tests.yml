@@ -49,7 +49,7 @@ jobs:
       - name: Generate Test Coverage
         working-directory: backend
         run: |
-          cargo install cargo-tarpaulin
+          command -v cargo-tarpaulin || cargo install cargo-tarpaulin
           cargo tarpaulin --out Xml --output-dir coverage
       
       - name: Upload Coverage
