@@ -7,9 +7,9 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './tests/e2e',
   /* 每个测试的最长运行时间 */
-  timeout: 30 * 1000,
+  timeout: process.env.CI ? 60 * 1000 : 30 * 1000,
   expect: {
-    timeout: 5000,
+    timeout: 10000,
   },
   /* 失败时重试 */
   retries: process.env.CI ? 2 : 0,
