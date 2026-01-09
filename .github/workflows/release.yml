@@ -66,7 +66,12 @@ jobs:
 
       - name: Prepare fpk package
         run: |
-          mkdir -p app/{frontend,backend,config}
+          # 清理旧构建
+          rm -rf app config manifest ICON.PNG ICON_256.PNG cmd
+
+          mkdir -p app/{frontend,backend}
+          mkdir -p config
+          mkdir -p cmd
           
           # 复制后端可执行文件
           cp backend/target/release/cine-backend app/backend/
@@ -74,8 +79,16 @@ jobs:
           # 复制前端构建产物
           cp -r frontend/dist/* app/frontend/
           
-          # 创建配置文件
-          cat > app/config/privilege <<EOF
+          # 处理图标 (使用 GitHub Actions 环境中的 convert 或直接复制)
+          if [ -f "frontend/public/icon.svg" ]; then
+             cp frontend/public/icon.svg ICON.PNG
+             cp frontend/public/icon.svg ICON_256.PNG
+          else
+             touch ICON.PNG ICON_256.PNG
+          fi
+          
+          # 创建配置文件 (config/privilege 在根目录)
+          cat > config/privilege <<EOF
           {
               "defaults": {
                   "run-as": "root"
@@ -87,6 +100,8 @@ jobs:
           }
           EOF
           
+          # 应用内配置
+          mkdir -p app/config
           cat > app/config/config.json <<EOF
           {
               "port": 3000,
@@ -99,10 +114,10 @@ jobs:
           # 读取版本号
           VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
           
-          # 创建 fnpack.json
-          cat > fnpack.json <<EOF
+          # 创建 manifest (注意：文件名为 manifest)
+          cat > manifest <<EOF
           {
-              "name": "cine",
+              "app": "cine",
               "version": "$VERSION",
               "description": "Cine - 专为NAS用户打造的高性能影视文件管理工具",
               "main": "app/backend/cine-backend",
@@ -158,7 +173,8 @@ jobs:
           
           if [ "${{ env.FPK_BUILD }}" != "true" ]; then
             echo "创建 tar.gz 压缩包..."
-            tar -czf cine-$VERSION.tar.gz app/ fnpack.json
+            # 打包所有必要文件：app, config, manifest, command, icons
+            tar -czf cine-$VERSION.tar.gz app/ config/ cmd/ manifest ICON.PNG ICON_256.PNG
             echo "FPK_FILE=cine-$VERSION.tar.gz" >> $GITHUB_ENV
             echo "FPK_EXTENSION=tar.gz" >> $GITHUB_ENV
           fi
