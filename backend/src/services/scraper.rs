@@ -251,7 +251,7 @@ pub async fn scrape_metadata(
     }
 }
 
-/// 批量刮削元数据（使用共享 HTTP 客户端）
+/// 批量刮削元数据（并行版本，使用共享 HTTP 客户端）
 #[allow(dead_code)]
 pub async fn batch_scrape_metadata(
     client: &Client,
@@ -261,54 +261,77 @@ pub async fn batch_scrape_metadata(
     config: &AppConfig,
     download_images: bool,
     generate_nfo: bool,
+    max_concurrent: usize, // 新增：并发控制
 ) -> anyhow::Result<Vec<(String, Result<Value, String>)>> {
-    let mut results = Vec::new();
+    use futures::stream::{self, StreamExt};
 
-    for file in files {
-        let result = match scrape_metadata(client, file, source, auto_match, config).await {
-            Ok(metadata) => {
-                // 如果成功，下载图片和生成 NFO
-                if download_images || generate_nfo {
-                    let poster_url = metadata.get("poster_url").and_then(|u| u.as_str());
-                    let backdrop_url = metadata.get("backdrop_url").and_then(|u| u.as_str());
+    let results: Vec<_> = stream::iter(files)
+        .map(|file| {
+            let client = client.clone();
+            let file = file.clone();
+            let source = source.to_string();
+            let config = config.clone();
+            async move {
+                let result = match scrape_metadata(&client, &file, &source, auto_match, &config)
+                    .await
+                {
+                    Ok(metadata) => {
+                        // 如果成功，下载图片和生成 NFO
+                        if download_images || generate_nfo {
+                            let poster_url = metadata.get("poster_url").and_then(|u| u.as_str());
+                            let backdrop_url =
+                                metadata.get("backdrop_url").and_then(|u| u.as_str());
 
-                    // 下载图片
-                    if download_images {
-                        if let Err(e) = crate::services::poster::download_media_images(
-                            &file.path,
-                            poster_url,
-                            backdrop_url,
-                        )
-                        .await
-                        {
-                            tracing::warn!("Failed to download images for {}: {}", file.path, e);
+                            // 下载图片
+                            if download_images {
+                                if let Err(e) = crate::services::poster::download_media_images(
+                                    &file.path,
+                                    poster_url,
+                                    backdrop_url,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(
+                                        "Failed to download images for {}: {}",
+                                        file.path,
+                                        e
+                                    );
+                                }
+                            }
+
+                            // 生成 NFO
+                            if generate_nfo {
+                                let media_type =
+                                    if file.name.contains("S") || file.name.contains("E") {
+                                        "tvshow"
+                                    } else {
+                                        "movie"
+                                    };
+                                if let Err(e) = crate::services::nfo::generate_nfo_file(
+                                    &file.path, &metadata, media_type,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(
+                                        "Failed to generate NFO for {}: {}",
+                                        file.path,
+                                        e
+                                    );
+                                }
+                            }
                         }
-                    }
 
-                    // 生成 NFO
-                    if generate_nfo {
-                        let media_type = if file.name.contains("S") || file.name.contains("E") {
-                            "tvshow"
-                        } else {
-                            "movie"
-                        };
-                        if let Err(e) = crate::services::nfo::generate_nfo_file(
-                            &file.path, &metadata, media_type,
-                        )
-                        .await
-                        {
-                            tracing::warn!("Failed to generate NFO for {}: {}", file.path, e);
-                        }
+                        Ok(metadata)
                     }
-                }
+                    Err(e) => Err(e.to_string()),
+                };
 
-                Ok(metadata)
+                (file.id.clone(), result)
             }
-            Err(e) => Err(e.to_string()),
-        };
-
-        results.push((file.id.clone(), result));
-    }
+        })
+        .buffer_unordered(max_concurrent)
+        .collect()
+        .await;
 
     Ok(results)
 }

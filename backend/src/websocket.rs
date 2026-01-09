@@ -1,35 +1,58 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        WebSocketUpgrade,
+        State, WebSocketUpgrade,
     },
     response::Response,
 };
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
+use crate::handlers::AppState;
+
 /// WebSocket 处理器，用于实时推送进度
-pub async fn ws_handler(ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(handle_socket)
+pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
+    let rx = state.progress_broadcaster.subscribe();
+    ws.on_upgrade(|socket| handle_socket(socket, rx))
 }
 
-async fn handle_socket(mut socket: WebSocket) {
-    // 这里可以订阅任务进度频道
-    // 简化版：只处理连接
-    while let Some(msg) = socket.next().await {
-        if let Ok(msg) = msg {
-            match msg {
-                Message::Text(text) => {
-                    // 处理客户端消息
-                    if let Err(e) = socket.send(Message::Text(format!("Echo: {}", text))).await {
-                        tracing::error!("WebSocket send error: {}", e);
+async fn handle_socket(socket: WebSocket, mut rx: broadcast::Receiver<ProgressMessage>) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // 使用 tokio::select! 同时处理进度推送和客户端消息
+    loop {
+        tokio::select! {
+            // 接收进度消息并推送给客户端
+            msg = rx.recv() => {
+                match msg {
+                    Ok(progress) => {
+                        if let Ok(json) = serde_json::to_string(&progress) {
+                            if sender.send(Message::Text(json)).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        // 消息被跳过，继续
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
                         break;
                     }
                 }
-                Message::Close(_) => {
-                    break;
+            }
+            // 处理来自客户端的消息
+            ws_msg = receiver.next() => {
+                match ws_msg {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(Message::Ping(data))) => {
+                        if sender.send(Message::Pong(data)).await.is_err() {
+                            break;
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }
@@ -60,7 +83,6 @@ impl ProgressBroadcaster {
         let _ = self.tx.send(msg);
     }
 
-    #[allow(dead_code)]
     pub fn subscribe(&self) -> broadcast::Receiver<ProgressMessage> {
         self.tx.subscribe()
     }

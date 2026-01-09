@@ -1,5 +1,5 @@
 use axum::{
-    extract::{State, Query},
+    extract::{Query, State},
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -34,12 +34,12 @@ pub async fn scan_directory(
     let state_clone = state.clone();
     let directory = req.directory.clone();
     let recursive = req.recursive.unwrap_or(true);
-    let file_types = req.file_types.unwrap_or_else(|| {
-        vec!["video".to_string(), "audio".to_string()]
-    });
+    let file_types = req
+        .file_types
+        .unwrap_or_else(|| vec!["video".to_string(), "audio".to_string()]);
 
     let progress_broadcaster = Some(Arc::new(state_clone.progress_broadcaster.clone()));
-    
+
     tokio::spawn(async move {
         if let Err(e) = scanner::scan_directory(
             &state_clone.db,
@@ -48,7 +48,9 @@ pub async fn scan_directory(
             &file_types,
             &task_id_clone,
             progress_broadcaster,
-        ).await {
+        )
+        .await
+        {
             tracing::error!("Scan task {} failed: {}", task_id_clone, e);
         }
     });
@@ -84,35 +86,55 @@ pub async fn list_files(
     let page_size = query.page_size.unwrap_or(50);
     let offset = (page - 1) * page_size;
 
-    let mut sql = "SELECT * FROM media_files WHERE 1=1".to_string();
-    let mut params: Vec<String> = Vec::new();
+    // 使用 QueryBuilder 正确绑定参数
+    let mut builder = sqlx::QueryBuilder::new("SELECT * FROM media_files WHERE 1=1");
 
-    if let Some(file_type) = &query.file_type {
-        sql.push_str(" AND file_type = ?");
-        params.push(file_type.clone());
+    if let Some(ref file_type) = query.file_type {
+        builder.push(" AND file_type = ");
+        builder.push_bind(file_type);
     }
 
     if let Some(min_size) = query.min_size {
-        sql.push_str(" AND size >= ?");
-        params.push(min_size.to_string());
+        builder.push(" AND size >= ");
+        builder.push_bind(min_size);
     }
 
     if let Some(max_size) = query.max_size {
-        sql.push_str(" AND size <= ?");
-        params.push(max_size.to_string());
+        builder.push(" AND size <= ");
+        builder.push_bind(max_size);
     }
 
-    sql.push_str(" ORDER BY size DESC LIMIT ? OFFSET ?");
-    params.push(page_size.to_string());
-    params.push(offset.to_string());
+    builder.push(" ORDER BY size DESC LIMIT ");
+    builder.push_bind(page_size as i64);
+    builder.push(" OFFSET ");
+    builder.push_bind(offset as i64);
 
-    // 执行查询（简化版，实际应该使用 sqlx 的参数化查询）
-    let files = sqlx::query_as::<_, MediaFile>(&sql)
+    let files = builder
+        .build_query_as::<MediaFile>()
         .fetch_all(&state.db)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM media_files")
+    // COUNT 查询也应用相同的过滤条件
+    let mut count_builder = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM media_files WHERE 1=1");
+
+    if let Some(ref file_type) = query.file_type {
+        count_builder.push(" AND file_type = ");
+        count_builder.push_bind(file_type);
+    }
+
+    if let Some(min_size) = query.min_size {
+        count_builder.push(" AND size >= ");
+        count_builder.push_bind(min_size);
+    }
+
+    if let Some(max_size) = query.max_size {
+        count_builder.push(" AND size <= ");
+        count_builder.push_bind(max_size);
+    }
+
+    let total: i64 = count_builder
+        .build_query_scalar()
         .fetch_one(&state.db)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
