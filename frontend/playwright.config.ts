@@ -16,7 +16,7 @@ export default defineConfig({
   /* 全量运行时的并行度 */
   workers: process.env.CI ? 1 : undefined,
   /* 报告器格式 */
-  reporter: process.env.CI ? 'github' : 'html',
+  reporter: process.env.CI ? [['github'], ['html']] : 'html',
   /* 基础路径和浏览器配置 */
   use: {
     baseURL: 'http://localhost:5173',
