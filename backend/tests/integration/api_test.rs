@@ -3,19 +3,19 @@
 use axum::http::StatusCode;
 #[path = "../common/mod.rs"]
 mod common;
+use chrono::Utc;
+use cine_backend::config::AppConfig;
+use cine_backend::handlers::AppState;
+use cine_backend::services::cache::FileHashCache;
+use cine_backend::websocket::ProgressBroadcaster;
 use common::{create_test_db, create_test_file};
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use cine_backend::handlers::AppState;
-use cine_backend::config::AppConfig;
-use cine_backend::websocket::ProgressBroadcaster;
-use cine_backend::services::cache::FileHashCache;
-use chrono::Utc;
 
 /// 创建测试应用状态
 async fn create_test_app_state() -> (Arc<AppState>, tempfile::TempDir) {
     let (pool, temp_dir) = create_test_db().await;
-    
+
     let config = Arc::new(AppConfig {
         database_url: "sqlite:test.db".to_string(),
         port: 3000,
@@ -31,6 +31,7 @@ async fn create_test_app_state() -> (Arc<AppState>, tempfile::TempDir) {
         config,
         progress_broadcaster: ProgressBroadcaster::new(),
         hash_cache: Arc::new(FileHashCache::new()),
+        http_client: reqwest::Client::new(),
     });
 
     (app_state, temp_dir)
@@ -51,7 +52,7 @@ async fn test_scan_api() {
 #[tokio::test]
 async fn test_get_files_api() {
     let (app_state, _temp_dir) = create_test_app_state().await;
-    
+
     // 插入测试数据
     let file_id = uuid::Uuid::new_v4().to_string();
     sqlx::query(
