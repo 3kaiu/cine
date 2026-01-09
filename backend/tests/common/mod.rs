@@ -1,6 +1,6 @@
 //! 测试公共模块
 
-use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -26,6 +26,7 @@ pub async fn create_test_db() -> (SqlitePool, TempDir) {
 }
 
 /// 创建测试文件
+#[allow(dead_code)]
 pub fn create_test_file(dir: &TempDir, name: &str, content: &[u8]) -> PathBuf {
     let file_path = dir.path().join(name);
     if let Some(parent) = file_path.parent() {
@@ -36,18 +37,20 @@ pub fn create_test_file(dir: &TempDir, name: &str, content: &[u8]) -> PathBuf {
 }
 
 /// 创建测试目录结构
+#[allow(dead_code)]
 pub fn create_test_directory_structure(base: &TempDir) -> PathBuf {
     let test_dir = base.path().join("test_media");
     std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
-    
+
     // 创建子目录
     std::fs::create_dir_all(test_dir.join("movies")).expect("Failed to create movies dir");
     std::fs::create_dir_all(test_dir.join("tv_shows")).expect("Failed to create tv_shows dir");
-    
+
     test_dir
 }
 
 /// 清理测试数据
+#[allow(dead_code)]
 pub async fn cleanup_test_db(pool: &SqlitePool) {
     sqlx::query("DELETE FROM media_files")
         .execute(pool)

@@ -103,6 +103,11 @@ fn is_subtitle_match(video_name: &str, subtitle_name: &str) -> bool {
         return true;
     }
 
+    // 检查字幕文件名是否以视频文件名开头（处理 language suffix, e.g. .zh, .en）
+    if subtitle_clean.starts_with(&format!("{}.", video_clean)) {
+        return true;
+    }
+
     // 检查是否包含视频文件名的主要部分
     let video_parts: Vec<&str> = video_clean.split(&['.', '-', '_', ' '][..]).collect();
     let subtitle_parts: Vec<&str> = subtitle_clean.split(&['.', '-', '_', ' '][..]).collect();
@@ -160,14 +165,33 @@ fn detect_language(filename: &str, path: &str) -> String {
     "未知".to_string()
 }
 
-/// 下载字幕（从字幕库等）
-#[allow(dead_code)]
-pub async fn download_subtitle(
-    _video_path: &str,
-    _language: &str,
-    _output_path: &Path,
-) -> anyhow::Result<()> {
-    // TODO: 实现字幕下载功能
-    // 可以集成 opensubtitles.org API 或其他字幕库
-    Err(anyhow::anyhow!("字幕下载功能待实现"))
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SubtitleSearchResult {
+    pub id: String,
+    pub filename: String,
+    pub language: String,
+    pub score: i32,
+    pub link: String,
+}
+
+pub async fn search_subtitles_remote(
+    video_name: &str,
+) -> anyhow::Result<Vec<SubtitleSearchResult>> {
+    // 模拟搜索
+    Ok(vec![
+        SubtitleSearchResult {
+            id: "1".to_string(),
+            filename: format!("{}.zh-CN.srt", video_name),
+            language: "Chinese".to_string(),
+            score: 95,
+            link: "https://example.com/sub/1".to_string(),
+        },
+        SubtitleSearchResult {
+            id: "2".to_string(),
+            filename: format!("{}.en.srt", video_name),
+            language: "English".to_string(),
+            score: 80,
+            link: "https://example.com/sub/2".to_string(),
+        },
+    ])
 }

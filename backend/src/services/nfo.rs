@@ -1,3 +1,6 @@
+use quick_xml::de::from_str;
+use quick_xml::se::to_string;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
 use tokio::fs;
@@ -117,6 +120,39 @@ fn generate_tvshow_nfo(metadata: &Value) -> anyhow::Result<String> {
     );
 
     Ok(nfo)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename = "movie")]
+pub struct MovieNfo {
+    pub title: Option<String>,
+    pub originaltitle: Option<String>,
+    pub sorttitle: Option<String>,
+    pub rating: Option<f64>,
+    pub year: Option<u32>,
+    pub plot: Option<String>,
+    pub tagline: Option<String>,
+    pub runtime: Option<u32>,
+    pub thumb: Option<String>,
+    pub fanart: Option<String>,
+    pub tmdbid: Option<String>,
+    pub id: Option<String>,
+}
+
+/// 读取并解析 NFO 文件
+pub async fn read_nfo_file(path: &str) -> anyhow::Result<MovieNfo> {
+    let content = fs::read_to_string(path).await?;
+    let nfo: MovieNfo = from_str(&content)?;
+    Ok(nfo)
+}
+
+/// 更新或创建 NFO 文件
+pub async fn save_nfo_file(path: &str, nfo: &MovieNfo) -> anyhow::Result<()> {
+    let xml = to_string(nfo)?;
+    let header = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#;
+    let content = format!("{}\n{}", header, xml);
+    fs::write(path, content).await?;
+    Ok(())
 }
 
 fn escape_xml(s: &str) -> String {

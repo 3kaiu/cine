@@ -8,11 +8,56 @@ export interface MediaFile {
   file_type: string
   hash_xxhash?: string
   hash_md5?: string
-  video_info?: any
+  tmdb_id?: number
+  quality_score?: number
+  video_info?: VideoInfo
   metadata?: any
   created_at: string
   updated_at: string
   last_modified: string
+}
+
+export interface VideoInfo {
+  duration?: number
+  width?: number
+  height?: number
+  codec?: string
+  bitrate?: number
+  format?: string
+  audio_codec?: string
+  audio_channels?: number
+  is_hdr?: boolean
+  is_dolby_vision?: boolean
+  is_hdr10_plus?: boolean
+  source?: string
+  has_chinese_subtitle?: boolean
+  audio_streams: Array<{
+    codec: string
+    channels: number
+    language?: string
+    title?: string
+  }>
+  subtitle_streams: Array<{
+    codec: string
+    language?: string
+    title?: string
+    is_external: boolean
+  }>
+}
+
+export interface MovieNfo {
+  title?: string
+  originaltitle?: string
+  sorttitle?: string
+  rating?: number
+  year?: number
+  plot?: string
+  tagline?: string
+  runtime?: number
+  thumb?: string
+  fanart?: string
+  tmdbid?: string
+  id?: string
 }
 
 export interface ScanRequest {
@@ -25,6 +70,24 @@ export interface ScanResponse {
   task_id: string
   message: string
 }
+
+export interface OperationLog {
+  id: string
+  action: 'rename' | 'trash' | 'restore' | 'delete' | 'move' | 'copy'
+  file_id?: string
+  old_path: string
+  new_path?: string
+  created_at: string
+}
+
+export interface ScanHistory {
+  directory: string
+  total_files: number
+  total_size: number
+  file_types_json: string
+  last_scanned_at: string
+}
+
 
 export const mediaApi = {
   // 扫描目录
@@ -114,6 +177,14 @@ export const mediaApi = {
       total_duplicates: number
       total_wasted_space: number
     }>('/dedupe'),
+
+  // 按影片查找重复
+  findDuplicateMovies: () =>
+    api.get<Array<{
+      tmdb_id: number
+      title: string
+      files: MediaFile[]
+    }>>('/dedupe/movies'),
 
   // 查找大文件
   findLargeFiles: () =>
@@ -223,4 +294,22 @@ export const mediaApi = {
 
   cleanupTrash: () =>
     api.post<{ deleted_count: number; message: string }>('/trash/cleanup'),
+
+  // 操作日志相关
+  listOperationLogs: () =>
+    api.get<OperationLog[]>('/logs'),
+
+  undoOperation: (id: string) =>
+    api.post<string>(`/logs/${id}/undo`),
+
+  // 扫描历史相关
+  listScanHistory: () =>
+    api.get<ScanHistory[]>('/history'),
+
+  // NFO 相关
+  getNfo: (fileId: string) =>
+    api.get<MovieNfo>(`/files/${fileId}/nfo`),
+
+  updateNfo: (fileId: string, nfo: MovieNfo) =>
+    api.put(`/files/${fileId}/nfo`, nfo),
 }

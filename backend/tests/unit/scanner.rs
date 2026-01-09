@@ -2,17 +2,28 @@ use cine_backend::services::scanner;
 #[path = "../common/mod.rs"]
 mod common;
 use common::{create_test_db, create_test_directory_structure, create_test_file};
-use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_scan_directory_basic() {
     let (pool, temp_dir) = create_test_db().await;
     let test_dir = create_test_directory_structure(&temp_dir);
-    
+
     // 创建测试文件
-    create_test_file(&temp_dir, "test_media/root_video.mp4", b"fake video content");
-    create_test_file(&temp_dir, "test_media/movies/test.mp4", b"fake video content");
-    create_test_file(&temp_dir, "test_media/tv_shows/episode.mkv", b"fake video content");
+    create_test_file(
+        &temp_dir,
+        "test_media/root_video.mp4",
+        b"fake video content",
+    );
+    create_test_file(
+        &temp_dir,
+        "test_media/movies/test.mp4",
+        b"fake video content",
+    );
+    create_test_file(
+        &temp_dir,
+        "test_media/tv_shows/episode.mkv",
+        b"fake video content",
+    );
 
     let result = scanner::scan_directory(
         &pool,
@@ -21,16 +32,17 @@ async fn test_scan_directory_basic() {
         &["video".to_string()],
         "test-task",
         None,
-    ).await;
+    )
+    .await;
 
     assert!(result.is_ok());
-    
+
     // 验证文件已插入数据库
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM media_files")
         .fetch_one(&pool)
         .await
         .unwrap();
-    
+
     assert!(count > 0);
 }
 
@@ -38,7 +50,7 @@ async fn test_scan_directory_basic() {
 async fn test_scan_directory_recursive() {
     let (pool, temp_dir) = create_test_db().await;
     let test_dir = create_test_directory_structure(&temp_dir);
-    
+
     // 创建嵌套文件
     create_test_file(&temp_dir, "test_media/movies/subdir/movie.mp4", b"content");
     create_test_file(&temp_dir, "test_media/tv_shows/s01/episode.mkv", b"content");
@@ -50,22 +62,23 @@ async fn test_scan_directory_recursive() {
         &["video".to_string()],
         "test-task",
         None,
-    ).await;
+    )
+    .await;
 
     assert!(result.is_ok());
-    
+
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM media_files")
         .fetch_one(&pool)
         .await
         .unwrap();
-    
+
     assert_eq!(count, 2);
 }
 
 #[tokio::test]
 async fn test_scan_directory_nonexistent() {
     let (pool, _temp_dir) = create_test_db().await;
-    
+
     let result = scanner::scan_directory(
         &pool,
         "/nonexistent/path",
@@ -73,7 +86,8 @@ async fn test_scan_directory_nonexistent() {
         &["video".to_string()],
         "test-task",
         None,
-    ).await;
+    )
+    .await;
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("does not exist"));
@@ -83,7 +97,7 @@ async fn test_scan_directory_nonexistent() {
 async fn test_scan_directory_file_type_filter() {
     let (pool, temp_dir) = create_test_db().await;
     let test_dir = create_test_directory_structure(&temp_dir);
-    
+
     create_test_file(&temp_dir, "test_media/video.mp4", b"content");
     create_test_file(&temp_dir, "test_media/image.jpg", b"content");
     create_test_file(&temp_dir, "test_media/document.pdf", b"content");
@@ -95,15 +109,17 @@ async fn test_scan_directory_file_type_filter() {
         &["video".to_string()], // 只扫描视频
         "test-task",
         None,
-    ).await;
+    )
+    .await;
 
     assert!(result.is_ok());
-    
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM media_files WHERE file_type = 'video'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    
+
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM media_files WHERE file_type = 'video'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
     assert_eq!(count, 1);
 }
 

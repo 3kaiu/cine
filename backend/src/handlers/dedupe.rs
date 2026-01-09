@@ -1,5 +1,5 @@
 use axum::{
-    extract::{State, Query},
+    extract::{Query, State},
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -110,7 +110,7 @@ pub async fn find_large_files(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::models::MediaFile>>, (axum::http::StatusCode, String)> {
     let files = sqlx::query_as::<_, crate::models::MediaFile>(
-        "SELECT * FROM media_files WHERE size > ? ORDER BY size DESC LIMIT 100"
+        "SELECT * FROM media_files WHERE size > ? ORDER BY size DESC LIMIT 100",
     )
     .bind(10_000_000_000i64) // 10GB
     .fetch_all(&state.db)
@@ -118,4 +118,14 @@ pub async fn find_large_files(
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(files))
+}
+
+pub async fn find_duplicate_movies(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<crate::models::DuplicateMovieGroup>>, (axum::http::StatusCode, String)> {
+    let groups = dedupe::find_duplicate_movies_by_tmdb(&state.db)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(groups))
 }

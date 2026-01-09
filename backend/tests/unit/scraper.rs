@@ -29,7 +29,8 @@ fn test_parse_filename_tv_show_with_year() {
 
 #[test]
 fn test_parse_filename_complex() {
-    let (title, year, season, episode) = scraper::parse_filename("The.Office.US.S03E05.1080p.BluRay.x264.mkv");
+    let (title, _year, season, episode) =
+        scraper::parse_filename("The.Office.US.S03E05.1080p.BluRay.x264.mkv");
     assert!(title.contains("Office"));
     assert_eq!(season, Some(3));
     assert_eq!(episode, Some(5));

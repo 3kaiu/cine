@@ -15,6 +15,7 @@ const Renamer = lazy(() => import('./pages/Renamer'))
 const EmptyDirs = lazy(() => import('./pages/EmptyDirs'))
 const FileManager = lazy(() => import('./pages/FileManager'))
 const Trash = lazy(() => import('./pages/Trash'))
+const OperationLogs = lazy(() => import('./pages/OperationLogs'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 const { Content, Header } = Layout
@@ -54,6 +55,7 @@ function App() {
                     <Route path="/empty-dirs" element={<EmptyDirs />} />
                     <Route path="/file-manager" element={<FileManager />} />
                     <Route path="/trash" element={<Trash />} />
+                    <Route path="/logs" element={<OperationLogs />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </Suspense>

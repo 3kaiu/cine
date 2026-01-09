@@ -57,9 +57,12 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
         progress_broadcaster: websocket::ProgressBroadcaster::new(),
         hash_cache: Arc::new(crate::services::cache::FileHashCache::new()),
-        http_client: reqwest::Client::new(), // 复用 HTTP 客户端
+        http_client: reqwest::Client::new(),
     };
     let app_state = Arc::new(app_state);
+
+    // 启动后台服务
+    start_background_services(db.clone(), app_state.clone()).await?;
 
     // CORS 配置
     let cors = CorsLayer::new()
@@ -75,10 +78,19 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/files/:id/hash", post(calculate_hash))
         .route("/api/files/:id/info", get(get_video_info))
         .route("/api/files/:id/subtitles", get(find_subtitles))
+        .route(
+            "/api/files/:id/subtitles/search",
+            get(search_remote_subtitles),
+        )
+        .route(
+            "/api/files/:id/subtitles/download",
+            post(download_remote_subtitle),
+        )
         .route("/api/scrape", post(scrape_metadata))
         .route("/api/scrape/batch", post(batch_scrape_metadata))
         .route("/api/rename", post(batch_rename))
         .route("/api/dedupe", post(find_duplicates))
+        .route("/api/dedupe/movies", get(find_duplicate_movies))
         .route("/api/empty-dirs", get(find_empty_dirs))
         .route("/api/empty-dirs/delete", post(delete_empty_dirs))
         .route("/api/large-files", get(find_large_files))
@@ -91,6 +103,15 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/trash/:id/restore", post(restore_from_trash))
         .route("/api/trash/:id/delete", delete(permanently_delete))
         .route("/api/trash/cleanup", post(cleanup_trash))
+        .route("/api/logs", get(list_operation_logs))
+        .route("/api/logs/:id/undo", post(undo_operation))
+        .route("/api/history", get(list_scan_history))
+        .route(
+            "/api/watch-folders",
+            get(list_watch_folders).post(add_watch_folder),
+        )
+        .route("/api/watch-folders/:id", delete(delete_watch_folder))
+        .route("/api/files/:id/nfo", get(get_nfo).put(update_nfo))
         .route("/ws", get(ws_handler))
         .layer(ServiceBuilder::new().layer(cors))
         .with_state(app_state);
@@ -100,6 +121,46 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+async fn start_background_services(
+    db: sqlx::SqlitePool,
+    state: Arc<handlers::AppState>,
+) -> anyhow::Result<()> {
+    // 1. 启动定时器
+    let scheduler = crate::services::scheduler::SchedulerService::new(db.clone()).await?;
+    tokio::spawn(async move {
+        if let Err(e) = scheduler.start().await {
+            tracing::error!("Scheduler error: {}", e);
+        }
+    });
+
+    // 2. 启动文件监控
+    let (watcher_service, mut rx) = crate::services::watcher::WatcherService::new(db.clone());
+    watcher_service.start_all().await?;
+
+    // 监听监控信号并执行自动化任务
+    tokio::spawn(async move {
+        while let Some(path) = rx.recv().await {
+            tracing::info!("Auto-processing directory: {}", path);
+            // 触发全量扫描（暂定，后续可优化为单文件触发）
+            let file_types: Vec<String> = ["video", "audio", "image"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            let _ = crate::services::scanner::scan_directory(
+                &state.db,
+                &path,
+                true,
+                &file_types,
+                "AUTO_WATCHER",
+                Some(Arc::new(state.progress_broadcaster.clone())),
+            )
+            .await;
+        }
+    });
 
     Ok(())
 }

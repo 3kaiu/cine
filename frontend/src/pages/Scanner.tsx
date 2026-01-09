@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { Card, Button, Input, Space, message, Divider } from 'antd'
+import { Card, Button, Input, Space, message, Divider, Tag, Typography } from 'antd'
+const { Text } = Typography
 import { FolderOpenOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
@@ -7,16 +8,28 @@ import ProgressMonitor from '@/components/ProgressMonitor'
 import VirtualizedTable from '@/components/VirtualizedTable'
 import { handleError } from '@/utils/errorHandler'
 import { debounce } from 'lodash'
+import SubtitleHub from '@/components/SubtitleHub'
 
 export default function Scanner() {
   const [directory, setDirectory] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [scanning, setScanning] = useState(false)
   const [taskId, setTaskId] = useState<string | undefined>(undefined)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [subtitleFileId, setSubtitleFileId] = useState<string | null>(null)
+
+  const { data: history, refetch: refetchHistory } = useQuery({
+    queryKey: ['scan-history'],
+    queryFn: async () => {
+      const res = await mediaApi.listScanHistory()
+      return res
+    }
+  })
 
   const { data, refetch, isPending } = useQuery({
-    queryKey: ['files', { page: 1, page_size: 50, name: searchTerm }],
-    queryFn: () => mediaApi.getFiles({ page: 1, page_size: 50, name: searchTerm }),
+    queryKey: ['files', { page: currentPage, page_size: pageSize, name: searchTerm }],
+    queryFn: () => mediaApi.getFiles({ page: currentPage, page_size: pageSize, name: searchTerm }),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   })
@@ -35,6 +48,7 @@ export default function Scanner() {
       message.success('扫描任务已启动')
       setScanning(true)
       setTaskId(data.task_id)
+      refetchHistory()
       // 扫描任务由 WebSocket 实时跟踪，这里无需 setTimeout 轮询
     },
     onError: (error: any) => {
@@ -82,6 +96,39 @@ export default function Scanner() {
       key: 'path',
       ellipsis: true,
     },
+    {
+      title: '质量',
+      key: 'quality',
+      width: 150,
+      render: (_: any, record: MediaFile) => (
+        <Space>
+          {record.quality_score !== undefined && (
+            <Tag color={record.quality_score > 70 ? 'success' : 'warning'}>
+              {record.quality_score}分
+            </Tag>
+          )}
+          {record.video_info?.is_dolby_vision && <Tag color="purple">DV</Tag>}
+          {record.video_info?.is_hdr10_plus && <Tag color="orange">HDR10+</Tag>}
+          {record.video_info?.is_hdr && !record.video_info?.is_dolby_vision && <Tag color="gold">HDR</Tag>}
+          {record.video_info?.source && <Tag color="blue">{record.video_info.source}</Tag>}
+          {record.video_info?.has_chinese_subtitle && <Tag color="cyan">中字</Tag>}
+        </Space>
+      )
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 100,
+      render: (_: any, record: MediaFile) => (
+        <Button
+          type="link"
+          size="small"
+          onClick={() => setSubtitleFileId(record.id)}
+        >
+          字幕
+        </Button>
+      )
+    },
   ]
 
   return (
@@ -126,6 +173,41 @@ export default function Scanner() {
         </Space>
       </Card>
 
+      {history && history.length > 0 && (
+        <Card title="扫描记录 (快照)" size="small">
+          <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '8px' }}>
+            {history.map((item: any) => {
+              const types = JSON.parse(item.file_types_json || '{}');
+              return (
+                <Card
+                  key={item.directory}
+                  hoverable
+                  style={{ width: 300, flexShrink: 0 }}
+                  bodyStyle={{ padding: '12px' }}
+                  onClick={() => setDirectory(item.directory)}
+                >
+                  <Text strong ellipsis title={item.directory} style={{ display: 'block', marginBottom: '8px' }}>
+                    {item.directory}
+                  </Text>
+                  <Space direction="vertical" size={0} style={{ width: '100%' }}>
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                      文件数: {item.total_files} | 体积: {formatSize(item.total_size)}
+                    </Text>
+                    <div style={{ marginTop: '4px' }}>
+                      {Object.entries(types).map(([type, count]) => (
+                        <Tag key={type} style={{ fontSize: '10px' }}>
+                          {type}: {count as number}
+                        </Tag>
+                      ))}
+                    </div>
+                  </Space>
+                </Card>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
       <Card title="文件库">
         <VirtualizedTable<MediaFile>
           columns={columns}
@@ -135,11 +217,21 @@ export default function Scanner() {
           loading={isPending}
           pagination={{
             total: data?.total || 0,
-            pageSize: data?.page_size || 50,
-            current: data?.page || 1,
+            pageSize,
+            current: currentPage,
+            onChange: (page, size) => {
+              setCurrentPage(page);
+              setPageSize(size);
+            }
           }}
         />
       </Card>
+
+      <SubtitleHub
+        fileId={subtitleFileId || ''}
+        visible={!!subtitleFileId}
+        onClose={() => setSubtitleFileId(null)}
+      />
     </div>
   )
 }

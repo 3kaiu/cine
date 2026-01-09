@@ -7,10 +7,12 @@ use crate::websocket::ProgressBroadcaster;
 
 pub mod dedupe;
 pub mod hash;
+pub mod nfo;
 pub mod rename;
 pub mod scan;
 pub mod scrape;
 pub mod video;
+pub mod watcher;
 
 pub struct AppState {
     pub db: sqlx::SqlitePool,
@@ -34,19 +36,29 @@ pub async fn health_check() -> Json<HealthResponse> {
 }
 
 // 重新导出各个 handler
-pub use dedupe::{delete_empty_dirs, find_duplicates, find_empty_dirs, find_large_files};
+pub use dedupe::{
+    delete_empty_dirs, find_duplicate_movies, find_duplicates, find_empty_dirs, find_large_files,
+};
 pub use hash::*;
+pub use nfo::*;
 pub use rename::*;
 pub use scan::*;
 pub use scrape::batch_scrape_metadata;
 pub use scrape::scrape_metadata;
 pub use video::*;
+pub use watcher::*;
 
 pub mod subtitle;
-pub use subtitle::find_subtitles;
+pub use subtitle::*;
 
 pub mod file_ops;
 pub use file_ops::{batch_copy_files, batch_move_files, copy_file, move_file};
 
 pub mod trash;
 pub use trash::{cleanup_trash, list_trash, move_to_trash, permanently_delete, restore_from_trash};
+
+pub mod log;
+pub use log::{list_operation_logs, undo_operation};
+
+pub mod history;
+pub use history::list_scan_history;

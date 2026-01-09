@@ -32,8 +32,9 @@ pub async fn scan_directory(
     let mut estimated_remaining = 100u64; // 初始估算
     let alpha = 0.1; // 平滑系数
 
-    // 批量插入缓冲区
     let mut file_batch: Vec<MediaFile> = Vec::with_capacity(BATCH_SIZE);
+    let mut total_size = 0i64;
+    let mut file_type_counts = std::collections::HashMap::new();
 
     // 遍历目录（只遍历一次）
     let walker = if recursive {
@@ -74,9 +75,11 @@ pub async fn scan_directory(
                 .unwrap_or("unknown")
                 .to_string(),
             size,
-            file_type,
+            file_type: file_type.clone(),
             hash_xxhash: None,
             hash_md5: None,
+            tmdb_id: None,
+            quality_score: None,
             video_info: None,
             metadata: None,
             created_at: Utc::now(),
@@ -91,6 +94,8 @@ pub async fn scan_directory(
         file_batch.push(file);
         file_count += 1;
         processed_count += 1;
+        total_size += size;
+        *file_type_counts.entry(file_type.clone()).or_insert(0u64) += 1;
 
         // 当批次达到大小时，批量插入
         if file_batch.len() >= BATCH_SIZE {
@@ -154,6 +159,18 @@ pub async fn scan_directory(
     }
 
     tracing::info!("Scan completed: {} files found", file_count);
+
+    // 保存扫描历史摘要
+    let stats = serde_json::to_value(&file_type_counts).unwrap_or_default();
+    let _ = crate::services::history::save_scan_history(
+        db,
+        directory,
+        file_count as i64,
+        total_size,
+        &stats,
+    )
+    .await;
+
     Ok(())
 }
 

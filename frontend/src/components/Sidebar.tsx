@@ -9,6 +9,7 @@ import {
   FolderOpenOutlined,
   RestOutlined,
   SettingOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons'
 
 const { Sider } = Layout
@@ -48,6 +49,11 @@ const menuItems = [
     key: '/trash',
     icon: <RestOutlined />,
     label: '回收站',
+  },
+  {
+    key: '/logs',
+    icon: <HistoryOutlined />,
+    label: '操作日志',
   },
   {
     key: '/settings',

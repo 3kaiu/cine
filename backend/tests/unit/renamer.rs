@@ -1,6 +1,6 @@
-use cine_backend::services::renamer;
-use cine_backend::models::MediaFile;
 use chrono::Utc;
+use cine_backend::models::MediaFile;
+use cine_backend::services::renamer;
 
 #[test]
 fn test_generate_new_name_basic() {
@@ -12,6 +12,8 @@ fn test_generate_new_name_basic() {
         file_type: "video".to_string(),
         hash_xxhash: None,
         hash_md5: None,
+        tmdb_id: None,
+        quality_score: None,
         video_info: None,
         metadata: None,
         created_at: Utc::now(),
@@ -39,6 +41,8 @@ fn test_generate_new_name_with_metadata() {
         file_type: "video".to_string(),
         hash_xxhash: None,
         hash_md5: None,
+        tmdb_id: None,
+        quality_score: None,
         video_info: None,
         metadata: Some(metadata.to_string()),
         created_at: Utc::now(),
@@ -70,6 +74,8 @@ fn test_generate_new_name_tv_show() {
         file_type: "video".to_string(),
         hash_xxhash: None,
         hash_md5: None,
+        tmdb_id: None,
+        quality_score: None,
         video_info: None,
         metadata: Some(metadata.to_string()),
         created_at: Utc::now(),
@@ -87,9 +93,9 @@ fn test_generate_new_name_tv_show() {
 // sanitize_filename 是私有函数，通过 generate_new_name 间接测试
 #[test]
 fn test_sanitize_filename_indirect() {
-    use cine_backend::services::renamer;
-    use cine_backend::models::MediaFile;
     use chrono::Utc;
+    use cine_backend::models::MediaFile;
+    use cine_backend::services::renamer;
 
     let file = MediaFile {
         id: "test-id".to_string(),
@@ -99,6 +105,8 @@ fn test_sanitize_filename_indirect() {
         file_type: "video".to_string(),
         hash_xxhash: None,
         hash_md5: None,
+        tmdb_id: None,
+        quality_score: None,
         video_info: None,
         metadata: None,
         created_at: Utc::now(),

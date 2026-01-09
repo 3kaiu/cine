@@ -1,6 +1,6 @@
 //! API 集成测试
 
-use axum::http::StatusCode;
+// use axum::http::StatusCode;
 #[path = "../common/mod.rs"]
 mod common;
 use chrono::Utc;
@@ -9,7 +9,7 @@ use cine_backend::handlers::AppState;
 use cine_backend::services::cache::FileHashCache;
 use cine_backend::websocket::ProgressBroadcaster;
 use common::{create_test_db, create_test_file};
-use sqlx::SqlitePool;
+// use sqlx::SqlitePool;
 use std::sync::Arc;
 
 /// 创建测试应用状态
@@ -39,7 +39,7 @@ async fn create_test_app_state() -> (Arc<AppState>, tempfile::TempDir) {
 
 #[tokio::test]
 async fn test_scan_api() {
-    let (app_state, temp_dir) = create_test_app_state().await;
+    let (_app_state, temp_dir) = create_test_app_state().await;
     let test_dir = temp_dir.path().join("test_media");
     std::fs::create_dir_all(&test_dir).unwrap();
     create_test_file(&temp_dir, "test_media/video.mp4", b"fake video");

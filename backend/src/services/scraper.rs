@@ -8,10 +8,12 @@ use serde_json::Value;
 // 预编译正则表达式（避免每次调用时重新编译）
 static YEAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(19|20)\d{2}\b").unwrap());
 
-static SEASON_EPISODE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)(?:S|Season|第)(\d+)(?:E|Episode|集)(\d+)").unwrap());
+static SEASON_EPISODE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(?:S|Season|第)\s*(\d+)\s*[. -]*\s*(?:E|Episode|集)\s*(\d+)").unwrap()
+});
 
-static EP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)EP?(\d+)").unwrap());
+static EP_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)(?:EP|E|Episode|集|第)\s*[. -]?\s*(\d+)").unwrap());
 
 static WHITESPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 
@@ -265,10 +267,9 @@ pub async fn batch_scrape_metadata(
 ) -> anyhow::Result<Vec<(String, Result<Value, String>)>> {
     use futures::stream::{self, StreamExt};
 
-    let results: Vec<_> = stream::iter(files)
+    let results: Vec<_> = stream::iter(files.to_vec())
         .map(|file| {
             let client = client.clone();
-            let file = file.clone();
             let source = source.to_string();
             let config = config.clone();
             async move {

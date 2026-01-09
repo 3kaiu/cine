@@ -3,6 +3,7 @@ import { Card, Button, Table, Space, message, Tag, Select, Checkbox, Modal, Imag
 import { CloudDownloadOutlined, PictureOutlined } from '@ant-design/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import NfoEditor from '@/components/NfoEditor'
 
 const { Text, Paragraph } = Typography
 
@@ -14,6 +15,7 @@ export default function Scraper() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [previewVisible, setPreviewVisible] = useState(false)
   const [previewMetadata, setPreviewMetadata] = useState<any>(null)
+  const [editingFileId, setEditingFileId] = useState<string | null>(null)
 
   const { data: files, refetch } = useQuery({
     queryKey: ['files'],
@@ -144,6 +146,25 @@ export default function Scraper() {
       },
     },
     {
+      title: '质量',
+      key: 'quality',
+      width: 150,
+      render: (_: any, record: MediaFile) => (
+        <Space>
+          {record.quality_score !== undefined && (
+            <Tag color={record.quality_score > 70 ? 'success' : 'warning'}>
+              {record.quality_score}分
+            </Tag>
+          )}
+          {record.video_info?.is_dolby_vision && <Tag color="purple">DV</Tag>}
+          {record.video_info?.is_hdr10_plus && <Tag color="orange">HDR10+</Tag>}
+          {record.video_info?.is_hdr && !record.video_info?.is_dolby_vision && <Tag color="gold">HDR</Tag>}
+          {record.video_info?.source && <Tag color="blue">{record.video_info.source}</Tag>}
+          {record.video_info?.has_chinese_subtitle && <Tag color="cyan">中字</Tag>}
+        </Space>
+      )
+    },
+    {
       title: '操作',
       key: 'action',
       width: 200,
@@ -164,6 +185,13 @@ export default function Scraper() {
             loading={scrapeMutation.isPending && selectedFile === record.id}
           >
             选择
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => setEditingFileId(record.id)}
+          >
+            编辑 NFO
           </Button>
         </Space>
       ),
@@ -277,7 +305,13 @@ export default function Scraper() {
           ))}
         </div>
       </Modal>
-    </div>
+
+      <NfoEditor
+        fileId={editingFileId || ''}
+        visible={!!editingFileId}
+        onClose={() => setEditingFileId(null)}
+      />
+    </div >
   )
 }
 
