@@ -2,17 +2,19 @@ import { useState } from 'react'
 import { Card, Button, Input, Table, Space, message } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
-import { useQuery, useMutation } from 'react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 
 export default function Renamer() {
   const [template, setTemplate] = useState('{title}.S{season:02d}E{episode:02d}.{ext}')
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
 
-  const { data: files } = useQuery('files', () =>
-    mediaApi.getFiles({ file_type: 'video', page_size: 100 })
-  )
+  const { data: files } = useQuery({
+    queryKey: ['files'],
+    queryFn: () => mediaApi.getFiles({ file_type: 'video', page_size: 100 })
+  })
 
-  const renameMutation = useMutation(mediaApi.batchRename, {
+  const renameMutation = useMutation({
+    mutationFn: mediaApi.batchRename,
     onSuccess: (data) => {
       message.success(data.message)
     },

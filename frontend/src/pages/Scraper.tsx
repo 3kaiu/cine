@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, Button, Table, Space, message, Tag, Select, Checkbox, Modal, Image, Row, Col, Typography } from 'antd'
 import { CloudDownloadOutlined, PictureOutlined } from '@ant-design/icons'
 import { mediaApi, MediaFile } from '@/api/media'
-import { useQuery, useMutation } from 'react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 
 const { Text, Paragraph } = Typography
 
@@ -15,11 +15,13 @@ export default function Scraper() {
   const [previewVisible, setPreviewVisible] = useState(false)
   const [previewMetadata, setPreviewMetadata] = useState<any>(null)
 
-  const { data: files, refetch } = useQuery('files', () =>
-    mediaApi.getFiles({ file_type: 'video', page_size: 100 })
-  )
+  const { data: files, refetch } = useQuery({
+    queryKey: ['files'],
+    queryFn: () => mediaApi.getFiles({ file_type: 'video', page_size: 100 })
+  })
 
-  const scrapeMutation = useMutation(mediaApi.scrapeMetadata, {
+  const scrapeMutation = useMutation({
+    mutationFn: mediaApi.scrapeMetadata,
     onSuccess: (data) => {
       if (data.error) {
         message.error('刮削失败: ' + data.error)
@@ -36,7 +38,8 @@ export default function Scraper() {
     },
   })
 
-  const batchScrapeMutation = useMutation(mediaApi.batchScrapeMetadata, {
+  const batchScrapeMutation = useMutation({
+    mutationFn: mediaApi.batchScrapeMetadata,
     onSuccess: (data) => {
       message.success(`批量刮削完成: 成功 ${data.success} 个, 失败 ${data.failed} 个`)
       refetch()
@@ -151,14 +154,14 @@ export default function Scraper() {
             size="small"
             icon={<CloudDownloadOutlined />}
             onClick={() => handleScrape(record.id, true)}
-            loading={scrapeMutation.isLoading && selectedFile === record.id}
+            loading={scrapeMutation.isPending && selectedFile === record.id}
           >
             自动
           </Button>
           <Button
             size="small"
             onClick={() => handleScrape(record.id, false)}
-            loading={scrapeMutation.isLoading && selectedFile === record.id}
+            loading={scrapeMutation.isPending && selectedFile === record.id}
           >
             选择
           </Button>
@@ -200,7 +203,7 @@ export default function Scraper() {
               <Button
                 type="primary"
                 onClick={handleBatchScrape}
-                loading={batchScrapeMutation.isLoading}
+                loading={batchScrapeMutation.isPending}
                 icon={<CloudDownloadOutlined />}
               >
                 批量刮削 ({selectedFiles.length})

@@ -1,8 +1,7 @@
-
 import { Card, Button, Table, Space, message, Popconfirm, Tag } from 'antd'
 import { DeleteOutlined, RestOutlined, ClearOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
-import { useQuery, useMutation } from 'react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import LoadingWrapper from '@/components/LoadingWrapper'
 import { handleError } from '@/utils/errorHandler'
 
@@ -16,10 +15,19 @@ interface TrashItem {
   file_type: string
 }
 
-export default function Trash() {
-  const { data, refetch, isLoading } = useQuery('trash', mediaApi.listTrash)
+interface TrashData {
+  items: TrashItem[]
+  total: number
+}
 
-  const restoreMutation = useMutation(mediaApi.restoreFromTrash, {
+export default function Trash() {
+  const { data, refetch, isLoading } = useQuery<TrashData>({
+    queryKey: ['trash'],
+    queryFn: mediaApi.listTrash
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: mediaApi.restoreFromTrash,
     onSuccess: () => {
       message.success('文件恢复成功')
       refetch()
@@ -29,7 +37,8 @@ export default function Trash() {
     },
   })
 
-  const deleteMutation = useMutation(mediaApi.permanentlyDelete, {
+  const deleteMutation = useMutation({
+    mutationFn: mediaApi.permanentlyDelete,
     onSuccess: () => {
       message.success('文件已永久删除')
       refetch()
@@ -39,7 +48,8 @@ export default function Trash() {
     },
   })
 
-  const cleanupMutation = useMutation(mediaApi.cleanupTrash, {
+  const cleanupMutation = useMutation({
+    mutationFn: mediaApi.cleanupTrash,
     onSuccess: (data: any) => {
       message.success(data.message || '清理完成')
       refetch()
@@ -105,7 +115,7 @@ export default function Trash() {
             size="small"
             icon={<RestOutlined />}
             onClick={() => handleRestore(record.id)}
-            loading={restoreMutation.isLoading}
+            loading={restoreMutation.isPending}
           >
             恢复
           </Button>
@@ -117,7 +127,7 @@ export default function Trash() {
               danger
               size="small"
               icon={<DeleteOutlined />}
-              loading={deleteMutation.isLoading}
+              loading={deleteMutation.isPending}
             >
               永久删除
             </Button>
@@ -138,7 +148,7 @@ export default function Trash() {
             >
               <Button
                 icon={<ClearOutlined />}
-                loading={cleanupMutation.isLoading}
+                loading={cleanupMutation.isPending}
               >
                 清理过期文件
               </Button>
@@ -175,5 +185,5 @@ function formatSize(bytes: number): string {
     unitIndex++
   }
 
-  return `${size.toFixed(2)} ${units[unitIndex]} `
+  return `${size.toFixed(2)} ${units[unitIndex]}`
 }

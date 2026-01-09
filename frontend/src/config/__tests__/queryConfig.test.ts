@@ -7,7 +7,7 @@ describe('queryConfig', () => {
       const defaultOptions = queryClient.getDefaultOptions()
       
       expect(defaultOptions.queries?.staleTime).toBe(5 * 60 * 1000) // 5分钟
-      expect(defaultOptions.queries?.cacheTime).toBe(10 * 60 * 1000) // 10分钟
+      expect(defaultOptions.queries?.gcTime).toBe(10 * 60 * 1000) // 10分钟
       expect(defaultOptions.queries?.retry).toBe(3)
       expect(defaultOptions.queries?.refetchOnWindowFocus).toBe(false)
       expect(defaultOptions.queries?.refetchOnReconnect).toBe(false)

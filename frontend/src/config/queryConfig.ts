@@ -1,4 +1,4 @@
-import { QueryClient } from 'react-query'
+import { QueryClient } from '@tanstack/react-query'
 
 /**
  * React Query 全局配置
@@ -11,13 +11,13 @@ export const queryClient = new QueryClient({
       staleTime: 5 * 60 * 1000, // 5分钟
       
       // 缓存时间10分钟
-      cacheTime: 10 * 60 * 1000, // 10分钟
+      gcTime: 10 * 60 * 1000, // 10分钟
       
       // 失败时重试3次
       retry: 3,
       
       // 重试延迟：指数退避
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+      retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000),
       
       // 窗口失去焦点时不重新获取
       refetchOnWindowFocus: false,

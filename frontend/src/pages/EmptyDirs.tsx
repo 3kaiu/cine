@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, Button, Table, Space, message, Tag, Popconfirm, Select, Input } from 'antd'
 import { DeleteOutlined, ReloadOutlined, FolderOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
-import { useQuery, useMutation } from 'react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 
 interface EmptyDirInfo {
   path: string
@@ -10,34 +10,37 @@ interface EmptyDirInfo {
   depth: number
 }
 
+interface EmptyDirsData {
+  dirs: EmptyDirInfo[]
+  total: number
+  by_category: Record<string, number>
+}
+
 export default function EmptyDirs() {
   const [directory, setDirectory] = useState('')
   const [category, setCategory] = useState<string | undefined>(undefined)
 
-  const { data, refetch, isLoading } = useQuery(
-    ['empty-dirs', directory, category],
-    () => {
+  const { data, refetch, isLoading } = useQuery<EmptyDirsData>({
+    queryKey: ['empty-dirs', directory, category],
+    queryFn: () => {
       const params: any = {}
       if (directory) params.directory = directory
       if (category) params.category = category
       return mediaApi.findEmptyDirs(params)
     },
-    {
-      enabled: false,
-    }
-  )
+    enabled: false,
+  })
 
-  const deleteMutation = useMutation(mediaApi.deleteEmptyDirs,
-    {
-      onSuccess: () => {
-        message.success('删除成功')
-        refetch()
-      },
-      onError: (error: any) => {
-        message.error('删除失败: ' + error.message)
-      },
-    }
-  )
+  const deleteMutation = useMutation({
+    mutationFn: mediaApi.deleteEmptyDirs,
+    onSuccess: () => {
+      message.success('删除成功')
+      refetch()
+    },
+    onError: (error: any) => {
+      message.error('删除失败: ' + error.message)
+    },
+  })
 
   const handleFind = () => {
     refetch()

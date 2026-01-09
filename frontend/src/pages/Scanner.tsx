@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, Button, Input, Space, message } from 'antd'
 import { FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons'
 import { mediaApi, MediaFile } from '@/api/media'
-import { useQuery, useMutation } from 'react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import ProgressMonitor from '@/components/ProgressMonitor'
 import LoadingWrapper from '@/components/LoadingWrapper'
 import VirtualizedTable from '@/components/VirtualizedTable'
@@ -13,17 +13,16 @@ export default function Scanner() {
   const [scanning, setScanning] = useState(false)
   const [taskId, setTaskId] = useState<string | undefined>(undefined)
 
-  const { data, refetch } = useQuery(
-    ['files', { page: 1, page_size: 50 }],
-    () => mediaApi.getFiles({ page: 1, page_size: 50 }),
-    {
-      enabled: false,
-      staleTime: 5 * 60 * 1000, // 5分钟
-      cacheTime: 10 * 60 * 1000, // 10分钟
-    }
-  )
+  const { data, refetch } = useQuery({
+    queryKey: ['files', { page: 1, page_size: 50 }],
+    queryFn: () => mediaApi.getFiles({ page: 1, page_size: 50 }),
+    enabled: false,
+    staleTime: 5 * 60 * 1000, // 5分钟
+    gcTime: 10 * 60 * 1000, // 10分钟 (v5: cacheTime renamed)
+  })
 
-  const scanMutation = useMutation(mediaApi.scanDirectory, {
+  const scanMutation = useMutation({
+    mutationFn: mediaApi.scanDirectory,
     onSuccess: (data) => {
       message.success('扫描任务已启动')
       setScanning(true)
@@ -81,7 +80,7 @@ export default function Scanner() {
   ]
 
   return (
-    <LoadingWrapper loading={scanMutation.isLoading}>
+    <LoadingWrapper loading={scanMutation.isPending}>
       <div>
         <Card title="文件扫描" style={{ marginBottom: 16 }}>
           <Space direction="vertical" style={{ width: '100%' }}>
@@ -96,7 +95,7 @@ export default function Scanner() {
               <Button
                 type="primary"
                 onClick={handleScan}
-                loading={scanning || scanMutation.isLoading}
+                loading={scanning || scanMutation.isPending}
                 icon={<ReloadOutlined />}
               >
                 开始扫描
@@ -117,7 +116,7 @@ export default function Scanner() {
             dataSource={data?.files || []}
             height={600}
             rowHeight={50}
-            loading={!data && scanMutation.isLoading}
+            loading={!data && scanMutation.isPending}
             pagination={{
               total: data?.total || 0,
               pageSize: data?.page_size || 50,

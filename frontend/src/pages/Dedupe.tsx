@@ -1,11 +1,25 @@
 import { Card, Button, Space, message, Popconfirm } from 'antd'
 import { DeleteOutlined, ReloadOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
-import { useQuery } from 'react-query'
+import { useQuery } from '@tanstack/react-query'
 import VirtualizedTable from '@/components/VirtualizedTable'
 
+interface DuplicateGroup {
+  hash: string
+  files: Array<{ id: string; name: string; path: string; size: number }>
+  total_size: number
+}
+
+interface DuplicateData {
+  total_duplicates: number
+  total_wasted_space: number
+  groups: DuplicateGroup[]
+}
+
 export default function Dedupe() {
-  const { data, refetch } = useQuery('duplicates', mediaApi.findDuplicates, {
+  const { data, refetch } = useQuery<DuplicateData>({
+    queryKey: ['duplicates'],
+    queryFn: mediaApi.findDuplicates,
     enabled: false,
   })
 

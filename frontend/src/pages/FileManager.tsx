@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, Button, Table, Space, message, Modal, Input } from 'antd'
 import { CopyOutlined, FolderOutlined, RestOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
-import { useQuery, useMutation } from 'react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import LoadingWrapper from '@/components/LoadingWrapper'
 import { handleError } from '@/utils/errorHandler'
 
@@ -12,11 +12,13 @@ export default function FileManager() {
   const [copyModalVisible, setCopyModalVisible] = useState(false)
   const [targetDir, setTargetDir] = useState('')
 
-  const { data: files, refetch } = useQuery('files', () =>
-    mediaApi.getFiles({ page_size: 100 })
-  )
+  const { data: files, refetch } = useQuery({
+    queryKey: ['files'],
+    queryFn: () => mediaApi.getFiles({ page_size: 100 })
+  })
 
-  const moveMutation = useMutation(mediaApi.moveFile, {
+  const moveMutation = useMutation({
+    mutationFn: mediaApi.moveFile,
     onSuccess: () => {
       message.success('文件移动成功')
       setMoveModalVisible(false)
@@ -28,7 +30,8 @@ export default function FileManager() {
     },
   })
 
-  const copyMutation = useMutation(mediaApi.copyFile, {
+  const copyMutation = useMutation({
+    mutationFn: mediaApi.copyFile,
     onSuccess: () => {
       message.success('文件复制成功')
       setCopyModalVisible(false)
@@ -40,7 +43,8 @@ export default function FileManager() {
     },
   })
 
-  const batchMoveMutation = useMutation(mediaApi.batchMoveFiles, {
+  const batchMoveMutation = useMutation({
+    mutationFn: mediaApi.batchMoveFiles,
     onSuccess: (data) => {
       message.success(`批量移动完成: 成功 ${data.success} 个, 失败 ${data.failed} 个`)
       setMoveModalVisible(false)
@@ -53,7 +57,8 @@ export default function FileManager() {
     },
   })
 
-  const batchCopyMutation = useMutation(mediaApi.batchCopyFiles, {
+  const batchCopyMutation = useMutation({
+    mutationFn: mediaApi.batchCopyFiles,
     onSuccess: (data) => {
       message.success(`批量复制完成: 成功 ${data.success} 个, 失败 ${data.failed} 个`)
       setCopyModalVisible(false)
@@ -141,7 +146,7 @@ export default function FileManager() {
   ]
 
   return (
-    <LoadingWrapper loading={moveMutation.isLoading || copyMutation.isLoading}>
+    <LoadingWrapper loading={moveMutation.isPending || copyMutation.isPending}>
       <div>
         <Card title="文件管理" style={{ marginBottom: 16 }}>
           <Space>
@@ -189,7 +194,7 @@ export default function FileManager() {
             setMoveModalVisible(false)
             setTargetDir('')
           }}
-          confirmLoading={moveMutation.isLoading || batchMoveMutation.isLoading}
+          confirmLoading={moveMutation.isPending || batchMoveMutation.isPending}
         >
           <Input
             placeholder="请输入目标目录路径"
@@ -211,7 +216,7 @@ export default function FileManager() {
             setCopyModalVisible(false)
             setTargetDir('')
           }}
-          confirmLoading={copyMutation.isLoading || batchCopyMutation.isLoading}
+          confirmLoading={copyMutation.isPending || batchCopyMutation.isPending}
         >
           <Input
             placeholder="请输入目标目录路径"
