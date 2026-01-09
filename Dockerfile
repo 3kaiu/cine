@@ -55,7 +55,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # 从构建阶段复制文件
-COPY --from=rust-builder /app/backend/target/release/media-toolbox-backend ./backend/
+COPY --from=rust-builder /app/backend/target/release/cine-backend ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # 创建数据目录
@@ -70,4 +70,4 @@ ENV RUST_LOG=media_toolbox=info,axum=info
 EXPOSE 3000
 
 # 启动命令
-CMD ["./backend/media-toolbox-backend"]
+CMD ["./backend/cine-backend"]

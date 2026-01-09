@@ -54,7 +54,7 @@ cat > config/privilege <<EOF
         "run-as": "root"
     },
     "filesystem": {
-        "read": ["/"],
+        "read": ["/", "/vol1", "/vol2", "/vol3", "/mnt"],
         "write": ["/data/cine"]
     }
 }
@@ -83,7 +83,14 @@ cat > manifest <<EOF
     "description": "Cine - 专为NAS用户打造的高性能影视文件管理工具",
     "main": "app/backend/cine-backend",
     "author": "Cine Team",
-    "license": "MIT"
+    "license": "MIT",
+    "title": "Cine 影视管理",
+    "icon": "ICON.PNG",
+    "type": "iframe",
+    "width": 1280,
+    "height": 800,
+    "min_width": 1024,
+    "min_height": 768
 }
 EOF
 

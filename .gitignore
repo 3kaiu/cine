@@ -44,3 +44,9 @@ logs/
 # Data
 data/
 hash_cache/
+
+# fnOS build artifacts
+manifest
+ICON*.PNG
+config/
+app/

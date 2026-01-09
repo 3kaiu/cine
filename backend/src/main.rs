@@ -1,6 +1,6 @@
 use axum::{
     http::Method,
-    routing::{get, post, delete},
+    routing::{delete, get, post},
     Router,
 };
 use std::sync::Arc;
@@ -9,12 +9,12 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber;
 
 mod config;
+mod error;
 mod handlers;
 mod models;
 mod services;
 mod utils;
 mod websocket;
-mod error;
 
 use config::AppConfig;
 use handlers::*;
@@ -34,9 +34,17 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::load()?;
     let config = Arc::new(config);
 
-    // 初始化数据库
-    let db = sqlx::SqlitePool::connect(&config.database_url).await?;
-    
+    // 初始化数据库连接选项
+    use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
+    use std::str::FromStr;
+
+    let options = SqliteConnectOptions::from_str(&config.database_url)?
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal);
+
+    let db = sqlx::SqlitePool::connect_with(options).await?;
+
     // 运行数据库迁移
     sqlx::migrate!()
         .run(&db)
@@ -83,10 +91,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/trash/:id/delete", delete(permanently_delete))
         .route("/api/trash/cleanup", post(cleanup_trash))
         .route("/ws", get(ws_handler))
-        .layer(
-            ServiceBuilder::new()
-                .layer(cors)
-        )
+        .layer(ServiceBuilder::new().layer(cors))
         .with_state(app_state);
 
     let addr = format!("0.0.0.0:{}", config.port);
