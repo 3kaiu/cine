@@ -1,23 +1,22 @@
 import { useState, useMemo } from 'react'
-import { Card, Button, Table, Space, message, Modal, Input, List, Typography, Badge } from 'antd'
-import { CopyOutlined, FolderOutlined, RestOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
+import { Card, CardBody, CardHeader, Button, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Divider, Pagination, ScrollShadow } from "@heroui/react";
+import { Folder, Copy, Trash2, Move, File, HardDrive, AlertTriangle } from 'react-feather'
 import { mediaApi } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import LoadingWrapper from '@/components/LoadingWrapper'
 import { handleError } from '@/utils/errorHandler'
 
-const { Text } = Typography
-const { confirm } = Modal
-
 export default function FileManager() {
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]) // IDs
   const [moveModalVisible, setMoveModalVisible] = useState(false)
   const [copyModalVisible, setCopyModalVisible] = useState(false)
+  const [trashModalVisible, setTrashModalVisible] = useState(false)
   const [targetDir, setTargetDir] = useState('')
+  const [page, setPage] = useState(1)
 
   const { data: filesData, refetch, isPending } = useQuery({
-    queryKey: ['files'],
-    queryFn: () => mediaApi.getFiles({ page_size: 100 })
+    queryKey: ['files', page],
+    queryFn: () => mediaApi.getFiles({ page_size: 100, page: page }) // Ensure API supports page
   })
 
   const selectedFiles = useMemo(() => {
@@ -32,55 +31,47 @@ export default function FileManager() {
   const moveMutation = useMutation({
     mutationFn: mediaApi.moveFile,
     onSuccess: () => {
-      message.success('文件移动成功')
       setMoveModalVisible(false)
       setTargetDir('')
       refetch()
     },
-    onError: (error: any) => handleError(error, '文件移动失败'),
+    onError: (error: any) => handleError(error, 'Move failed'),
   })
 
   const copyMutation = useMutation({
     mutationFn: mediaApi.copyFile,
     onSuccess: () => {
-      message.success('文件复制成功')
       setCopyModalVisible(false)
       setTargetDir('')
       refetch()
     },
-    onError: (error: any) => handleError(error, '文件复制失败'),
+    onError: (error: any) => handleError(error, 'Copy failed'),
   })
 
   const batchMoveMutation = useMutation({
     mutationFn: mediaApi.batchMoveFiles,
-    onSuccess: (data) => {
-      message.success(`批量移动完成: 成功 ${data.success} 个, 失败 ${data.failed} 个`)
+    onSuccess: () => {
       setMoveModalVisible(false)
       setTargetDir('')
       setSelectedRowKeys([])
       refetch()
     },
-    onError: (error: any) => handleError(error, '批量移动失败'),
+    onError: (error: any) => handleError(error, 'Batch move failed'),
   })
 
   const batchCopyMutation = useMutation({
     mutationFn: mediaApi.batchCopyFiles,
-    onSuccess: (data) => {
-      message.success(`批量复制完成: 成功 ${data.success} 个, 失败 ${data.failed} 个`)
+    onSuccess: () => {
       setCopyModalVisible(false)
       setTargetDir('')
       setSelectedRowKeys([])
       refetch()
     },
-    onError: (error: any) => handleError(error, '批量复制失败'),
+    onError: (error: any) => handleError(error, 'Batch copy failed'),
   })
 
-  // Handlers
   const handleMove = () => {
-    if (!targetDir.trim()) {
-      message.warning('请输入目标目录')
-      return
-    }
+    if (!targetDir.trim()) return
     if (selectedRowKeys.length === 1) {
       moveMutation.mutate({ file_id: selectedRowKeys[0], target_dir: targetDir.trim() })
     } else {
@@ -89,10 +80,7 @@ export default function FileManager() {
   }
 
   const handleCopy = () => {
-    if (!targetDir.trim()) {
-      message.warning('请输入目标目录')
-      return
-    }
+    if (!targetDir.trim()) return
     if (selectedRowKeys.length === 1) {
       copyMutation.mutate({ file_id: selectedRowKeys[0], target_dir: targetDir.trim() })
     } else {
@@ -100,190 +88,190 @@ export default function FileManager() {
     }
   }
 
-  const handleBatchTrash = () => {
-    confirm({
-      title: `确定要将这 ${selectedFiles.length} 个文件移至回收站吗？`,
-      icon: <ExclamationCircleOutlined />,
-      content: (
-        <div>
-          <Text type="secondary">总大小: {formatSize(totalSelectedSize)}</Text>
-          <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8 }}>
-            <List
-              size="small"
-              dataSource={selectedFiles}
-              renderItem={item => <List.Item>{item.name}</List.Item>}
-            />
-          </div>
-        </div>
-      ),
-      onOk: async () => {
-        // 后端目前没有批量移至回收站接口，轮询执行
-        // TODO: 后端增加批量接口
-        let success = 0
-        let failed = 0
-        for (const id of selectedRowKeys) {
-          try {
-            await mediaApi.moveToTrash(id)
-            success++
-          } catch (e) {
-            failed++
-          }
-        }
-        message.info(`处理完成: 成功 ${success} 个, 失败 ${failed} 个`)
-        setSelectedRowKeys([])
-        refetch()
-      },
-    })
+  const handleBatchTrash = async () => {
+    // Batch trash isn't supported by backend as a single atomic op in the original code, but we can loop or use a batch endpoint if it exists. 
+    // Original code looped. We'll loop here too inside the confirm handler.
+    // But wait, the original code had a confirm dialog. We'll do that here too.
+
+    let success = 0
+    let failed = 0
+    for (const id of selectedRowKeys) {
+      try {
+        await mediaApi.moveToTrash(id)
+        success++
+      } catch (e) {
+        failed++
+      }
+    }
+    setSelectedRowKeys([])
+    refetch()
+    setTrashModalVisible(false)
   }
 
-  const columns = [
-    {
-      title: '文件名',
-      dataIndex: 'name',
-      key: 'name',
-      ellipsis: true,
-    },
-    {
-      title: '大小',
-      dataIndex: 'size',
-      key: 'size',
-      width: 120,
-      render: (size: number) => formatSize(size),
-    },
-    {
-      title: '类型',
-      dataIndex: 'file_type',
-      key: 'file_type',
-      width: 100,
-    },
-    {
-      title: '路径',
-      dataIndex: 'path',
-      key: 'path',
-      ellipsis: true,
-    },
-  ]
-
-  const SelectedFileList = () => (
-    <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid #f0f0f0', padding: 8, borderRadius: 4 }}>
-      <List
-        size="small"
-        dataSource={selectedFiles}
-        renderItem={item => (
-          <List.Item style={{ padding: '4px 0' }}>
-            <Text ellipsis style={{ width: '100%' }}>{item.name}</Text>
-          </List.Item>
-        )}
-      />
-    </div>
-  )
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card title="文件库管理">
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Space size="middle">
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader className="flex gap-3">
+          <div className="p-2 bg-secondary/10 rounded-lg text-secondary">
+            <HardDrive size={24} />
+          </div>
+          <div className="flex flex-col">
+            <p className="text-md font-bold">File Manager</p>
+            <p className="text-small text-default-500">Browse and manage your media library files.</p>
+          </div>
+        </CardHeader>
+        <Divider />
+        <CardBody className="gap-4">
+          <div className="flex gap-4">
             <Button
-              icon={<RestOutlined />}
-              onClick={() => setMoveModalVisible(true)}
-              disabled={selectedRowKeys.length === 0}
+              onPress={() => setMoveModalVisible(true)}
+              isDisabled={selectedRowKeys.length === 0}
+              color="primary"
+              startContent={<Move size={18} />}
             >
-              移动 {selectedRowKeys.length > 0 && <Badge count={selectedRowKeys.length} offset={[10, -10]} />}
+              Move Selected
             </Button>
             <Button
-              icon={<CopyOutlined />}
-              onClick={() => setCopyModalVisible(true)}
-              disabled={selectedRowKeys.length === 0}
+              onPress={() => setCopyModalVisible(true)}
+              isDisabled={selectedRowKeys.length === 0}
+              variant="flat"
+              startContent={<Copy size={18} />}
             >
-              复制 {selectedRowKeys.length > 0 && <Badge count={selectedRowKeys.length} offset={[10, -10]} />}
+              Copy Selected
             </Button>
             <Button
-              danger
-              icon={<DeleteOutlined />}
-              onClick={handleBatchTrash}
-              disabled={selectedRowKeys.length === 0}
+              onPress={() => setTrashModalVisible(true)}
+              isDisabled={selectedRowKeys.length === 0}
+              color="danger"
+              variant="flat"
+              startContent={<Trash2 size={18} />}
             >
-              移至回收站
+              Move to Trash
             </Button>
-            {selectedRowKeys.length > 0 && (
-              <Button type="link" onClick={() => setSelectedRowKeys([])}>清空选择</Button>
-            )}
-          </Space>
-        </Space>
+          </div>
+        </CardBody>
       </Card>
 
-      <Card title="所有文件">
+      <Card className="flex-1">
         <LoadingWrapper loading={isPending}>
           <Table
-            columns={columns}
-            dataSource={filesData?.files || []}
-            rowKey="id"
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys(keys as string[]),
-            }}
-            pagination={{
-              total: filesData?.total || 0,
-              pageSize: filesData?.page_size || 50,
-            }}
-          />
+            aria-label="File List"
+            selectionMode="multiple"
+            selectedKeys={new Set(selectedRowKeys)}
+            onSelectionChange={(keys) => setSelectedRowKeys(Array.from(keys) as string[])}
+            bottomContent={
+              filesData?.total ? (
+                <div className="flex w-full justify-center">
+                  <Pagination
+                    isCompact
+                    showControls
+                    showShadow
+                    color="primary"
+                    page={page}
+                    total={Math.ceil((filesData.total || 0) / (filesData.page_size || 100))}
+                    onChange={(page) => setPage(page)}
+                  />
+                </div>
+              ) : null
+            }
+          >
+            <TableHeader>
+              <TableColumn>NAME</TableColumn>
+              <TableColumn>SIZE</TableColumn>
+              <TableColumn>TYPE</TableColumn>
+              <TableColumn>PATH</TableColumn>
+            </TableHeader>
+            <TableBody emptyContent="No files found.">
+              {(filesData?.files || []).map((file) => (
+                <TableRow key={file.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <File size={16} className="text-default-400" />
+                      <span className="font-medium text-sm">{file.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-xs text-default-500">{formatSize(file.size)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="sm" variant="flat">{file.file_type}</Chip>
+                  </TableCell>
+                  <TableCell>
+                    <div className="truncate max-w-xs text-xs text-default-500" title={file.path}>
+                      {file.path}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </LoadingWrapper>
       </Card>
 
-      {/* 移动模态框 */}
-      <Modal
-        title="移动文件"
-        open={moveModalVisible}
-        onOk={handleMove}
-        onCancel={() => {
-          setMoveModalVisible(false)
-          setTargetDir('')
-        }}
-        confirmLoading={moveMutation.isPending || batchMoveMutation.isPending}
-        width={600}
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <div>
-            <Text strong>已选中 {selectedFiles.length} 个文件</Text>
-            <Text type="secondary" style={{ marginLeft: 16 }}>总大小: {formatSize(totalSelectedSize)}</Text>
-          </div>
-          <SelectedFileList />
-          <Input
-            placeholder="请输入目标目录绝对路径"
-            value={targetDir}
-            onChange={(e) => setTargetDir(e.target.value)}
-            prefix={<FolderOutlined />}
-            size="large"
-          />
-        </Space>
+      {/* Move/Copy Modal */}
+      <Modal isOpen={moveModalVisible || copyModalVisible} onClose={() => { setMoveModalVisible(false); setCopyModalVisible(false) }}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex gap-2 items-center">
+                {moveModalVisible ? <Move /> : <Copy />}
+                {moveModalVisible ? 'Move Files' : 'Copy Files'}
+              </ModalHeader>
+              <ModalBody>
+                <p className="text-sm text-default-500">Selected {selectedFiles.length} files ({formatSize(totalSelectedSize)})</p>
+                <ScrollShadow className="max-h-32 border border-default-200 rounded-lg p-2">
+                  {selectedFiles.map(f => (
+                    <div key={f.id} className="text-xs py-1 line-clamp-1">{f.name}</div>
+                  ))}
+                </ScrollShadow>
+                <Input
+                  label="Target Directory"
+                  placeholder="/absolute/path/to/target"
+                  value={targetDir}
+                  onValueChange={setTargetDir}
+                  startContent={<Folder size={16} className="text-default-400" />}
+                />
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>Cancel</Button>
+                <Button
+                  color="primary"
+                  onPress={moveModalVisible ? handleMove : handleCopy}
+                  isLoading={moveMutation.isPending || batchMoveMutation.isPending || copyMutation.isPending || batchCopyMutation.isPending}
+                >
+                  {moveModalVisible ? 'Move' : 'Copy'}
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
       </Modal>
 
-      {/* 复制模态框 */}
-      <Modal
-        title="复制文件"
-        open={copyModalVisible}
-        onOk={handleCopy}
-        onCancel={() => {
-          setCopyModalVisible(false)
-          setTargetDir('')
-        }}
-        confirmLoading={copyMutation.isPending || batchCopyMutation.isPending}
-        width={600}
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <div>
-            <Text strong>已选中 {selectedFiles.length} 个文件</Text>
-            <Text type="secondary" style={{ marginLeft: 16 }}>总大小: {formatSize(totalSelectedSize)}</Text>
-          </div>
-          <SelectedFileList />
-          <Input
-            placeholder="请输入目标目录绝对路径"
-            value={targetDir}
-            onChange={(e) => setTargetDir(e.target.value)}
-            prefix={<FolderOutlined />}
-            size="large"
-          />
-        </Space>
+      {/* Trash Modal */}
+      <Modal isOpen={trashModalVisible} onClose={() => setTrashModalVisible(false)}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex gap-2 items-center">
+                <AlertTriangle className="text-warning" />
+                Confirm Move to Trash
+              </ModalHeader>
+              <ModalBody>
+                <p>Are you sure you want to move {selectedFiles.length} files to the trash?</p>
+                <p className="text-xs text-default-500">Total size: {formatSize(totalSelectedSize)}</p>
+                <ScrollShadow className="max-h-32 border border-default-200 rounded-lg p-2">
+                  {selectedFiles.map(f => (
+                    <div key={f.id} className="text-xs py-1 line-clamp-1">{f.name}</div>
+                  ))}
+                </ScrollShadow>
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>Cancel</Button>
+                <Button color="danger" onPress={handleBatchTrash}>Move to Trash</Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
       </Modal>
     </div>
   )

@@ -1,4 +1,4 @@
-import { message } from 'antd'
+import { toast } from 'sonner'
 
 /**
  * 错误消息映射表 - 将技术错误转换为用户友好的提示
@@ -9,26 +9,26 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   'Failed to fetch': '无法连接到服务器，请检查网络或代理设置',
   'Network request failed': '网络异常，请确认服务器可连接',
   'timeout': '请求超时，请重试',
-  
+
   // 业务状态错误
   'Unauthorized': '登录已失效，请重新登录',
   'Forbidden': '当前无权访问，请联系管理员',
   'Not Found': '请求的资源不存在',
   'File not found': '文件未找到',
   'Directory not found': '目录未找到',
-  
+
   // 文件操作错误
   'File I/O error': '文件操作失败，请检查文件权限',
   'Permission denied': '权限不足，请检查文件权限',
   'No space left': '磁盘空间不足',
-  
+
   // 数据库错误
   'Database error': '数据库操作失败，请稍后重试',
-  
+
   // 配置错误
   'TMDB API key not configured': 'TMDB API Key 未配置，请在设置中配置',
   'Configuration error': '配置错误，请检查配置',
-  
+
   // 通用错误
   'Internal server error': '服务器内部错误，请稍后重试',
   'Unknown error': '发生未知错误，请查看日志',
@@ -94,7 +94,7 @@ export function handleError(
   }
 
   if (showToast) {
-    message.error(errorMessage)
+    toast.error(errorMessage)
   }
 
   // 记录错误日志

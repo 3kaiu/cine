@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react'
-import { Card, Button, Input, Space, message, Divider, Tag, Typography } from 'antd'
-const { Text } = Typography
-import { FolderOpenOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { Card, CardBody, CardHeader, Button, Input, Divider, Chip } from "@heroui/react";
+import { Folder, Search, RefreshCw, Activity, Type } from 'react-feather'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import ProgressMonitor from '@/components/ProgressMonitor'
@@ -9,14 +8,15 @@ import VirtualizedTable from '@/components/VirtualizedTable'
 import { handleError } from '@/utils/errorHandler'
 import { debounce } from 'lodash'
 import SubtitleHub from '@/components/SubtitleHub'
+import clsx from 'clsx'
 
 export default function Scanner() {
   const [directory, setDirectory] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [scanning, setScanning] = useState(false)
   const [taskId, setTaskId] = useState<string | undefined>(undefined)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const [currentPage] = useState(1)
+  const [pageSize] = useState(50)
   const [subtitleFileId, setSubtitleFileId] = useState<string | null>(null)
 
   const { data: history, refetch: refetchHistory } = useQuery({
@@ -45,21 +45,20 @@ export default function Scanner() {
   const scanMutation = useMutation({
     mutationFn: mediaApi.scanDirectory,
     onSuccess: (data) => {
-      message.success('扫描任务已启动')
+      // message.success('扫描任务已启动') 
+      // Replace with toast later
       setScanning(true)
       setTaskId(data.task_id)
       refetchHistory()
-      // 扫描任务由 WebSocket 实时跟踪，这里无需 setTimeout 轮询
     },
     onError: (error: any) => {
-      handleError(error, '扫描失败')
+      handleError(error, 'Scan failed')
       setScanning(false)
     },
   })
 
   const handleScan = () => {
     if (!directory.trim()) {
-      message.warning('请输入目录路径')
       return
     }
     scanMutation.mutate({
@@ -71,160 +70,173 @@ export default function Scanner() {
 
   const columns = [
     {
-      title: '文件名',
+      title: 'Filename',
       dataIndex: 'name',
       key: 'name',
-      ellipsis: true,
       width: 300,
+      render: (text: string) => <span className="font-medium text-foreground">{text}</span>
     },
     {
-      title: '类型',
+      title: 'Type',
       dataIndex: 'file_type',
       key: 'file_type',
       width: 100,
-    },
-    {
-      title: '大小',
-      dataIndex: 'size',
-      key: 'size',
-      width: 120,
-      render: (size: number) => formatSize(size),
-    },
-    {
-      title: '路径',
-      dataIndex: 'path',
-      key: 'path',
-      ellipsis: true,
-    },
-    {
-      title: '质量',
-      key: 'quality',
-      width: 150,
-      render: (_: any, record: MediaFile) => (
-        <Space>
-          {record.quality_score !== undefined && (
-            <Tag color={record.quality_score > 70 ? 'success' : 'warning'}>
-              {record.quality_score}分
-            </Tag>
-          )}
-          {record.video_info?.is_dolby_vision && <Tag color="purple">DV</Tag>}
-          {record.video_info?.is_hdr10_plus && <Tag color="orange">HDR10+</Tag>}
-          {record.video_info?.is_hdr && !record.video_info?.is_dolby_vision && <Tag color="gold">HDR</Tag>}
-          {record.video_info?.source && <Tag color="blue">{record.video_info.source}</Tag>}
-          {record.video_info?.has_chinese_subtitle && <Tag color="cyan">中字</Tag>}
-        </Space>
+      render: (type: string) => (
+        <Chip size="sm" variant="flat" color={type === 'video' ? 'primary' : type === 'audio' ? 'secondary' : 'default'}>
+          {type.toUpperCase()}
+        </Chip>
       )
     },
     {
-      title: '操作',
+      title: 'Size',
+      dataIndex: 'size',
+      key: 'size',
+      width: 120,
+      render: (size: number) => <span className="text-foreground/60 font-mono text-xs">{formatSize(size)}</span>,
+    },
+    {
+      title: 'Path',
+      dataIndex: 'path',
+      key: 'path',
+    },
+    {
+      title: 'Quality',
+      key: 'quality',
+      width: 200,
+      render: (_: any, record: MediaFile) => (
+        <div className="flex gap-1 flex-wrap">
+          {record.quality_score !== undefined && (
+            <Chip size="sm" color={record.quality_score > 70 ? 'success' : 'warning'} variant="dot">
+              {record.quality_score}
+            </Chip>
+          )}
+          {record.video_info?.is_dolby_vision && <Chip size="sm" color="secondary" variant="flat">DV</Chip>}
+          {record.video_info?.is_hdr10_plus && <Chip size="sm" color="warning" variant="flat">HDR10+</Chip>}
+          {record.video_info?.is_hdr && !record.video_info?.is_dolby_vision && <Chip size="sm" color="warning" variant="flat">HDR</Chip>}
+          {record.video_info?.source && <Chip size="sm" variant="bordered">{record.video_info.source}</Chip>}
+          {record.video_info?.has_chinese_subtitle && <Chip size="sm" color="primary" variant="flat">CN</Chip>}
+        </div>
+      )
+    },
+    {
+      title: 'Actions',
       key: 'action',
       width: 100,
       render: (_: any, record: MediaFile) => (
         <Button
-          type="link"
-          size="small"
-          onClick={() => setSubtitleFileId(record.id)}
+          size="sm"
+          variant="light"
+          onPress={() => setSubtitleFileId(record.id)}
+          startContent={<Type size={14} />}
         >
-          字幕
+          Subs
         </Button>
       )
     },
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card title="文件扫描与搜索">
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Input
-            placeholder="请输入要扫描的目录路径"
-            value={directory}
-            onChange={(e) => setDirectory(e.target.value)}
-            prefix={<FolderOpenOutlined />}
-            size="large"
-          />
-          <Space split={<Divider type="vertical" />}>
-            <Button
-              type="primary"
-              onClick={handleScan}
-              loading={scanning || scanMutation.isPending}
-              icon={<ReloadOutlined />}
-            >
-              开始扫描
-            </Button>
-            <Input
-              placeholder="搜索文件名..."
-              onChange={(e) => debouncedSearch(e.target.value)}
-              prefix={<SearchOutlined />}
-              style={{ width: 300 }}
-              allowClear
-            />
-            <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
-              刷新列表
-            </Button>
-          </Space>
+    <div className="flex flex-col gap-6">
 
-          {(scanning || taskId) && (
-            <div style={{ marginTop: 16 }}>
-              <ProgressMonitor
-                taskId={taskId}
-              />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="col-span-2">
+          <CardHeader className="flex gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg text-primary">
+              <Folder size={24} />
             </div>
-          )}
-        </Space>
-      </Card>
+            <div className="flex flex-col">
+              <p className="text-md font-bold">Scanner</p>
+              <p className="text-small text-default-500">Scan directories for new media</p>
+            </div>
+          </CardHeader>
+          <Divider />
+          <CardBody className="gap-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="/data/media/movies" // Enhanced placeholder
+                value={directory}
+                onValueChange={setDirectory}
+                startContent={<Folder className="text-default-400" size={18} />}
+              />
+              <Button
+                color="primary"
+                onPress={handleScan}
+                isLoading={scanning || scanMutation.isPending}
+                startContent={!scanning && <Activity size={18} />}
+              >
+                Scan
+              </Button>
+            </div>
 
-      {history && history.length > 0 && (
-        <Card title="扫描记录 (快照)" size="small">
-          <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '8px' }}>
-            {history.map((item: any) => {
-              const types = JSON.parse(item.file_types_json || '{}');
-              return (
-                <Card
-                  key={item.directory}
-                  hoverable
-                  style={{ width: 300, flexShrink: 0 }}
-                  bodyStyle={{ padding: '12px' }}
-                  onClick={() => setDirectory(item.directory)}
-                >
-                  <Text strong ellipsis title={item.directory} style={{ display: 'block', marginBottom: '8px' }}>
-                    {item.directory}
-                  </Text>
-                  <Space direction="vertical" size={0} style={{ width: '100%' }}>
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                      文件数: {item.total_files} | 体积: {formatSize(item.total_size)}
-                    </Text>
-                    <div style={{ marginTop: '4px' }}>
-                      {Object.entries(types).map(([type, count]) => (
-                        <Tag key={type} style={{ fontSize: '10px' }}>
-                          {type}: {count as number}
-                        </Tag>
-                      ))}
-                    </div>
-                  </Space>
-                </Card>
-              );
-            })}
-          </div>
+            {(scanning || taskId) && (
+              <ProgressMonitor taskId={taskId} />
+            )}
+          </CardBody>
         </Card>
-      )}
 
-      <Card title="文件库">
-        <VirtualizedTable<MediaFile>
-          columns={columns}
-          dataSource={data?.files || []}
-          height={600}
-          rowHeight={50}
-          loading={isPending}
-          pagination={{
-            total: data?.total || 0,
-            pageSize,
-            current: currentPage,
-            onChange: (page, size) => {
-              setCurrentPage(page);
-              setPageSize(size);
-            }
-          }}
-        />
+        {history && history.length > 0 && (
+          <Card>
+            <CardHeader className="flex justify-between items-center">
+              <span className="font-semibold text-sm">Recent Scans</span>
+              <Chip size="sm" variant="flat">{history.length}</Chip>
+            </CardHeader>
+            <Divider />
+            <CardBody className="p-0">
+              <div className="flex flex-col overflow-y-auto max-h-[160px]">
+                {history.map((item: any, idx: number) => {
+                  const isLast = idx === history.length - 1;
+                  return (
+                    <div
+                      key={item.directory}
+                      onClick={() => setDirectory(item.directory)}
+                      className={clsx(
+                        "px-4 py-3 hover:bg-default-100 cursor-pointer transition-colors",
+                        !isLast && "border-b border-divider"
+                      )}
+                    >
+                      <p className="text-xs font-medium truncate" title={item.directory}>{item.directory}</p>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-[10px] text-default-400">{item.total_files} files</span>
+                        <span className="text-[10px] text-default-400 font-mono">{formatSize(item.total_size)}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardBody>
+          </Card>
+        )}
+      </div>
+
+      <Card className="flex-1">
+        <CardHeader className="flex justify-between items-center px-6 py-4">
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold">Media Library</span>
+            <span className="text-sm text-default-400 font-mono">({data?.total || 0})</span>
+          </div>
+          <div className="flex gap-2 w-full max-w-sm">
+            <Input
+              placeholder="Search files..."
+              size="sm"
+              startContent={<Search size={14} className="text-default-400" />}
+              onValueChange={debouncedSearch}
+            />
+            <Button isIconOnly size="sm" variant="ghost" onPress={() => refetch()}>
+              <RefreshCw size={14} />
+            </Button>
+          </div>
+        </CardHeader>
+        <Divider />
+        <CardBody className="p-0">
+          <VirtualizedTable<MediaFile>
+            columns={columns}
+            dataSource={data?.files || []}
+            height={600}
+            rowHeight={56}
+            loading={isPending}
+            threshold={50}
+          />
+        </CardBody>
       </Card>
 
       <SubtitleHub

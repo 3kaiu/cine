@@ -1,82 +1,101 @@
-import { Layout, Menu } from 'antd'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import {
-  ScanOutlined,
-  CloudDownloadOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  FolderOutlined,
-  FolderOpenOutlined,
-  RestOutlined,
-  SettingOutlined,
-  HistoryOutlined,
-} from '@ant-design/icons'
+  Activity,
+  Cloud,
+  Trash2,
+  Edit,
+  Folder,
+  Framer,
+  Settings,
 
-const { Sider } = Layout
+  List,
+  Crosshair
+} from 'react-feather'
+import clsx from 'clsx'
 
 const menuItems = [
   {
-    key: '/',
-    icon: <ScanOutlined />,
-    label: '文件扫描',
+    path: '/',
+    icon: Crosshair,
+    label: 'Media Scanner',
   },
   {
-    key: '/scraper',
-    icon: <CloudDownloadOutlined />,
-    label: '元数据刮削',
+    path: '/scraper',
+    icon: Cloud,
+    label: 'Metadata Processing',
   },
   {
-    key: '/dedupe',
-    icon: <DeleteOutlined />,
-    label: '文件去重',
+    path: '/dedupe',
+    icon: Activity,
+    label: 'Deduplication',
   },
   {
-    key: '/renamer',
-    icon: <EditOutlined />,
-    label: '批量重命名',
+    path: '/renamer',
+    icon: Edit,
+    label: 'Batch Renamer',
   },
   {
-    key: '/empty-dirs',
-    icon: <FolderOutlined />,
-    label: '空文件夹清理',
+    path: '/empty-dirs',
+    icon: Folder,
+    label: 'Empty Cleaner',
   },
   {
-    key: '/file-manager',
-    icon: <FolderOpenOutlined />,
-    label: '文件管理',
+    path: '/file-manager',
+    icon: Framer,
+    label: 'Filesystem',
   },
   {
-    key: '/trash',
-    icon: <RestOutlined />,
-    label: '回收站',
+    path: '/trash',
+    icon: Trash2,
+    label: 'Recycle Bin',
   },
   {
-    key: '/logs',
-    icon: <HistoryOutlined />,
-    label: '操作日志',
+    path: '/logs',
+    icon: List,
+    label: 'System Logs',
   },
   {
-    key: '/settings',
-    icon: <SettingOutlined />,
-    label: '设置',
+    path: '/settings',
+    icon: Settings,
+    label: 'Preferences',
   },
 ]
 
 export default function Sidebar() {
-  const navigate = useNavigate()
-  const location = useLocation()
-
   return (
-    <Sider width={200} style={{ background: '#fff' }} data-testid="sidebar">
-      <div style={{ padding: '16px', fontSize: '18px', fontWeight: 'bold' }}>
-        Media Toolbox
+    <div className="w-64 h-full flex flex-col border-r border-divider bg-background/50 backdrop-blur-md">
+      <div className="h-16 flex items-center px-6">
+        <div className="flex items-center gap-2 font-bold text-xl tracking-tight">
+          <span className="text-primary">Cine</span>
+          <span className="opacity-50 font-normal">Manager</span>
+        </div>
       </div>
-      <Menu
-        mode="inline"
-        selectedKeys={[location.pathname]}
-        items={menuItems}
-        onClick={({ key }) => navigate(key)}
-      />
-    </Sider>
+
+      <nav className="flex-1 px-4 py-4 space-y-1">
+        {menuItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              clsx(
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-foreground/70 hover:bg-default-100 hover:text-foreground"
+              )
+            }
+          >
+            <item.icon size={18} />
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="p-4 border-t border-divider">
+        <div className="text-xs text-foreground/40 px-2">
+          v1.3.1-beta
+        </div>
+      </div>
+    </div>
   )
 }

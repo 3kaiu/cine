@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Modal, Form, Input, InputNumber, message, Spin, Skeleton } from 'antd'
+import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input, Textarea, Skeleton } from "@heroui/react";
 import { mediaApi, MovieNfo } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 
@@ -10,71 +10,130 @@ interface NfoEditorProps {
 }
 
 export default function NfoEditor({ fileId, visible, onClose }: NfoEditorProps) {
-  const [form] = Form.useForm()
+  const [formData, setFormData] = useState<Partial<MovieNfo>>({})
 
   const { data: nfo, isLoading, isError } = useQuery({
     queryKey: ['nfo', fileId],
     queryFn: async () => {
       const res = await mediaApi.getNfo(fileId)
-      return res.data
+      return res
     },
     enabled: visible && !!fileId
   })
 
   useEffect(() => {
     if (nfo) {
-      form.setFieldsValue(nfo)
+      setFormData(nfo)
     }
-  }, [nfo, form])
+  }, [nfo])
 
   const mutation = useMutation({
     mutationFn: (values: MovieNfo) => mediaApi.updateNfo(fileId, values),
     onSuccess: () => {
-      message.success('元数据已更新到 NFO')
       onClose()
     }
   })
 
+  const handleSave = () => {
+    if (formData.title) {
+      mutation.mutate(formData as MovieNfo)
+    }
+  }
+
+  const handleChange = (key: keyof MovieNfo, value: any) => {
+    setFormData(prev => ({ ...prev, [key]: value }))
+  }
+
   return (
     <Modal
-      title="编辑 NFO 元数据"
-      open={visible}
-      onCancel={onClose}
-      onOk={() => form.submit()}
-      confirmLoading={mutation.isPending}
-      width={600}
-      destroyOnClose
+      isOpen={visible}
+      onClose={onClose}
+      size="2xl"
+      backdrop="blur"
     >
-      {isLoading ? (
-        <Skeleton active />
-      ) : isError ? (
-        <div style={{ padding: '20px', textAlign: 'center', color: '#ff4d4f' }}>
-          未找到 NFO 文件，请先执行“刮削”生成。
-        </div>
-      ) : (
-        <Form form={form} layout="vertical" onFinish={(v) => mutation.mutate(v)}>
-          <Form.Item label="影片标题" name="title" rules={[{ required: true }]}>
-            <Input placeholder="例如：铁血战士：杀戮之地" />
-          </Form.Item>
-          <Form.Item label="原始标题" name="originaltitle">
-            <Input placeholder="例如：Predator: Badlands" />
-          </Form.Item>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <Form.Item label="年份" name="year">
-              <InputNumber style={{ width: '100%' }} placeholder="2025" />
-            </Form.Item>
-            <Form.Item label="评分" name="rating">
-              <InputNumber step={0.1} min={0} max={10} style={{ width: '100%' }} placeholder="8.5" />
-            </Form.Item>
-          </div>
-          <Form.Item label="剧情简介" name="plot">
-            <Input.TextArea rows={4} placeholder="输入影片详细剧情..." />
-          </Form.Item>
-          <Form.Item label="TMDB ID" name="tmdbid">
-            <Input placeholder="例如：12345" />
-          </Form.Item>
-        </Form>
-      )}
+      <ModalContent>
+        {(onClose) => (
+          <>
+            <ModalHeader>Edit NFO Metadata</ModalHeader>
+            <ModalBody>
+              {isLoading ? (
+                <div className="flex flex-col gap-4">
+                  <Skeleton className="rounded-lg h-12 w-full" />
+                  <Skeleton className="rounded-lg h-12 w-full" />
+                  <div className="flex gap-4">
+                    <Skeleton className="rounded-lg h-12 w-1/2" />
+                    <Skeleton className="rounded-lg h-12 w-1/2" />
+                  </div>
+                </div>
+              ) : isError ? (
+                <div className="p-8 text-center text-danger bg-danger/10 rounded-lg">
+                  NFO file not found. Please scrape the file first.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <Input
+                    label="Title"
+                    placeholder="Enter movie title"
+                    value={formData.title || ''}
+                    onValueChange={(v) => handleChange('title', v)}
+                    isRequired
+                    isInvalid={!formData.title && mutation.isPending} // Simple validation visual
+                  />
+                  <Input
+                    label="Original Title"
+                    placeholder="Original title"
+                    value={formData.originaltitle || ''}
+                    onValueChange={(v) => handleChange('originaltitle', v)}
+                  />
+                  <div className="flex gap-4">
+                    <Input
+                      label="Year"
+                      placeholder="2025"
+                      value={formData.year?.toString() || ''}
+                      onValueChange={(v) => handleChange('year', v)}
+                      type="number"
+                    />
+                    <Input
+                      label="Rating"
+                      placeholder="8.5"
+                      value={formData.rating?.toString() || ''}
+                      onValueChange={(v) => handleChange('rating', v)}
+                      type="number"
+                      step="0.1"
+                    />
+                  </div>
+                  <Textarea
+                    label="Plot"
+                    placeholder="Movie summary..."
+                    value={formData.plot || ''}
+                    onValueChange={(v) => handleChange('plot', v)}
+                    minRows={4}
+                  />
+                  <Input
+                    label="TMDB ID"
+                    placeholder="123456"
+                    value={formData.tmdbid?.toString() || ''}
+                    onValueChange={(v) => handleChange('tmdbid', v)}
+                  />
+                </div>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button color="danger" variant="light" onPress={onClose}>
+                Cancel
+              </Button>
+              <Button
+                color="primary"
+                onPress={handleSave}
+                isLoading={mutation.isPending}
+                isDisabled={isError || isLoading}
+              >
+                Save Metadata
+              </Button>
+            </ModalFooter>
+          </>
+        )}
+      </ModalContent>
     </Modal>
   )
 }

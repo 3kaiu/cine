@@ -23,14 +23,14 @@ describe('useTheme', () => {
 
   it('应该初始化主题', () => {
     const { result } = renderHook(() => useTheme())
-    
+
     expect(result.current.isDark).toBe(false)
-    expect(result.current.algorithm).toBeDefined()
+
   })
 
   it('应该切换主题', () => {
     const { result } = renderHook(() => useTheme())
-    
+
     act(() => {
       result.current.toggleTheme()
     })
@@ -40,15 +40,15 @@ describe('useTheme', () => {
 
   it('应该从 localStorage 恢复主题', () => {
     localStorage.setItem('theme', 'dark')
-    
+
     const { result } = renderHook(() => useTheme())
-    
+
     expect(result.current.isDark).toBe(true)
   })
 
   it('应该保存主题到 localStorage', () => {
     const { result } = renderHook(() => useTheme())
-    
+
     act(() => {
       result.current.toggleTheme()
     })

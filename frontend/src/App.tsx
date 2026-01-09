@@ -1,13 +1,12 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { Layout, ConfigProvider } from 'antd'
 import { lazy, Suspense } from 'react'
 import Sidebar from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import ThemeToggle from './components/ThemeToggle'
 import LoadingWrapper from './components/LoadingWrapper'
-import { useTheme } from './hooks/useTheme'
+import { Toaster } from 'sonner'
 
-// 代码分割：懒加载页面组件
+// Lazy load page components
 const Scanner = lazy(() => import('./pages/Scanner'))
 const Scraper = lazy(() => import('./pages/Scraper'))
 const Dedupe = lazy(() => import('./pages/Dedupe'))
@@ -18,34 +17,20 @@ const Trash = lazy(() => import('./pages/Trash'))
 const OperationLogs = lazy(() => import('./pages/OperationLogs'))
 const Settings = lazy(() => import('./pages/Settings'))
 
-const { Content, Header } = Layout
-
 function App() {
-  const { algorithm } = useTheme()
-
   return (
     <ErrorBoundary>
-      <ConfigProvider
-        theme={{
-          algorithm,
-        }}
-      >
-        <BrowserRouter>
-          <Layout style={{ minHeight: '100vh' }}>
-            <Sidebar />
-            <Layout>
-              <Header
-                style={{
-                  background: 'var(--ant-color-bg-container)',
-                  padding: '0 24px',
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  alignItems: 'center',
-                }}
-              >
-                <ThemeToggle />
-              </Header>
-              <Content style={{ padding: '24px' }}>
+      <BrowserRouter>
+        <div className="flex h-screen w-full overflow-hidden bg-background">
+          <Sidebar />
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+            <header className="h-16 px-6 flex items-center justify-end border-b border-divider bg-background/50 backdrop-blur-md">
+              <ThemeToggle />
+            </header>
+
+            <main className="flex-1 overflow-auto p-6 scrollbar-hide">
+              <div className="max-w-7xl mx-auto w-full">
                 <Suspense fallback={<LoadingWrapper loading={true} />}>
                   <Routes>
                     <Route path="/" element={<Scanner />} />
@@ -59,11 +44,13 @@ function App() {
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </Suspense>
-              </Content>
-            </Layout>
-          </Layout>
-        </BrowserRouter>
-      </ConfigProvider>
+              </div>
+            </main>
+
+          </div>
+        </div>
+      </BrowserRouter>
+      <Toaster richColors position="top-right" />
     </ErrorBoundary>
   )
 }

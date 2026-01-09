@@ -1,6 +1,6 @@
 import { Component, ReactNode } from 'react'
-import { Result, Button } from 'antd'
-import { ReloadOutlined } from '@ant-design/icons'
+import { AlertTriangle, RefreshCw } from 'react-feather'
+import { Button } from '@heroui/react'
 
 interface Props {
   children: ReactNode
@@ -38,16 +38,23 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <Result
-          status="error"
-          title="页面加载失败"
-          subTitle={this.state.error?.message || '发生了未知错误'}
-          extra={[
-            <Button type="primary" key="reload" icon={<ReloadOutlined />} onClick={this.handleReset}>
-              重新加载
-            </Button>,
-          ]}
-        />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8">
+          <div className="w-16 h-16 rounded-full bg-danger/10 flex items-center justify-center mb-6">
+            <AlertTriangle size={32} className="text-danger" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Something went wrong</h2>
+          <p className="text-foreground/60 mb-8 max-w-md">
+            {this.state.error?.message || 'An unexpected error occurred while loading this page.'}
+          </p>
+          <Button
+            color="primary"
+            variant="flat"
+            startContent={<RefreshCw size={18} />}
+            onPress={this.handleReset}
+          >
+            Reload Application
+          </Button>
+        </div>
       )
     }
 

@@ -1,9 +1,7 @@
 import * as ReactWindow from 'react-window'
 const FixedSizeList = (ReactWindow as any).FixedSizeList
-import { Table, Spin, Typography } from 'antd'
-import type { TableProps } from 'antd/es/table'
-
-const { Text } = Typography
+import { Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue } from "@heroui/react";
+import clsx from 'clsx';
 
 // Helper to render column title
 const renderTitle = (title: any, props: any) => {
@@ -13,17 +11,18 @@ const renderTitle = (title: any, props: any) => {
   return title
 }
 
-interface VirtualizedTableProps<T> extends Omit<TableProps<T>, 'components'> {
+interface VirtualizedTableProps<T> {
+  dataSource: T[]
+  columns: any[]
   height?: number
   rowHeight?: number
-  threshold?: number // 超过此数量才使用虚拟滚动
-  showPagination?: boolean // 是否显示分页（虚拟滚动时通常不显示）
+  threshold?: number
+  loading?: boolean
+  showPagination?: boolean
+  rowKey?: string
+  pagination?: any
 }
 
-/**
- * 虚拟滚动表格组件
- * 用于优化大列表渲染性能
- */
 export default function VirtualizedTable<T extends { id: string }>({
   dataSource = [],
   columns = [],
@@ -31,34 +30,64 @@ export default function VirtualizedTable<T extends { id: string }>({
   rowHeight = 50,
   threshold = 100,
   loading,
-  showPagination = false,
-  ...rest
 }: VirtualizedTableProps<T>) {
-  // 如果数据量小于阈值，使用普通表格
-  if (dataSource.length < threshold) {
-    return <Table
-      dataSource={dataSource}
-      columns={columns}
-      rowKey="id"
-      loading={loading}
-      pagination={showPagination ? rest.pagination : false}
-      {...rest}
-    />
-  }
-
   if (loading) {
-    return <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
+    return (
+      <div className="flex justify-center p-12">
+        <Spinner size="lg" />
+      </div>
+    )
   }
 
-  // 大列表使用虚拟滚动
+  // Small dataset: Use HeroUI Table for better aesthetics
+  if (dataSource.length < threshold) {
+    return (
+      <Table aria-label="Media Files" classNames={{ wrapper: "min-h-[222px]" }}>
+        <TableHeader columns={columns}>
+          {(column) => (
+            <TableColumn key={column.key} width={column.width}>
+              {renderTitle(column.title, {})}
+            </TableColumn>
+          )}
+        </TableHeader>
+        <TableBody items={dataSource}>
+          {(item) => (
+            <TableRow key={(item as any).id}>
+              {(columnKey) => {
+                const col = columns.find(c => c.key === columnKey);
+                let cellValue = getKeyValue(item, columnKey);
+
+                // Handle dataIndex path resolution (e.g. video_info.resolution)
+                if (col.dataIndex) {
+                  const path = Array.isArray(col.dataIndex) ? col.dataIndex : [col.dataIndex];
+                  cellValue = path.reduce((obj: any, key: string) => obj && obj[key], item);
+                }
+
+                return (
+                  <TableCell>
+                    {col.render ? col.render(cellValue, item) : cellValue}
+                  </TableCell>
+                );
+              }}
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  // Large dataset: Custom Virtualized View
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const record = dataSource[index]
     return (
-      <div style={{ ...style, display: 'flex' }} className="virtual-table-row">
+      <div style={{ ...style }} className={clsx("flex items-center border-b border-divider hover:bg-default-100 transition-colors px-2")}>
         {columns.map((col, colIndex) => {
-          const value = (col as any).dataIndex
-            ? (record as any)[Array.isArray((col as any).dataIndex) ? (col as any).dataIndex.join('.') : (col as any).dataIndex]
-            : null
+          let value = null;
+          if (col.dataIndex) {
+            const path = Array.isArray(col.dataIndex) ? col.dataIndex : [col.dataIndex];
+            value = path.reduce((obj: any, key: string) => obj && obj[key], record);
+          }
+
           const displayValue = col.render ? col.render(value, record, index) : value
 
           return (
@@ -67,18 +96,10 @@ export default function VirtualizedTable<T extends { id: string }>({
               style={{
                 flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
                 minWidth: (col.width as number) || 100,
-                padding: '8px 12px',
-                borderBottom: '1px solid #f0f0f0',
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
               }}
+              className="px-4 text-sm whitespace-nowrap overflow-hidden text-ellipsis"
             >
-              {typeof displayValue === 'string' || typeof displayValue === 'number' ? (
-                <Text ellipsis title={String(displayValue)}>{displayValue}</Text>
-              ) : (
-                displayValue
-              )}
+              {displayValue}
             </div>
           )
         })}
@@ -87,31 +108,16 @@ export default function VirtualizedTable<T extends { id: string }>({
   }
 
   return (
-    <div style={{ border: '1px solid #d9d9d9', borderRadius: '4px', overflow: 'hidden' }}>
-      <div
-        className="virtual-table-header"
-        style={{
-          display: 'flex',
-          borderBottom: '2px solid #f0f0f0',
-          backgroundColor: '#fafafa',
-          position: 'sticky',
-          top: 0,
-          zIndex: 1,
-        }}
-      >
+    <div className="border border-divider rounded-large overflow-hidden bg-content1">
+      <div className="flex border-b border-divider bg-default-100/50 backdrop-blur-sm sticky top-0 z-10 font-semibold text-foreground/70 text-sm">
         {columns.map((col, index) => (
           <div
             key={index}
             style={{
               flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
               minWidth: (col.width as number) || 100,
-              padding: '12px',
-              fontWeight: 600,
-              fontSize: '14px',
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis',
             }}
+            className="p-3"
           >
             {renderTitle(col.title, {})}
           </div>

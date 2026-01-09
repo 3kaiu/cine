@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { message } from 'antd'
+import { toast } from 'sonner'
 import { formatErrorMessage, handleError } from '../errorHandler'
 
-// Mock antd message
-vi.mock('antd', () => ({
-  message: {
+// Mock sonner
+vi.mock('sonner', () => ({
+  toast: {
     error: vi.fn(),
   },
 }))
@@ -51,17 +51,17 @@ describe('errorHandler', () => {
   describe('handleError', () => {
     it('应该显示错误提示', () => {
       handleError('Test error', undefined, true)
-      expect(message.error).toHaveBeenCalledWith('Test error')
+      expect(toast.error).toHaveBeenCalledWith('Test error')
     })
 
     it('应该使用备用消息', () => {
       handleError(null, 'Fallback message', true)
-      expect(message.error).toHaveBeenCalledWith('Fallback message')
+      expect(toast.error).toHaveBeenCalledWith('Fallback message')
     })
 
     it('应该不显示提示当 showToast 为 false', () => {
       handleError('Test error', undefined, false)
-      expect(message.error).not.toHaveBeenCalled()
+      expect(toast.error).not.toHaveBeenCalled()
     })
   })
 })

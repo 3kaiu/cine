@@ -1,13 +1,10 @@
-import { useState, useMemo } from 'react'
-import { Card, Button, Table, Space, message, Popconfirm, Tag, Modal, Typography, Badge } from 'antd'
-import { DeleteOutlined, RestOutlined, ClearOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
+import { useState } from 'react'
+import { Card, CardBody, CardHeader, Button, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Divider, Tooltip } from "@heroui/react";
+import { Trash2, RotateCcw, AlertTriangle, XSquare } from 'react-feather'
 import { mediaApi } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import LoadingWrapper from '@/components/LoadingWrapper'
 import { handleError } from '@/utils/errorHandler'
-
-const { Text } = Typography
-const { confirm } = Modal
 
 interface TrashItem {
   id: string
@@ -25,202 +22,229 @@ interface TrashData {
 }
 
 export default function Trash() {
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]) // Use Set for better performance if huge, but array is fine for UI lib compat
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    type: 'restore' | 'delete' | 'cleanup' | null;
+    count: number;
+    targetId?: string; // If single action
+  }>({ isOpen: false, type: null, count: 0 });
 
   const { data, refetch, isPending } = useQuery<TrashData>({
     queryKey: ['trash'],
     queryFn: mediaApi.listTrash
   })
 
-  const selectedItems = useMemo(() => {
-    return (data?.items || []).filter(item => selectedRowKeys.includes(item.id))
-  }, [data, selectedRowKeys])
+
 
   const restoreMutation = useMutation({
     mutationFn: mediaApi.restoreFromTrash,
     onSuccess: () => {
-      message.success('恢复成功')
       setSelectedRowKeys([])
       refetch()
+      setConfirmModal({ ...confirmModal, isOpen: false })
     },
-    onError: (error: any) => handleError(error, '恢复失败'),
+    onError: (error: any) => handleError(error, 'Restore failed'),
   })
 
   const deleteMutation = useMutation({
     mutationFn: mediaApi.permanentlyDelete,
     onSuccess: () => {
-      message.success('永久删除成功')
       setSelectedRowKeys([])
       refetch()
+      setConfirmModal({ ...confirmModal, isOpen: false })
     },
-    onError: (error: any) => handleError(error, '删除失败'),
+    onError: (error: any) => handleError(error, 'Deletion failed'),
   })
 
   const cleanupMutation = useMutation({
     mutationFn: mediaApi.cleanupTrash,
-    onSuccess: (data: any) => {
-      message.success(data.message || '清理完成')
+    onSuccess: () => {
       refetch()
+      setConfirmModal({ ...confirmModal, isOpen: false })
     },
-    onError: (error: any) => handleError(error, '清理失败'),
+    onError: (error: any) => handleError(error, 'Cleanup failed'),
   })
 
   const handleBatchRestore = () => {
-    confirm({
-      title: `确定要恢复这 ${selectedRowKeys.length} 个文件吗？`,
-      icon: <RestOutlined style={{ color: '#1890ff' }} />,
-      onOk: async () => {
-        let success = 0
-        let failed = 0
-        for (const id of selectedRowKeys) {
-          try {
-            await mediaApi.restoreFromTrash({ file_id: id })
-            success++
-          } catch (e) {
-            failed++
-          }
-        }
-        message.info(`处理完成: 成功 ${success} 个, 失败 ${failed} 个`)
-        setSelectedRowKeys([])
-        refetch()
-      }
-    })
+    setConfirmModal({ isOpen: true, type: 'restore', count: selectedRowKeys.length })
   }
 
   const handleBatchDelete = () => {
-    confirm({
-      title: `确定要永久删除这 ${selectedRowKeys.length} 个文件吗？`,
-      icon: <ExclamationCircleOutlined />,
-      content: '此操作不可撤销，文件将从磁盘上物理删除。',
-      okType: 'danger',
-      onOk: async () => {
-        let success = 0
-        let failed = 0
-        for (const id of selectedRowKeys) {
-          try {
-            await mediaApi.permanentlyDelete(id)
-            success++
-          } catch (e) {
-            failed++
-          }
-        }
-        message.info(`处理完成: 成功 ${success} 个, 失败 ${failed} 个`)
-        setSelectedRowKeys([])
-        refetch()
-      }
-    })
+    setConfirmModal({ isOpen: true, type: 'delete', count: selectedRowKeys.length })
   }
 
-  const columns = [
-    {
-      title: '原文件名',
-      dataIndex: 'original_name',
-      key: 'original_name',
-      ellipsis: true,
-    },
-    {
-      title: '大小',
-      dataIndex: 'file_size',
-      key: 'file_size',
-      width: 120,
-      render: (size: number) => formatSize(size),
-    },
-    {
-      title: '类型',
-      dataIndex: 'file_type',
-      key: 'file_type',
-      width: 100,
-      render: (type: string) => <Tag>{type}</Tag>,
-    },
-    {
-      title: '删除时间',
-      dataIndex: 'deleted_at',
-      key: 'deleted_at',
-      width: 180,
-      render: (time: string) => new Date(time).toLocaleString(),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 150,
-      render: (_: any, record: TrashItem) => (
-        <Space>
-          <Button
-            size="small"
-            type="link"
-            onClick={() => restoreMutation.mutate({ file_id: record.id })}
-          >
-            恢复
-          </Button>
-          <Popconfirm
-            title="永久删除？不可恢复！"
-            onConfirm={() => deleteMutation.mutate(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button size="small" type="link" danger>删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ]
+  const handleCleanup = () => {
+    setConfirmModal({ isOpen: true, type: 'cleanup', count: 0 })
+  }
+
+  const handleConfirmAction = async () => {
+    const { type, targetId } = confirmModal;
+    if (type === 'restore') {
+      if (targetId) {
+        restoreMutation.mutate({ file_id: targetId })
+      } else {
+        // Batch
+        for (const id of selectedRowKeys) {
+          await mediaApi.restoreFromTrash({ file_id: id }).catch(() => { })
+        }
+        refetch();
+        setSelectedRowKeys([]);
+        setConfirmModal({ ...confirmModal, isOpen: false })
+      }
+    } else if (type === 'delete') {
+      if (targetId) {
+        deleteMutation.mutate(targetId)
+      } else {
+        // Batch
+        for (const id of selectedRowKeys) {
+          await mediaApi.permanentlyDelete(id).catch(() => { })
+        }
+        refetch();
+        setSelectedRowKeys([]);
+        setConfirmModal({ ...confirmModal, isOpen: false })
+      }
+    } else if (type === 'cleanup') {
+      cleanupMutation.mutate()
+    }
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card title="回收站管理">
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Space size="middle">
-            <Button
-              icon={<RestOutlined />}
-              onClick={handleBatchRestore}
-              disabled={selectedRowKeys.length === 0}
-            >
-              批量恢复 {selectedRowKeys.length > 0 && <Badge count={selectedRowKeys.length} offset={[10, -10]} />}
-            </Button>
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              onClick={handleBatchDelete}
-              disabled={selectedRowKeys.length === 0}
-            >
-              批量永久删除
-            </Button>
-            <Divider type="vertical" />
-            <Popconfirm
-              title="确定要清理所有过期文件吗？"
-              onConfirm={() => cleanupMutation.mutate()}
-            >
-              <Button icon={<ClearOutlined />}>清理过期</Button>
-            </Popconfirm>
-          </Space>
-          {selectedRowKeys.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              <Text type="secondary">
-                已选择 {selectedRowKeys.length} 个文件，共 {formatSize(selectedItems.reduce((acc, i) => acc + i.file_size, 0))}
-              </Text>
-              <Button type="link" size="small" onClick={() => setSelectedRowKeys([])}>清空选择</Button>
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader className="flex gap-3">
+          <div className="p-2 bg-danger/10 rounded-lg text-danger">
+            <Trash2 size={24} />
+          </div>
+          <div className="flex flex-col">
+            <p className="text-md font-bold">Trash Bin</p>
+            <p className="text-small text-default-500">Manage deleted files. Items are kept for 30 days by default.</p>
+          </div>
+        </CardHeader>
+        <Divider />
+        <CardBody className="gap-4">
+          <div className="flex justify-between items-center">
+            <div className="flex gap-4">
+              <Button
+                onPress={handleBatchRestore}
+                isDisabled={selectedRowKeys.length === 0}
+                color="primary"
+                startContent={<RotateCcw size={18} />}
+              >
+                Restore Selected ({selectedRowKeys.length})
+              </Button>
+              <Button
+                onPress={handleBatchDelete}
+                isDisabled={selectedRowKeys.length === 0}
+                color="danger"
+                variant="flat"
+                startContent={<XSquare size={18} />}
+              >
+                Delete Permanently
+              </Button>
             </div>
-          )}
-        </Space>
+
+            <Button
+              onPress={handleCleanup}
+              color="warning"
+              variant="light"
+              startContent={<Trash2 size={18} />}
+            >
+              Empty Trash
+            </Button>
+          </div>
+        </CardBody>
       </Card>
 
-      <Card title={`已删除文件(${data?.total || 0})`}>
+      <Card className="flex-1">
         <LoadingWrapper loading={isPending}>
+          {/* Note: HeroUI Table selection handling needs to match keys. */}
           <Table
-            columns={columns}
-            dataSource={data?.items || []}
-            rowKey="id"
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys(keys as string[]),
-            }}
-            pagination={{
-              pageSize: 50,
-              showSizeChanger: true,
-            }}
-          />
+            aria-label="Trash Items"
+            selectionMode="multiple"
+            selectedKeys={new Set(selectedRowKeys)}
+            onSelectionChange={(keys) => setSelectedRowKeys(Array.from(keys) as string[])}
+            removeWrapper
+          >
+            <TableHeader>
+              <TableColumn>ORIGINAL NAME</TableColumn>
+              <TableColumn>SIZE</TableColumn>
+              <TableColumn>TYPE</TableColumn>
+              <TableColumn>DELETED AT</TableColumn>
+              <TableColumn>ACTIONS</TableColumn>
+            </TableHeader>
+            <TableBody emptyContent="Trash is empty.">
+              {(data?.items || []).map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <span className="font-medium text-sm">{item.original_name}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-xs text-default-500">{formatSize(item.file_size)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="sm" variant="flat">{item.file_type}</Chip>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-default-500">{new Date(item.deleted_at).toLocaleString()}</span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Tooltip content="Restore">
+                        <span
+                          className="text-primary cursor-pointer active:opacity-50"
+                          onClick={() => setConfirmModal({ isOpen: true, type: 'restore', count: 1, targetId: item.id })}
+                        >
+                          <RotateCcw size={18} />
+                        </span>
+                      </Tooltip>
+                      <Tooltip content="Delete Forever" color="danger">
+                        <span
+                          className="text-danger cursor-pointer active:opacity-50"
+                          onClick={() => setConfirmModal({ isOpen: true, type: 'delete', count: 1, targetId: item.id })}
+                        >
+                          <XSquare size={18} />
+                        </span>
+                      </Tooltip>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </LoadingWrapper>
       </Card>
+
+      {/* Confirmation Modal */}
+      <Modal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex gap-1 items-center">
+                <AlertTriangle className="text-warning" size={24} />
+                Confirm Action
+              </ModalHeader>
+              <ModalBody>
+                <p>
+                  {confirmModal.type === 'restore' && `Are you sure you want to restore ${confirmModal.count} item(s)?`}
+                  {confirmModal.type === 'delete' && `Are you sure you want to PERMANENTLY delete ${confirmModal.count} item(s)? This cannot be undone.`}
+                  {confirmModal.type === 'cleanup' && `Are you sure you want to empty the trash bin? All items will be lost forever.`}
+                </p>
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>Cancel</Button>
+                <Button
+                  color={confirmModal.type === 'restore' ? "primary" : "danger"}
+                  onPress={handleConfirmAction}
+                  isLoading={restoreMutation.isPending || deleteMutation.isPending || cleanupMutation.isPending}
+                >
+                  Confirm
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   )
 }
@@ -238,15 +262,3 @@ function formatSize(bytes: number): string {
 
   return `${size.toFixed(2)} ${units[unitIndex]} `
 }
-
-const Divider = ({ type }: { type?: 'vertical' | 'horizontal' }) => (
-  <span style={{
-    display: 'inline-block',
-    borderLeft: type === 'vertical' ? '1px solid #f0f0f0' : 'none',
-    borderTop: type === 'horizontal' ? '1px solid #f0f0f0' : 'none',
-    margin: '0 8px',
-    height: type === 'vertical' ? 14 : 0,
-    width: type === 'horizontal' ? '100%' : 0,
-    verticalAlign: 'middle'
-  }} />
-)

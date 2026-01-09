@@ -1,7 +1,4 @@
 import { useState, useEffect } from 'react'
-import { theme } from 'antd'
-
-const { defaultAlgorithm, darkAlgorithm } = theme
 
 export function useTheme() {
   const [isDark, setIsDark] = useState(() => {
@@ -14,7 +11,14 @@ export function useTheme() {
 
   useEffect(() => {
     localStorage.setItem('theme', isDark ? 'dark' : 'light')
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+    const root = document.documentElement
+    if (isDark) {
+      root.classList.add('dark')
+      root.setAttribute('data-theme', 'dark')
+    } else {
+      root.classList.remove('dark')
+      root.setAttribute('data-theme', 'light')
+    }
   }, [isDark])
 
   const toggleTheme = () => {
@@ -24,6 +28,5 @@ export function useTheme() {
   return {
     isDark,
     toggleTheme,
-    algorithm: isDark ? darkAlgorithm : defaultAlgorithm,
   }
 }
