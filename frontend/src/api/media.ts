@@ -124,6 +124,8 @@ export const mediaApi = {
     auto_match?: boolean
     download_images?: boolean
     generate_nfo?: boolean
+    tmdb_id?: string
+    douban_id?: string
   }) => api.post<{
     metadata?: any
     error?: string

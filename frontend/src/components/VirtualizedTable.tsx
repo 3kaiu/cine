@@ -1,136 +1,138 @@
-import * as ReactWindow from 'react-window';
-const FixedSizeList = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList;
-import { Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue } from "@heroui/react";
-import clsx from 'clsx';
-
-// Helper to render column title
-const renderTitle = (title: any, props: any) => {
-  if (typeof title === 'function') {
-    return title(props)
-  }
-  return title
-}
+import React from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { Spinner, ListBox, Surface } from "@heroui/react";
 
 interface VirtualizedTableProps<T> {
   dataSource: T[]
   columns: any[]
   height?: number
   rowHeight?: number
-  threshold?: number
   loading?: boolean
   showPagination?: boolean
   rowKey?: string
   pagination?: any
+  onSelectionChange?: (keys: any) => void
+  selectedKeys?: any
+  selectionMode?: "none" | "single" | "multiple"
 }
 
 export default function VirtualizedTable<T extends { id: string }>({
   dataSource = [],
   columns = [],
   height = 600,
-  rowHeight = 50,
-  threshold = 100,
+  rowHeight = 52, // Standardizing on a slightly larger height for premium feel
   loading,
+  onSelectionChange,
+  selectedKeys,
+  selectionMode = "none",
 }: VirtualizedTableProps<T>) {
+  const parentRef = React.useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: dataSource.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 10,
+  });
+
   if (loading) {
     return (
       <div className="flex justify-center p-12">
-        <Spinner size="lg" />
+        <Spinner size="lg" color="accent" />
       </div>
     )
   }
 
-  // Small dataset: Use HeroUI Table for better aesthetics
-  if (dataSource.length < threshold) {
-    return (
-      <Table aria-label="Media Files" classNames={{ wrapper: "min-h-[222px]" }}>
-        <TableHeader columns={columns}>
-          {(column) => (
-            <TableColumn key={column.key} width={column.width}>
-              {renderTitle(column.title, {})}
-            </TableColumn>
-          )}
-        </TableHeader>
-        <TableBody items={dataSource}>
-          {(item) => (
-            <TableRow key={(item as any).id}>
-              {(columnKey) => {
-                const col = columns.find(c => c.key === columnKey);
-                let cellValue = getKeyValue(item, columnKey);
+  // Small dataset or specific threshold can still use this premium virtualized view
+  // for consistency, but we keep the threshold logic if needed.
 
-                // Handle dataIndex path resolution (e.g. video_info.resolution)
-                if (col.dataIndex) {
-                  const path = Array.isArray(col.dataIndex) ? col.dataIndex : [col.dataIndex];
-                  cellValue = path.reduce((obj: any, key: string) => obj && obj[key], item);
-                }
-
-                return (
-                  <TableCell>
-                    {col.render ? col.render(cellValue, item) : cellValue}
-                  </TableCell>
-                );
-              }}
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    );
-  }
-
-  // Large dataset: Custom Virtualized View
-  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const record = dataSource[index]
-    return (
-      <div style={{ ...style }} className={clsx("flex items-center border-b border-divider hover:bg-default-100 transition-colors px-2")}>
-        {columns.map((col, colIndex) => {
-          let value = null;
-          if (col.dataIndex) {
-            const path = Array.isArray(col.dataIndex) ? col.dataIndex : [col.dataIndex];
-            value = path.reduce((obj: any, key: string) => obj && obj[key], record);
-          }
-
-          const displayValue = col.render ? col.render(value, record, index) : value
-
-          return (
-            <div
-              key={colIndex}
-              style={{
-                flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
-                minWidth: (col.width as number) || 100,
-              }}
-              className="px-4 text-sm whitespace-nowrap overflow-hidden text-ellipsis"
-            >
-              {displayValue}
-            </div>
-          )
-        })}
-      </div>
-    )
-  }
+  const headerContent = (
+    <div className="flex border-b border-divider/10 bg-default-100/30 backdrop-blur-md sticky top-0 z-20 font-bold text-default-400 text-[10px] uppercase tracking-widest shrink-0 shadow-sm">
+      {columns.map((col, index) => (
+        <div
+          key={index}
+          style={{
+            flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
+            minWidth: (col.width as number) || 120,
+          }}
+          className="px-6 py-4"
+        >
+          {typeof col.title === 'function' ? col.title({}) : col.title}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="border border-divider rounded-large overflow-hidden bg-content1">
-      <div className="flex border-b border-divider bg-default-100/50 backdrop-blur-sm sticky top-0 z-10 font-semibold text-foreground/70 text-sm">
-        {columns.map((col, index) => (
-          <div
-            key={index}
-            style={{
-              flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
-              minWidth: (col.width as number) || 100,
-            }}
-            className="p-3"
-          >
-            {renderTitle(col.title, {})}
-          </div>
-        ))}
-      </div>
-      <FixedSizeList
-        height={height}
-        itemCount={dataSource.length}
-        itemSize={rowHeight}
-        width="100%"
+    <Surface className="flex flex-col border border-divider/10 rounded-2xl overflow-hidden bg-background/5 shadow-none h-full">
+      {headerContent}
+      <div
+        ref={parentRef}
+        className="overflow-auto relative scrollbar-hide"
+        style={{ height: `${height}px` }}
       >
-        {Row}
-      </FixedSizeList>
-    </div>
-  )
+        <div
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          <ListBox
+            aria-label="Virtualized List"
+            selectionMode={selectionMode}
+            selectedKeys={selectedKeys}
+            onSelectionChange={onSelectionChange}
+            variant="default"
+            className="p-0 gap-0"
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const record = dataSource[virtualRow.index];
+              return (
+                <ListBox.Item
+                  key={virtualRow.key}
+                  id={record.id}
+                  textValue={record.id}
+                  className="p-0 border-b border-divider/5 last:border-0 data-[hover=true]:bg-default-100/50 data-[selected=true]:bg-primary/5 transition-all duration-200"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <div className="flex items-center h-full w-full">
+                    {columns.map((col, colIndex) => {
+                      let value = null;
+                      if (col.dataIndex) {
+                        const path = Array.isArray(col.dataIndex) ? col.dataIndex : [col.dataIndex];
+                        value = path.reduce((obj: any, key: string) => obj && obj[key], record);
+                      }
+
+                      const displayValue = col.render ? col.render(value, record, virtualRow.index) : value;
+
+                      return (
+                        <div
+                          key={colIndex}
+                          style={{
+                            flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
+                            minWidth: (col.width as number) || 120,
+                          }}
+                          className="px-6 text-[13px] font-medium text-foreground/80 whitespace-nowrap overflow-hidden text-ellipsis"
+                        >
+                          {displayValue}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ListBox.Item>
+              );
+            })}
+          </ListBox>
+        </div>
+      </div>
+    </Surface>
+  );
 }

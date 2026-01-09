@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Card, CardBody, CardHeader, Button, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Switch, Tabs, Tab, Divider } from "@heroui/react";
-import { Plus, Trash, Settings as SettingsIcon, Monitor, Clock, Save } from 'react-feather'
+import { Button, Modal, Input, Switch, Tabs, TextField, Label } from "@heroui/react";
+import { Plus, TrashBin, Gear, Display, Clock, FloppyDisk } from '@gravity-ui/icons'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import axios from 'axios'
+import clsx from 'clsx'
 
 interface WatchFolder {
   id: string
@@ -47,207 +48,245 @@ export default function Settings() {
     mutationFn: (id: string) => axios.delete(`/api/watch-folders/${id}`),
     onSuccess: () => refetch()
   })
+  // Placeholder for Basic Config Mutation
+  const configMutation = useMutation({
+    mutationFn: async (values: any) => {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log("Updating config:", values);
+      return values;
+    },
+    onSuccess: () => {
+      // toast.success("配置已保存");
+    }
+  });
+
+  const handleSubmit = () => {
+    configMutation.mutate(basicConfig);
+  }
 
   const handleAddFolder = () => {
-    if (newFolderData.path) {
-      addMutation.mutate(newFolderData)
-    }
+    addMutation.mutate(newFolderData);
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-bold">System Settings</h2>
-        <p className="text-default-500">Manage configuration, automation, and tasks</p>
+        <h2 className="text-[16px] font-bold tracking-tight text-foreground/90">系统设置</h2>
+        <p className="text-[11px] text-default-400 font-medium">管理全局配置、自动化任务及其运行状态</p>
       </div>
 
-      <div className="flex w-full flex-col">
-        <Tabs aria-label="Settings Options" color="primary" variant="underlined">
-          <Tab
-            key="general"
-            title={
+      <div className="flex w-full flex-col mt-2">
+        <Tabs aria-label="设置选项" className="w-full">
+          <Tabs.List>
+            <Tabs.Tab key="general">
               <div className="flex items-center space-x-2">
-                <SettingsIcon size={16} />
-                <span>General</span>
+                <Gear className="w-[14px] h-[14px]" />
+                <span>常规配置</span>
               </div>
-            }
-          >
-            <Card className="mt-4">
-              <CardHeader>
-                <h3 className="font-bold">Basic Configuration</h3>
-              </CardHeader>
-              <Divider />
-              <CardBody className="gap-6 max-w-2xl">
-                <Input
-                  label="TMDB API Key"
-                  type="password"
-                  placeholder="Enter your API key"
-                  value={basicConfig.tmdb_api_key}
-                  onValueChange={(v) => setBasicConfig({ ...basicConfig, tmdb_api_key: v })}
-                />
-                <Input
-                  label="Default Scan Directory"
-                  placeholder="/path/to/media"
-                  value={basicConfig.default_dir}
-                  onValueChange={(v) => setBasicConfig({ ...basicConfig, default_dir: v })}
-                />
-                <Button color="primary" className="w-fit" startContent={<Save size={18} />}>
-                  Save Configuration
-                </Button>
-              </CardBody>
-            </Card>
-          </Tab>
+            </Tabs.Tab>
+            <Tabs.Tab key="watcher">
+              <div className="flex items-center space-x-2">
+                <Display className="w-[14px] h-[14px]" />
+                <span>自动化监控</span>
+              </div>
+            </Tabs.Tab>
+            <Tabs.Tab key="scheduler">
+              <div className="flex items-center space-x-2">
+                <Clock className="w-[14px] h-[14px]" />
+                <span>计划任务</span>
+              </div>
+            </Tabs.Tab>
+          </Tabs.List>
 
-          <Tab
-            key="watcher"
-            title={
-              <div className="flex items-center space-x-2">
-                <Monitor size={16} />
-                <span>Automation (Watcher)</span>
+          <Tabs.Panel id="general">
+            <div className="flex flex-col gap-4 py-4 max-w-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-bold text-foreground/80">基础设置</h3>
+                <p className="text-[11px] text-default-400">配置 API 密钥和默认路径。</p>
               </div>
-            }
-          >
-            <Card className="mt-4">
-              <CardHeader className="flex justifies-between items-center">
-                <div className="flex flex-col">
-                  <h3 className="font-bold">Real-time Directory Monitoring</h3>
-                  <p className="text-small text-default-500">Automatically analyze items when file system changes are detected.</p>
+              <div className="flex flex-col gap-4">
+                <TextField
+                  value={basicConfig.tmdb_api_key}
+                  onChange={(v) => setBasicConfig({ ...basicConfig, tmdb_api_key: v })}
+                >
+                  <Label>TMDB API 密钥</Label>
+                  <Input
+                    type="password"
+                    placeholder="请输入您的 API Key"
+                  />
+                </TextField>
+                <TextField
+                  value={basicConfig.default_dir}
+                  onChange={(v) => setBasicConfig({ ...basicConfig, default_dir: v })}
+                >
+                  <Label>默认扫描目录</Label>
+                  <Input placeholder="例如: /path/to/media" />
+                </TextField>
+                <Button
+                  variant="primary"
+                  isDisabled={configMutation.isPending}
+                  onPress={handleSubmit}
+                  isPending={configMutation.isPending}
+                  size="md"
+                  className="w-fit font-bold shadow-sm flex gap-2"
+                >
+                  {!configMutation.isPending && <FloppyDisk className="w-[14px] h-[14px]" />}
+                  保存配置
+                </Button>
+              </div>
+            </div>
+          </Tabs.Panel>
+
+          <Tabs.Panel id="watcher">
+            <div className="flex flex-col gap-4 py-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex justify-between items-end">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-bold text-foreground/80">实时目录监控</h3>
+                  <p className="text-[11px] text-default-400">当检测到文件变化时，自动触发分析任务。</p>
                 </div>
                 <Button
-                  color="primary"
+                  variant="primary"
                   size="sm"
                   onPress={() => setIsModalOpen(true)}
-                  startContent={<Plus size={16} />}
-                  className="ml-auto"
+                  className="font-bold shadow-sm flex gap-2"
                 >
-                  Add Watch Folder
+                  <Plus className="w-[14px] h-[14px]" />
+                  添加监控目录
                 </Button>
-              </CardHeader>
-              <Divider />
-              <CardBody>
-                <Table aria-label="Watch Folders" removeWrapper>
-                  <TableHeader>
-                    <TableColumn>PATH</TableColumn>
-                    <TableColumn>AUTO SCRAPE</TableColumn>
-                    <TableColumn>STATUS</TableColumn>
-                    <TableColumn>ACTION</TableColumn>
-                  </TableHeader>
-                  <TableBody emptyContent="No watch folders configured.">
-                    {(watchFolders || []).map((folder: WatchFolder) => (
-                      <TableRow key={folder.id}>
-                        <TableCell><span className="font-mono text-sm">{folder.path}</span></TableCell>
-                        <TableCell>
-                          <Chip size="sm" variant="flat" color={folder.auto_scrape ? "success" : "default"}>
-                            {folder.auto_scrape ? "On" : "Off"}
-                          </Chip>
-                        </TableCell>
-                        <TableCell>
-                          <Chip size="sm" variant="dot" color={folder.enabled ? "success" : "danger"}>
-                            {folder.enabled ? "Running" : "Disabled"}
-                          </Chip>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            isIconOnly
-                            color="danger"
-                            variant="light"
-                            size="sm"
-                            onPress={() => deleteMutation.mutate(folder.id)}
-                          >
-                            <Trash size={16} />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardBody>
-            </Card>
-          </Tab>
-
-          <Tab
-            key="scheduler"
-            title={
-              <div className="flex items-center space-x-2">
-                <Clock size={16} />
-                <span>Scheduled Tasks</span>
               </div>
-            }
-          >
-            <Card className="mt-4">
-              <CardHeader>
-                <h3 className="font-bold">Task Scheduler</h3>
-              </CardHeader>
-              <Divider />
-              <CardBody className="gap-6">
-                <div className="flex justify-between items-center">
-                  <div className="flex flex-col gap-1">
-                    <span className="font-semibold">Daily Library Cleanup</span>
-                    <span className="text-small text-default-500">Automatically remove invalid records and empty folders at 3:00 AM daily.</span>
-                  </div>
-                  <Switch defaultSelected color="primary" />
+
+              <div className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5 mt-1">
+                <div className="w-full overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-default-50/50 text-default-400 font-bold uppercase text-[9px] tracking-[.15em] h-10 border-b border-divider/5">
+                        <th className="px-2 font-normal">路径</th>
+                        <th className="px-2 font-normal w-[120px]">自动刮削</th>
+                        <th className="px-2 font-normal w-[100px]">状态</th>
+                        <th className="px-2 font-normal w-[80px]">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(watchFolders || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-[11px] text-default-400">暂无已配置的监控目录。</td>
+                        </tr>
+                      ) : (
+                        (watchFolders || []).map((folder: WatchFolder) => (
+                          <tr key={folder.id} className="hover:bg-default-100/40 transition-colors border-b border-divider/5 last:border-0">
+                            <td className="py-3 px-2">
+                              <span className="font-mono text-[13px] font-medium text-foreground/80">{folder.path}</span>
+                            </td>
+                            <td className="py-3 px-2">
+                              <div className={clsx("flex items-center gap-2 px-2 h-5 w-fit rounded border text-[9px] font-black uppercase tracking-tighter",
+                                folder.auto_scrape ? "bg-success/5 border-success/10 text-success" : "bg-default-100/50 border-divider/10 text-default-400")}>
+                                {folder.auto_scrape ? "ENABLED" : "DISABLED"}
+                              </div>
+                            </td>
+                            <td className="py-3 px-2">
+                              <div className="flex items-center gap-1.5">
+                                <div className={clsx("w-1.5 h-1.5 rounded-full", folder.enabled ? "bg-success shadow-[0_0_8px_rgba(var(--heroui-success),0.5)]" : "bg-danger")} />
+                                <span className="text-[11px] font-bold text-default-500">{folder.enabled ? "Running" : "Stopped"}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2">
+                              <Button
+                                isIconOnly
+                                variant="danger"
+                                size="sm"
+                                onPress={() => deleteMutation.mutate(folder.id)}
+                              >
+                                <TrashBin className="w-[13px] h-[13px]" />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-                <Divider />
-                <div className="flex justify-between items-center">
-                  <div className="flex flex-col gap-1">
-                    <span className="font-semibold">Weekly Quality Score Update</span>
-                    <span className="text-small text-default-500">Recalculate quality scores based on latest TMDB data and rules.</span>
+              </div>
+            </div>
+          </Tabs.Panel>
+
+          <Tabs.Panel id="scheduler">
+            <div className="flex flex-col gap-4 py-4 max-w-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-bold text-foreground/80">任务调度器</h3>
+                <p className="text-[11px] text-default-400">管理后台定时执行的维护任务。</p>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                <div className="flex justify-between items-center p-5 rounded-2xl bg-default-50/20 border border-divider/10 transition-all hover:bg-default-100/30">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-[13px] text-foreground/90">每日库清理</span>
+                    <span className="text-[11px] text-default-400 font-medium">每天凌晨 3:00 自动清理无效记录和空文件夹。</span>
                   </div>
-                  <Switch defaultSelected color="primary" />
+                  <Switch defaultSelected size="sm" />
                 </div>
-              </CardBody>
-            </Card>
-          </Tab>
+                <div className="flex justify-between items-center p-5 rounded-2xl bg-default-50/20 border border-divider/10 transition-all hover:bg-default-100/30">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-[13px] text-foreground/90">每周画质评分更新</span>
+                    <span className="text-[11px] text-default-400 font-medium">根据最新的 TMDB 数据和规则重新计算文件评分。</span>
+                  </div>
+                  <Switch defaultSelected size="sm" />
+                </div>
+              </div>
+            </div>
+          </Tabs.Panel>
         </Tabs>
       </div>
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        backdrop="blur"
+        onOpenChange={setIsModalOpen}
       >
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader>Add Watch Folder</ModalHeader>
-              <ModalBody>
-                <div className="flex flex-col gap-4">
-                  <Input
-                    label="Path"
-                    placeholder="/volume1/downloads"
-                    value={newFolderData.path || ''}
-                    onValueChange={(v) => setNewFolderData({ ...newFolderData, path: v })}
-                    isRequired
-                  />
-                  <div className="flex justify-between items-center bg-default-100 p-3 rounded-lg">
-                    <span className="text-sm">Auto Scrape</span>
-                    <Switch
-                      isSelected={newFolderData.auto_scrape}
-                      onValueChange={(v) => setNewFolderData({ ...newFolderData, auto_scrape: v })}
-                      size="sm"
-                    />
+        <Modal.Backdrop />
+        <Modal.Container>
+          <Modal.Dialog>
+            {({ close }) => (
+              <>
+                <Modal.Header>添加监控目录</Modal.Header>
+                <Modal.Body>
+                  <div className="flex flex-col gap-4">
+                    <TextField
+                      value={newFolderData.path || ''}
+                      onChange={(v) => setNewFolderData({ ...newFolderData, path: v })}
+                      isRequired
+                    >
+                      <Label className="text-small font-bold text-default-500">目录路径</Label>
+                      <Input placeholder="例如: /volume1/downloads" />
+                    </TextField>
+                    <div className="flex justify-between items-center bg-default-100 p-3 rounded-lg">
+                      <span className="text-sm">自动刮削</span>
+                      <Switch
+                        isSelected={newFolderData.auto_scrape}
+                        onChange={(v) => setNewFolderData({ ...newFolderData, auto_scrape: v })}
+                        size="sm"
+                      />
+                    </div>
+                    <div className="flex justify-between items-center bg-default-100 p-3 rounded-lg">
+                      <span className="text-sm">自动重命名</span>
+                      <Switch
+                        isSelected={newFolderData.auto_rename}
+                        onChange={(v) => setNewFolderData({ ...newFolderData, auto_rename: v })}
+                        size="sm"
+                      />
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center bg-default-100 p-3 rounded-lg">
-                    <span className="text-sm">Auto Rename</span>
-                    <Switch
-                      isSelected={newFolderData.auto_rename}
-                      onValueChange={(v) => setNewFolderData({ ...newFolderData, auto_rename: v })}
-                      size="sm"
-                    />
-                  </div>
-                </div>
-              </ModalBody>
-              <ModalFooter>
-                <Button color="danger" variant="light" onPress={onClose}>
-                  Cancel
-                </Button>
-                <Button color="primary" onPress={handleAddFolder} isLoading={addMutation.isPending}>
-                  Add Folder
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
+                </Modal.Body>
+                <Modal.Footer>
+                  <Button variant="ghost" size="md" onPress={close}>
+                    取消
+                  </Button>
+                  <Button variant="primary" size="md" onPress={handleAddFolder} isPending={addMutation.isPending}>
+                    确认添加
+                  </Button>
+                </Modal.Footer>
+              </>
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
       </Modal>
     </div>
   )

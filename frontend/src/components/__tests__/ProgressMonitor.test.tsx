@@ -27,12 +27,12 @@ describe('ProgressMonitor', () => {
   it('应该渲染进度监控组件', () => {
     mockUseWebSocket.mockReturnValue({
       connected: true,
-      messages: [{ task_id: 'test-task', task_type: 'Scan', progress: 0, message: 'Started' }],
+      messages: [{ task_id: 'test-task', task_type: '扫描任务', progress: 0, message: '已开始' }],
       sendMessage: vi.fn(),
     })
 
     render(<ProgressMonitor taskId="test-task" />)
-    expect(screen.getByText(/进度/i)).toBeInTheDocument()
+    expect(screen.getByText(/扫描任务/i)).toBeInTheDocument()
   })
 
   it('应该连接 WebSocket', () => {

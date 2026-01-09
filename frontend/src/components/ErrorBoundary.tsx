@@ -1,5 +1,5 @@
 import { Component, ReactNode } from 'react'
-import { AlertTriangle, RefreshCw } from 'react-feather'
+import { TriangleExclamation, ArrowsRotateRight } from '@gravity-ui/icons'
 import { Button } from '@heroui/react'
 
 interface Props {
@@ -38,21 +38,22 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8">
-          <div className="w-16 h-16 rounded-full bg-danger/10 flex items-center justify-center mb-6">
-            <AlertTriangle size={32} className="text-danger" />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8 bg-default-50/20 rounded-3xl backdrop-blur-sm border border-divider/5">
+          <div className="w-20 h-20 rounded-2xl bg-danger/10 flex items-center justify-center mb-8 border border-danger/20 shadow-lg shadow-danger/5">
+            <TriangleExclamation className="w-[36px] h-[36px] text-danger" />
           </div>
-          <h2 className="text-2xl font-bold mb-2">Something went wrong</h2>
-          <p className="text-foreground/60 mb-8 max-w-md">
-            {this.state.error?.message || 'An unexpected error occurred while loading this page.'}
+          <h2 className="text-2xl font-black mb-3 tracking-tight">发生了意外错误</h2>
+          <p className="text-default-500 mb-10 max-w-md text-sm font-medium leading-relaxed">
+            {this.state.error?.message || '加载此页面时发生了未知错误。这可能是一个临时问题。'}
           </p>
           <Button
-            color="primary"
-            variant="flat"
-            startContent={<RefreshCw size={18} />}
+            variant="secondary"
+            size="md"
+            className="font-bold px-8 border border-divider/10 shadow-md shadow-default-200/10 flex items-center gap-2"
             onPress={this.handleReset}
           >
-            Reload Application
+            <ArrowsRotateRight className="w-[18px] h-[18px] text-default-400" />
+            刷新并重试
           </Button>
         </div>
       )

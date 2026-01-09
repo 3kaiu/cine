@@ -1,16 +1,19 @@
-import { Moon, Sun } from 'react-feather'
+import { Button } from "@heroui/react";
+import { Sun, Moon } from '@gravity-ui/icons'
 import { useTheme } from '@/hooks/useTheme'
 
 export default function ThemeToggle() {
   const { isDark, toggleTheme } = useTheme()
 
   return (
-    <button
-      onClick={toggleTheme}
-      className="p-2 rounded-full text-foreground/70 hover:bg-default-100 hover:text-foreground transition-colors"
-      title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+    <Button
+      onPress={toggleTheme}
+      isIconOnly
+      variant="ghost"
+      size="sm"
+      className="text-foreground/70 hover:bg-default-100 hover:text-foreground transition-colors border-none"
     >
-      {isDark ? <Sun size={20} /> : <Moon size={20} />}
-    </button>
+      {isDark ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+    </Button>
   )
 }

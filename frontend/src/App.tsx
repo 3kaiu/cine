@@ -20,12 +20,12 @@ function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <div className="grid h-screen w-full grid-cols-[240px_1fr] bg-background text-foreground antialiased selection:bg-primary/20">
+        <div className="flex h-screen w-full bg-background text-foreground antialiased selection:bg-primary/20 overflow-hidden">
           <Sidebar />
 
-          <div className="flex flex-col min-w-0 h-full relative">
-            <main className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 scrollbar-hide">
-              <div className="max-w-6xl mx-auto w-full space-y-6">
+          <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 scrollbar-hide">
+              <div className="w-full space-y-4">
                 <Suspense fallback={<LoadingWrapper loading={true} />}>
                   <Routes>
                     <Route path="/" element={<Scanner />} />

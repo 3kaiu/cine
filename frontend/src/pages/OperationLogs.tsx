@@ -1,6 +1,7 @@
 
-import { Card, CardBody, CardHeader, Button, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Chip, Divider, Tooltip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/react";
-import { Clock, RefreshCw, RotateCcw, Trash2, Edit2, FileText, AlertTriangle } from 'react-feather'
+import { Button, Tooltip, Modal } from "@heroui/react";
+import clsx from 'clsx';
+import { Clock, ArrowsRotateRight, ArrowRotateLeft, TrashBin, Pencil, File } from '@gravity-ui/icons'
 import { mediaApi, OperationLog } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import dayjs from 'dayjs'
@@ -27,124 +28,156 @@ export default function OperationLogs() {
 
   const getActionIcon = (action: string) => {
     switch (action) {
-      case 'rename': return <Edit2 size={16} className="text-primary" />
-      case 'trash': return <Trash2 size={16} className="text-warning" />
-      case 'restore': return <RotateCcw size={16} className="text-success" />
-      case 'delete': return <Trash2 size={16} className="text-danger" />
-      default: return <FileText size={16} className="text-default-500" />
+      case 'rename': return <Pencil className="w-[14px] h-[14px] text-primary/70" />
+      case 'trash': return <TrashBin className="w-[14px] h-[14px] text-warning/70" />
+      case 'restore': return <ArrowRotateLeft className="w-[14px] h-[14px] text-success/70" />
+      case 'delete': return <TrashBin className="w-[14px] h-[14px] text-danger/70" />
+      default: return <File className="w-[14px] h-[14px] text-default-400" />
     }
   }
 
   const getActionLabel = (action: string) => {
-    switch (action) {
-      case 'rename': return <Chip size="sm" color="primary" variant="flat">Rename</Chip>
-      case 'trash': return <Chip size="sm" color="warning" variant="flat">Trash</Chip>
-      case 'restore': return <Chip size="sm" color="success" variant="flat">Restore</Chip>
-      case 'delete': return <Chip size="sm" color="danger" variant="flat">Delete</Chip>
-      default: return <Chip size="sm" variant="flat">{action}</Chip>
+    const labels: Record<string, { color: "primary" | "warning" | "success" | "danger" | "default", text: string }> = {
+      rename: { color: "primary", text: "重命名" },
+      trash: { color: "warning", text: "移入回收站" },
+      restore: { color: "success", text: "还原" },
+      delete: { color: "danger", text: "永久删除" },
     }
+    const config = labels[action] || { color: "default", text: action }
+    return (
+      <div className={clsx("flex items-center px-1.5 h-5 rounded border text-[9px] font-black uppercase tracking-tighter",
+        config.color === 'primary' ? 'bg-primary/5 border-primary/10 text-primary/80' :
+          config.color === 'warning' ? 'bg-warning/5 border-warning/10 text-warning/80' :
+            config.color === 'success' ? 'bg-success/5 border-success/10 text-success/80' :
+              config.color === 'danger' ? 'bg-danger/5 border-danger/10 text-danger/80' : 'bg-default-100/50 border-divider/10 text-default-400')}>
+        {config.text}
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader className="flex justify-between items-center">
-          <div className="flex gap-3 items-center">
-            <div className="p-2 bg-default-100 rounded-lg text-default-600">
-              <Clock size={24} />
-            </div>
-            <div className="flex flex-col">
-              <p className="text-md font-bold">Operation Logs</p>
-              <p className="text-small text-default-500">Audit trail of file operations and system actions.</p>
-            </div>
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+      <div className="flex justify-between items-center pt-2 pb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 bg-default-100/80 rounded-lg text-default-400 shadow-sm border border-divider/10">
+            <Clock className="w-[16px] h-[16px]" />
           </div>
-          <Button
-            variant="light"
-            onPress={() => refetch()}
-            isLoading={isPending}
-            startContent={<RefreshCw size={18} />}
-            isIconOnly
-          />
-        </CardHeader>
-        <Divider />
-        <CardBody className="p-0">
-          <Table aria-label="Operation Logs" removeWrapper>
-            <TableHeader>
-              <TableColumn>ACTION</TableColumn>
-              <TableColumn>PATH CHANGES</TableColumn>
-              <TableColumn>TIME</TableColumn>
-              <TableColumn>ACTIONS</TableColumn>
-            </TableHeader>
-            <TableBody emptyContent="No logs found.">
-              {(logs || []).map((log: OperationLog) => (
-                <TableRow key={log.id}>
-                  <TableCell>
-                    <div className="flex gap-2 items-center">
-                      {getActionIcon(log.action)}
-                      {getActionLabel(log.action)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1 text-xs">
-                      <div className="flex gap-2 items-center text-default-500">
-                        <span className="w-8">From:</span>
-                        <span className="font-mono break-all line-clamp-1" title={log.old_path}>{log.old_path}</span>
-                      </div>
-                      {log.new_path && (
-                        <div className="flex gap-2 items-center">
-                          <span className="w-8 text-primary">To:</span>
-                          <span className="font-mono font-bold break-all line-clamp-1" title={log.new_path}>{log.new_path}</span>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-default-500">{dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss')}</span>
-                  </TableCell>
-                  <TableCell>
-                    {log.action === 'rename' && (
-                      <Tooltip content="Undo Rename">
-                        <span
-                          className="text-warning cursor-pointer active:opacity-50"
-                          onClick={() => setConfirmUndo({ isOpen: true, logId: log.id })}
-                        >
-                          <RotateCcw size={18} />
-                        </span>
-                      </Tooltip>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardBody>
-      </Card>
+          <div className="flex flex-col">
+            <h2 className="text-[16px] font-bold tracking-tight text-foreground/90">操作日志</h2>
+            <p className="text-[11px] text-default-400 font-medium">记录文件操作和系统行为的审计轨迹。</p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="md"
+          onPress={() => refetch()}
+          isPending={isPending}
+          className="font-bold border border-divider/10 bg-default-50/50 shadow-sm transition-all flex items-center gap-2"
+        >
+          {!isPending && <ArrowsRotateRight className="w-[14px] h-[14px]" />}
+          刷新日志
+        </Button>
+      </div>
 
-      <Modal isOpen={confirmUndo.isOpen} onClose={() => setConfirmUndo({ isOpen: false, logId: null })}>
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader className="flex gap-2 items-center">
-                <AlertTriangle className="text-warning" />
-                Confirm Undo
-              </ModalHeader>
-              <ModalBody>
-                <p>Are you sure you want to undo this rename operation?</p>
-                <p className="text-small text-default-500">The system will attempt to restore the file to its original name.</p>
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="light" onPress={onClose}>Cancel</Button>
-                <Button
-                  color="warning"
-                  onPress={() => confirmUndo.logId && undoMutation.mutate(confirmUndo.logId)}
-                  isLoading={undoMutation.isPending}
-                >
-                  Undo Rename
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
+      <div className="flex flex-col gap-4 border-t border-divider/5 pt-4">
+        <h3 className="text-[10px] font-bold text-default-400/70 uppercase tracking-widest px-1">审计轨迹</h3>
+        <div className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
+          <div className="w-full overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-default-50/50 text-default-400 font-bold uppercase text-[9px] tracking-[.15em] h-10 border-b border-divider/5">
+                  <th className="px-2 font-normal w-[160px]">动作</th>
+                  <th className="px-2 font-normal">路径变更</th>
+                  <th className="px-2 font-normal w-[180px]">执行时间</th>
+                  <th className="px-2 font-normal w-[80px]">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(logs || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-[11px] text-default-400">暂无操作记录。</td>
+                  </tr>
+                ) : (
+                  (logs || []).map((log: OperationLog) => (
+                    <tr key={log.id} className="hover:bg-default-100/40 transition-colors border-b border-divider/5 last:border-0">
+                      <td className="py-3 px-2">
+                        <div className="flex gap-2.5 items-center">
+                          <div className="p-1 px-1.5 bg-default-100/50 rounded-md border border-divider/10">
+                            {getActionIcon(log.action)}
+                          </div>
+                          {getActionLabel(log.action)}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">
+                        <div className="flex flex-col gap-1 max-w-[400px]">
+                          <div className="flex gap-2 items-center text-[10px] text-default-400/80 font-mono">
+                            <span className="w-6 shrink-0 font-black opacity-50 text-[8px] tracking-tighter uppercase">FROM</span>
+                            <span className="truncate" title={log.old_path}>{log.old_path}</span>
+                          </div>
+                          {log.new_path && (
+                            <div className="flex gap-2 items-center text-[10px] font-mono">
+                              <span className="w-6 shrink-0 font-black text-primary/60 text-[8px] tracking-tighter uppercase">TO</span>
+                              <span className="font-bold text-foreground/80 truncate" title={log.new_path}>{log.new_path}</span>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2">
+                        <span className="text-[11px] text-default-400 font-mono font-medium">{dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss')}</span>
+                      </td>
+                      <td className="py-3 px-2">
+                        {log.action === 'rename' && (
+                          <Tooltip closeDelay={0}>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              variant="ghost"
+                              onPress={() => setConfirmUndo({ isOpen: true, logId: log.id })}
+                              className="bg-warning/5 hover:bg-warning/10 border border-warning/10 text-warning"
+                            >
+                              <ArrowRotateLeft className="w-[13px] h-[13px] text-warning/80" />
+                            </Button>
+                            <Tooltip.Content>
+                              撤销重命名
+                            </Tooltip.Content>
+                          </Tooltip>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <Modal isOpen={confirmUndo.isOpen} onOpenChange={(open) => setConfirmUndo({ ...confirmUndo, isOpen: open })}>
+        <Modal.Backdrop />
+        <Modal.Container>
+          <Modal.Dialog>
+            {({ close }) => (
+              <>
+                <Modal.Header className="flex flex-col gap-1">确认撤销</Modal.Header>
+                <Modal.Body>
+                  <p>确定要撤销此操作吗？这将尝试恢复文件到原来的状态。</p>
+                </Modal.Body>
+                <Modal.Footer>
+                  <Button variant="ghost" size="md" onPress={close} className="font-bold">取消</Button>
+                  <Button
+                    variant="ghost"
+                    size="md"
+                    onPress={() => confirmUndo.logId && undoMutation.mutate(confirmUndo.logId)}
+                    isPending={undoMutation.isPending}
+                    className="font-bold bg-warning/10 text-warning"
+                  >
+                    确认并撤销
+                  </Button>
+                </Modal.Footer>
+              </>
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
       </Modal>
     </div>
   )

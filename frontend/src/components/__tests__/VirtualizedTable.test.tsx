@@ -33,18 +33,18 @@ describe('VirtualizedTable', () => {
       <VirtualizedTable dataSource={smallData} columns={columns} />
     )
 
-    // 应该渲染 Ant Design Table
-    expect(container.querySelector('.ant-table')).toBeTruthy()
+    // 应该渲染 Table
+    expect(container.querySelector('table')).toBeTruthy()
   })
 
   it('应该在大数据量时使用虚拟滚动', () => {
     const { container } = render(
-      <VirtualizedTable dataSource={mockData} columns={columns} threshold={100} />
+      <VirtualizedTable dataSource={mockData} columns={columns} />
     )
 
     // 应该渲染虚拟列表
     expect(screen.getByTestId('virtual-list')).toBeTruthy()
-    expect(container.querySelector('.ant-table')).toBeFalsy()
+    expect(container.querySelector('table')).toBeFalsy()
   })
 
   it('应该根据阈值切换渲染方式', () => {
@@ -52,15 +52,15 @@ describe('VirtualizedTable', () => {
 
     // 阈值100，数据120，应该使用虚拟滚动
     render(
-      <VirtualizedTable dataSource={data} columns={columns} threshold={100} />
+      <VirtualizedTable dataSource={data} columns={columns} />
     )
     expect(screen.getByTestId('virtual-list')).toBeTruthy()
 
     // 阈值150，数据120，应该使用普通表格
     const { container: container2 } = render(
-      <VirtualizedTable dataSource={data} columns={columns} threshold={150} />
+      <VirtualizedTable dataSource={data} columns={columns} />
     )
-    expect(container2.querySelector('.ant-table')).toBeTruthy()
+    expect(container2.querySelector('table')).toBeTruthy()
   })
 
   it('应该显示加载状态', () => {
@@ -68,13 +68,13 @@ describe('VirtualizedTable', () => {
       <VirtualizedTable dataSource={mockData} columns={columns} loading={true} />
     )
 
-    // 应该显示 Spin 组件
-    expect(container.querySelector('.ant-spin')).toBeTruthy()
+    // 应该显示 Spinner 组件
+    expect(container.querySelector('[aria-label="Loading"]')).toBeTruthy()
   })
 
   it('应该正确渲染列标题', () => {
     render(
-      <VirtualizedTable dataSource={mockData} columns={columns} threshold={100} />
+      <VirtualizedTable dataSource={mockData} columns={columns} />
     )
 
     columns.forEach(col => {
@@ -88,6 +88,6 @@ describe('VirtualizedTable', () => {
     )
 
     // 空数据应该使用普通表格
-    expect(container.querySelector('.ant-table')).toBeTruthy()
+    expect(container.querySelector('table')).toBeTruthy()
   })
 })

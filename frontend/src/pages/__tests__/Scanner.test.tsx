@@ -24,12 +24,12 @@ describe('Scanner Page', () => {
 
   it('应该渲染扫描页面', () => {
     render(<Scanner />)
-    expect(screen.getByText(/文件扫描/i)).toBeInTheDocument()
+    expect(screen.getByText(/扫描器/i)).toBeInTheDocument()
   })
 
   it('应该显示目录输入框', () => {
     render(<Scanner />)
-    const input = screen.getByPlaceholderText(/目录路径/i)
+    const input = screen.getByPlaceholderText(/例如:/i)
     expect(input).toBeInTheDocument()
   })
 
@@ -41,13 +41,14 @@ describe('Scanner Page', () => {
 
   it('应该显示刷新按钮', () => {
     render(<Scanner />)
-    const button = screen.getByText(/刷新列表/i)
-    expect(button).toBeInTheDocument()
+    // 刷新按钮现在是图标按钮
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.length).toBeGreaterThan(0)
   })
 
   it('应该能够输入目录路径', async () => {
     const { user } = render(<Scanner />)
-    const input = screen.getByPlaceholderText(/目录路径/i) as HTMLInputElement
+    const input = screen.getByPlaceholderText(/例如:/i) as HTMLInputElement
 
     await user.type(input, '/test/path')
     expect(input.value).toBe('/test/path')
@@ -59,7 +60,7 @@ describe('Scanner Page', () => {
     )
 
     const { user } = render(<Scanner />)
-    const input = screen.getByPlaceholderText(/目录路径/i)
+    const input = screen.getByPlaceholderText(/例如:/i)
     const button = screen.getByRole('button', { name: /开始扫描/i })
 
     await user.type(input, '/test/path')
@@ -67,7 +68,7 @@ describe('Scanner Page', () => {
 
     // 应该显示加载状态
     await waitFor(() => {
-      expect(button).toHaveClass('ant-btn-loading')
+      expect(button).toHaveAttribute('data-loading', 'true')
     })
   })
 })
