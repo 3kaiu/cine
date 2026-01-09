@@ -74,6 +74,7 @@ pub struct FileListQuery {
     pub page: Option<u64>,
     pub page_size: Option<u64>,
     pub file_type: Option<String>,
+    pub name: Option<String>,
     pub min_size: Option<i64>,
     pub max_size: Option<i64>,
 }
@@ -92,6 +93,11 @@ pub async fn list_files(
     if let Some(ref file_type) = query.file_type {
         builder.push(" AND file_type = ");
         builder.push_bind(file_type);
+    }
+
+    if let Some(ref name) = query.name {
+        builder.push(" AND name LIKE ");
+        builder.push_bind(format!("%{}%", name));
     }
 
     if let Some(min_size) = query.min_size {
@@ -121,6 +127,11 @@ pub async fn list_files(
     if let Some(ref file_type) = query.file_type {
         count_builder.push(" AND file_type = ");
         count_builder.push_bind(file_type);
+    }
+
+    if let Some(ref name) = query.name {
+        count_builder.push(" AND name LIKE ");
+        count_builder.push_bind(format!("%{}%", name));
     }
 
     if let Some(min_size) = query.min_size {

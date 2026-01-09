@@ -1,9 +1,13 @@
-import { Card, Button, Table, Space, message, Popconfirm, Tag } from 'antd'
-import { DeleteOutlined, RestOutlined, ClearOutlined } from '@ant-design/icons'
+import { useState, useMemo } from 'react'
+import { Card, Button, Table, Space, message, Popconfirm, Tag, Modal, Typography, Badge } from 'antd'
+import { DeleteOutlined, RestOutlined, ClearOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { mediaApi } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import LoadingWrapper from '@/components/LoadingWrapper'
 import { handleError } from '@/utils/errorHandler'
+
+const { Text } = Typography
+const { confirm } = Modal
 
 interface TrashItem {
   id: string
@@ -21,31 +25,35 @@ interface TrashData {
 }
 
 export default function Trash() {
-  const { data, refetch, isLoading } = useQuery<TrashData>({
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+
+  const { data, refetch, isPending } = useQuery<TrashData>({
     queryKey: ['trash'],
     queryFn: mediaApi.listTrash
   })
 
+  const selectedItems = useMemo(() => {
+    return (data?.items || []).filter(item => selectedRowKeys.includes(item.id))
+  }, [data, selectedRowKeys])
+
   const restoreMutation = useMutation({
     mutationFn: mediaApi.restoreFromTrash,
     onSuccess: () => {
-      message.success('文件恢复成功')
+      message.success('恢复成功')
+      setSelectedRowKeys([])
       refetch()
     },
-    onError: (error: any) => {
-      handleError(error, '文件恢复失败')
-    },
+    onError: (error: any) => handleError(error, '恢复失败'),
   })
 
   const deleteMutation = useMutation({
     mutationFn: mediaApi.permanentlyDelete,
     onSuccess: () => {
-      message.success('文件已永久删除')
+      message.success('永久删除成功')
+      setSelectedRowKeys([])
       refetch()
     },
-    onError: (error: any) => {
-      handleError(error, '删除失败')
-    },
+    onError: (error: any) => handleError(error, '删除失败'),
   })
 
   const cleanupMutation = useMutation({
@@ -54,21 +62,53 @@ export default function Trash() {
       message.success(data.message || '清理完成')
       refetch()
     },
-    onError: (error: any) => {
-      handleError(error, '清理失败')
-    },
+    onError: (error: any) => handleError(error, '清理失败'),
   })
 
-  const handleRestore = (fileId: string) => {
-    restoreMutation.mutate({ file_id: fileId })
+  const handleBatchRestore = () => {
+    confirm({
+      title: `确定要恢复这 ${selectedRowKeys.length} 个文件吗？`,
+      icon: <RestOutlined style={{ color: '#1890ff' }} />,
+      onOk: async () => {
+        let success = 0
+        let failed = 0
+        for (const id of selectedRowKeys) {
+          try {
+            await mediaApi.restoreFromTrash({ file_id: id })
+            success++
+          } catch (e) {
+            failed++
+          }
+        }
+        message.info(`处理完成: 成功 ${success} 个, 失败 ${failed} 个`)
+        setSelectedRowKeys([])
+        refetch()
+      }
+    })
   }
 
-  const handleDelete = (fileId: string) => {
-    deleteMutation.mutate(fileId)
-  }
-
-  const handleCleanup = () => {
-    cleanupMutation.mutate()
+  const handleBatchDelete = () => {
+    confirm({
+      title: `确定要永久删除这 ${selectedRowKeys.length} 个文件吗？`,
+      icon: <ExclamationCircleOutlined />,
+      content: '此操作不可撤销，文件将从磁盘上物理删除。',
+      okType: 'danger',
+      onOk: async () => {
+        let success = 0
+        let failed = 0
+        for (const id of selectedRowKeys) {
+          try {
+            await mediaApi.permanentlyDelete(id)
+            success++
+          } catch (e) {
+            failed++
+          }
+        }
+        message.info(`处理完成: 成功 ${success} 个, 失败 ${failed} 个`)
+        setSelectedRowKeys([])
+        refetch()
+      }
+    })
   }
 
   const columns = [
@@ -76,12 +116,6 @@ export default function Trash() {
       title: '原文件名',
       dataIndex: 'original_name',
       key: 'original_name',
-      ellipsis: true,
-    },
-    {
-      title: '原路径',
-      dataIndex: 'original_path',
-      key: 'original_path',
       ellipsis: true,
     },
     {
@@ -108,29 +142,23 @@ export default function Trash() {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 150,
       render: (_: any, record: TrashItem) => (
         <Space>
           <Button
             size="small"
-            icon={<RestOutlined />}
-            onClick={() => handleRestore(record.id)}
-            loading={restoreMutation.isPending}
+            type="link"
+            onClick={() => restoreMutation.mutate({ file_id: record.id })}
           >
             恢复
           </Button>
           <Popconfirm
-            title="确定要永久删除这个文件吗？此操作不可恢复！"
-            onConfirm={() => handleDelete(record.id)}
+            title="永久删除？不可恢复！"
+            onConfirm={() => deleteMutation.mutate(record.id)}
+            okText="确定"
+            cancelText="取消"
           >
-            <Button
-              danger
-              size="small"
-              icon={<DeleteOutlined />}
-              loading={deleteMutation.isPending}
-            >
-              永久删除
-            </Button>
+            <Button size="small" type="link" danger>删除</Button>
           </Popconfirm>
         </Space>
       ),
@@ -138,44 +166,67 @@ export default function Trash() {
   ]
 
   return (
-    <LoadingWrapper loading={isLoading}>
-      <div>
-        <Card title="回收站" style={{ marginBottom: 16 }}>
-          <Space>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card title="回收站管理">
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Space size="middle">
+            <Button
+              icon={<RestOutlined />}
+              onClick={handleBatchRestore}
+              disabled={selectedRowKeys.length === 0}
+            >
+              批量恢复 {selectedRowKeys.length > 0 && <Badge count={selectedRowKeys.length} offset={[10, -10]} />}
+            </Button>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={handleBatchDelete}
+              disabled={selectedRowKeys.length === 0}
+            >
+              批量永久删除
+            </Button>
+            <Divider type="vertical" />
             <Popconfirm
               title="确定要清理所有过期文件吗？"
-              onConfirm={handleCleanup}
+              onConfirm={() => cleanupMutation.mutate()}
             >
-              <Button
-                icon={<ClearOutlined />}
-                loading={cleanupMutation.isPending}
-              >
-                清理过期文件
-              </Button>
+              <Button icon={<ClearOutlined />}>清理过期</Button>
             </Popconfirm>
-            {data && (
-              <span>共 {data.total} 个文件</span>
-            )}
           </Space>
-        </Card>
+          {selectedRowKeys.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <Text type="secondary">
+                已选择 {selectedRowKeys.length} 个文件，共 {formatSize(selectedItems.reduce((acc, i) => acc + i.file_size, 0))}
+              </Text>
+              <Button type="link" size="small" onClick={() => setSelectedRowKeys([])}>清空选择</Button>
+            </div>
+          )}
+        </Space>
+      </Card>
 
-        <Card title="已删除文件">
+      <Card title={`已删除文件(${data?.total || 0})`}>
+        <LoadingWrapper loading={isPending}>
           <Table
             columns={columns}
             dataSource={data?.items || []}
             rowKey="id"
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys(keys as string[]),
+            }}
             pagination={{
               pageSize: 50,
               showSizeChanger: true,
             }}
           />
-        </Card>
-      </div>
-    </LoadingWrapper>
+        </LoadingWrapper>
+      </Card>
+    </div>
   )
 }
 
 function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let size = bytes
   let unitIndex = 0
@@ -185,5 +236,17 @@ function formatSize(bytes: number): string {
     unitIndex++
   }
 
-  return `${size.toFixed(2)} ${units[unitIndex]}`
+  return `${size.toFixed(2)} ${units[unitIndex]} `
 }
+
+const Divider = ({ type }: { type?: 'vertical' | 'horizontal' }) => (
+  <span style={{
+    display: 'inline-block',
+    borderLeft: type === 'vertical' ? '1px solid #f0f0f0' : 'none',
+    borderTop: type === 'horizontal' ? '1px solid #f0f0f0' : 'none',
+    margin: '0 8px',
+    height: type === 'vertical' ? 14 : 0,
+    width: type === 'horizontal' ? '100%' : 0,
+    verticalAlign: 'middle'
+  }} />
+)

@@ -1,7 +1,9 @@
 import * as ReactWindow from 'react-window'
 const FixedSizeList = (ReactWindow as any).FixedSizeList
-import { Table, Spin } from 'antd'
+import { Table, Spin, Typography } from 'antd'
 import type { TableProps } from 'antd/es/table'
+
+const { Text } = Typography
 
 // Helper to render column title
 const renderTitle = (title: any, props: any) => {
@@ -10,7 +12,6 @@ const renderTitle = (title: any, props: any) => {
   }
   return title
 }
-
 
 interface VirtualizedTableProps<T> extends Omit<TableProps<T>, 'components'> {
   height?: number
@@ -53,7 +54,7 @@ export default function VirtualizedTable<T extends { id: string }>({
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const record = dataSource[index]
     return (
-      <div style={style} className="virtual-table-row">
+      <div style={{ ...style, display: 'flex' }} className="virtual-table-row">
         {columns.map((col, colIndex) => {
           const value = (col as any).dataIndex
             ? (record as any)[Array.isArray((col as any).dataIndex) ? (col as any).dataIndex.join('.') : (col as any).dataIndex]
@@ -64,13 +65,20 @@ export default function VirtualizedTable<T extends { id: string }>({
             <div
               key={colIndex}
               style={{
-                display: 'inline-block',
-                width: (col.width as number) || 200,
-                padding: '8px',
+                flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
+                minWidth: (col.width as number) || 100,
+                padding: '8px 12px',
                 borderBottom: '1px solid #f0f0f0',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
               }}
             >
-              {displayValue}
+              {typeof displayValue === 'string' || typeof displayValue === 'number' ? (
+                <Text ellipsis title={String(displayValue)}>{displayValue}</Text>
+              ) : (
+                displayValue
+              )}
             </div>
           )
         })}
@@ -95,11 +103,14 @@ export default function VirtualizedTable<T extends { id: string }>({
           <div
             key={index}
             style={{
-              flex: col.width ? `0 0 ${col.width}px` : '1 1 auto',
-              minWidth: (col.width as number) || 200,
+              flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
+              minWidth: (col.width as number) || 100,
               padding: '12px',
               fontWeight: 600,
               fontSize: '14px',
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
             }}
           >
             {renderTitle(col.title, {})}

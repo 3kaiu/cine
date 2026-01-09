@@ -36,6 +36,7 @@ export const mediaApi = {
     page?: number
     page_size?: number
     file_type?: string
+    name?: string
     min_size?: number
     max_size?: number
   }) => api.get<{

@@ -1,25 +1,33 @@
-import { useState } from 'react'
-import { Card, Button, Input, Space, message } from 'antd'
-import { FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons'
+import { useState, useCallback } from 'react'
+import { Card, Button, Input, Space, message, Divider } from 'antd'
+import { FolderOpenOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import ProgressMonitor from '@/components/ProgressMonitor'
-import LoadingWrapper from '@/components/LoadingWrapper'
 import VirtualizedTable from '@/components/VirtualizedTable'
 import { handleError } from '@/utils/errorHandler'
+import { debounce } from 'lodash'
 
 export default function Scanner() {
   const [directory, setDirectory] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [scanning, setScanning] = useState(false)
   const [taskId, setTaskId] = useState<string | undefined>(undefined)
 
-  const { data, refetch } = useQuery({
-    queryKey: ['files', { page: 1, page_size: 50 }],
-    queryFn: () => mediaApi.getFiles({ page: 1, page_size: 50 }),
-    enabled: false,
-    staleTime: 5 * 60 * 1000, // 5分钟
-    gcTime: 10 * 60 * 1000, // 10分钟 (v5: cacheTime renamed)
+  const { data, refetch, isPending } = useQuery({
+    queryKey: ['files', { page: 1, page_size: 50, name: searchTerm }],
+    queryFn: () => mediaApi.getFiles({ page: 1, page_size: 50, name: searchTerm }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   })
+
+  // 搜索防抖
+  const debouncedSearch = useCallback(
+    debounce((value: string) => {
+      setSearchTerm(value)
+    }, 500),
+    []
+  )
 
   const scanMutation = useMutation({
     mutationFn: mediaApi.scanDirectory,
@@ -27,11 +35,7 @@ export default function Scanner() {
       message.success('扫描任务已启动')
       setScanning(true)
       setTaskId(data.task_id)
-      // 延迟刷新列表，给扫描一些时间
-      setTimeout(() => {
-        setScanning(false)
-        refetch()
-      }, 5000)
+      // 扫描任务由 WebSocket 实时跟踪，这里无需 setTimeout 轮询
     },
     onError: (error: any) => {
       handleError(error, '扫描失败')
@@ -47,7 +51,7 @@ export default function Scanner() {
     scanMutation.mutate({
       directory: directory.trim(),
       recursive: true,
-      file_types: ['video', 'audio'],
+      file_types: ['video', 'audio', 'image'],
     })
   }
 
@@ -57,6 +61,7 @@ export default function Scanner() {
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
+      width: 300,
     },
     {
       title: '类型',
@@ -80,56 +85,67 @@ export default function Scanner() {
   ]
 
   return (
-    <LoadingWrapper loading={scanMutation.isPending}>
-      <div>
-        <Card title="文件扫描" style={{ marginBottom: 16 }}>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Input
-              placeholder="请输入要扫描的目录路径"
-              value={directory}
-              onChange={(e) => setDirectory(e.target.value)}
-              prefix={<FolderOpenOutlined />}
-              size="large"
-            />
-            <Space>
-              <Button
-                type="primary"
-                onClick={handleScan}
-                loading={scanning || scanMutation.isPending}
-                icon={<ReloadOutlined />}
-              >
-                开始扫描
-              </Button>
-              <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
-                刷新列表
-              </Button>
-            </Space>
-            {scanning && taskId && (
-              <ProgressMonitor taskId={taskId} />
-            )}
-          </Space>
-        </Card>
-
-        <Card title="文件列表">
-          <VirtualizedTable<MediaFile>
-            columns={columns}
-            dataSource={data?.files || []}
-            height={600}
-            rowHeight={50}
-            loading={!data && scanMutation.isPending}
-            pagination={{
-              total: data?.total || 0,
-              pageSize: data?.page_size || 50,
-              current: data?.page || 1,
-            }}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card title="文件扫描与搜索">
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Input
+            placeholder="请输入要扫描的目录路径"
+            value={directory}
+            onChange={(e) => setDirectory(e.target.value)}
+            prefix={<FolderOpenOutlined />}
+            size="large"
           />
-        </Card>
-      </div>
-    </LoadingWrapper>
+          <Space split={<Divider type="vertical" />}>
+            <Button
+              type="primary"
+              onClick={handleScan}
+              loading={scanning || scanMutation.isPending}
+              icon={<ReloadOutlined />}
+            >
+              开始扫描
+            </Button>
+            <Input
+              placeholder="搜索文件名..."
+              onChange={(e) => debouncedSearch(e.target.value)}
+              prefix={<SearchOutlined />}
+              style={{ width: 300 }}
+              allowClear
+            />
+            <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
+              刷新列表
+            </Button>
+          </Space>
+
+          {(scanning || taskId) && (
+            <div style={{ marginTop: 16 }}>
+              <ProgressMonitor
+                taskId={taskId}
+              />
+            </div>
+          )}
+        </Space>
+      </Card>
+
+      <Card title="文件库">
+        <VirtualizedTable<MediaFile>
+          columns={columns}
+          dataSource={data?.files || []}
+          height={600}
+          rowHeight={50}
+          loading={isPending}
+          pagination={{
+            total: data?.total || 0,
+            pageSize: data?.page_size || 50,
+            current: data?.page || 1,
+          }}
+        />
+      </Card>
+    </div>
   )
 }
 
 function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let size = bytes
   let unitIndex = 0
