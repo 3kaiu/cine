@@ -220,6 +220,15 @@ jobs:
           echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "Version: $VERSION, Tag: $TAG_NAME"
 
+      - name: Delete existing release
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ${{ steps.get_version.outputs.tag }} --cleanup-tag --yes || true
+          # 等待一下确保删除完成
+          sleep 2
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
