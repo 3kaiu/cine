@@ -14,6 +14,19 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --sidebar-background: 240 5% 96%; /* Neutral-50 equivalent for light mode */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+      --sidebar-background: 240 4% 9%;
+  }
+}
+
+/* Explicit dark mode override */
+:root.dark {
+  --sidebar-background: 240 4% 9%;
 }
 
 body {

@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import Sidebar from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import ThemeToggle from './components/ThemeToggle'
 import LoadingWrapper from './components/LoadingWrapper'
 import { Toaster } from 'sonner'
 
@@ -21,16 +20,12 @@ function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <div className="flex h-screen w-full overflow-hidden bg-background">
+        <div className="grid h-screen w-full grid-cols-[240px_1fr] bg-background text-foreground antialiased selection:bg-primary/20">
           <Sidebar />
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-            <header className="h-16 px-6 flex items-center justify-end border-b border-divider bg-background/50 backdrop-blur-md">
-              <ThemeToggle />
-            </header>
-
-            <main className="flex-1 overflow-auto p-6 scrollbar-hide">
-              <div className="max-w-7xl mx-auto w-full">
+          <div className="flex flex-col min-w-0 h-full relative">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 scrollbar-hide">
+              <div className="max-w-6xl mx-auto w-full space-y-6">
                 <Suspense fallback={<LoadingWrapper loading={true} />}>
                   <Routes>
                     <Route path="/" element={<Scanner />} />

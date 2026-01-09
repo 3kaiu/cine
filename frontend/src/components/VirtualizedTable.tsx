@@ -1,5 +1,5 @@
-import * as ReactWindow from 'react-window'
-const FixedSizeList = (ReactWindow as any).FixedSizeList
+import * as ReactWindow from 'react-window';
+const FixedSizeList = (ReactWindow as any).FixedSizeList || (ReactWindow as any).default?.FixedSizeList;
 import { Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue } from "@heroui/react";
 import clsx from 'clsx';
 
