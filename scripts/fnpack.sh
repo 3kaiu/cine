@@ -12,7 +12,11 @@ rm -rf app config manifest ICON.PNG ICON_256.PNG cmd
 # 创建打包目录
 mkdir -p app/{frontend,backend}
 mkdir -p config
-mkdir -p cmd # 创建 cmd 目录，即使为空也保留结构
+# 创建生命周期脚本目录
+mkdir -p cmd
+# 复制源码中的生命周期脚本到打包目录
+cp scripts/fnos_lifecycle.sh cmd/main
+chmod +x cmd/main
 
 # 构建后端
 echo "构建后端..."
