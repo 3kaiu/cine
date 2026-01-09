@@ -1,7 +1,4 @@
-use axum::{
-    extract::State,
-    response::Json,
-};
+use axum::{extract::State, response::Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -26,13 +23,12 @@ pub async fn scrape_metadata(
     Json(req): Json<ScrapeRequest>,
 ) -> Result<Json<ScrapeResponse>, (axum::http::StatusCode, String)> {
     // 从数据库获取文件信息
-    let file = sqlx::query_as::<_, crate::models::MediaFile>(
-        "SELECT * FROM media_files WHERE id = ?"
-    )
-    .bind(&req.file_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let file =
+        sqlx::query_as::<_, crate::models::MediaFile>("SELECT * FROM media_files WHERE id = ?")
+            .bind(&req.file_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let file = match file {
         Some(f) => f,
@@ -47,8 +43,10 @@ pub async fn scrape_metadata(
     let source = req.source.as_deref().unwrap_or("tmdb");
     let auto_match = req.auto_match.unwrap_or(true);
 
-    // 执行刮削
-    match scraper::scrape_metadata(&file, source, auto_match, &state.config).await {
+    // 执行刮削（使用共享 HTTP 客户端）
+    match scraper::scrape_metadata(&state.http_client, &file, source, auto_match, &state.config)
+        .await
+    {
         Ok(metadata) => Ok(Json(ScrapeResponse {
             metadata: Some(metadata),
             error: None,
@@ -88,17 +86,24 @@ pub async fn batch_scrape_metadata(
     let mut errors = Vec::new();
 
     for file_id in req.file_ids {
-        let file = sqlx::query_as::<_, crate::models::MediaFile>(
-            "SELECT * FROM media_files WHERE id = ?"
-        )
-        .bind(&file_id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let file =
+            sqlx::query_as::<_, crate::models::MediaFile>("SELECT * FROM media_files WHERE id = ?")
+                .bind(&file_id)
+                .fetch_optional(&state.db)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         match file {
             Some(f) => {
-                match scraper::scrape_metadata(&f, source, auto_match, &state.config).await {
+                match scraper::scrape_metadata(
+                    &state.http_client,
+                    &f,
+                    source,
+                    auto_match,
+                    &state.config,
+                )
+                .await
+                {
                     Ok(metadata) => {
                         results.push(serde_json::json!({
                             "file_id": file_id,
@@ -116,8 +121,5 @@ pub async fn batch_scrape_metadata(
         }
     }
 
-    Ok(Json(BatchScrapeResponse {
-        results,
-        errors,
-    }))
+    Ok(Json(BatchScrapeResponse { results, errors }))
 }

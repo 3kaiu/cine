@@ -64,7 +64,7 @@ RUN mkdir -p /app/data /app/data/hash_cache
 # 设置环境变量
 ENV PORT=3000
 ENV DATABASE_URL=sqlite:/app/data/media_toolbox.db
-ENV RUST_LOG=media_toolbox=info,axum=info
+ENV RUST_LOG=cine=info,axum=info
 
 # 暴露端口
 EXPOSE 3000

@@ -57,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
         progress_broadcaster: websocket::ProgressBroadcaster::new(),
         hash_cache: Arc::new(crate::services::cache::FileHashCache::new()),
+        http_client: reqwest::Client::new(), // 复用 HTTP 客户端
     };
     let app_state = Arc::new(app_state);
 

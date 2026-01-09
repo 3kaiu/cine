@@ -1,16 +1,16 @@
 //! 并行哈希计算服务
 
+use futures::stream::{self, StreamExt};
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use futures::stream::{self, StreamExt};
 use tokio::sync::Semaphore;
 
+use crate::services::cache::FileHashCache;
 use crate::services::hasher;
 use crate::websocket::{ProgressBroadcaster, ProgressMessage};
-use crate::services::cache::FileHashCache;
 
 /// 批量并行计算文件哈希
-/// 
+///
 /// # 参数
 /// - `db`: 数据库连接池
 /// - `file_ids`: 要计算哈希的文件ID列表
@@ -18,6 +18,7 @@ use crate::services::cache::FileHashCache;
 /// - `task_id`: 任务ID（用于进度推送）
 /// - `progress_broadcaster`: 进度广播器（可选）
 /// - `hash_cache`: 哈希缓存（可选）
+#[allow(dead_code)]
 pub async fn batch_calculate_hash_parallel(
     db: &SqlitePool,
     file_ids: &[String],
@@ -43,7 +44,7 @@ pub async fn batch_calculate_hash_parallel(
             async move {
                 // 获取信号量许可（控制并发）
                 let _permit = semaphore.acquire().await.unwrap();
-                
+
                 // 计算哈希
                 let result = hasher::calculate_file_hash(
                     &db,
@@ -51,13 +52,14 @@ pub async fn batch_calculate_hash_parallel(
                     &task_id,
                     progress_broadcaster_clone.clone(),
                     hash_cache,
-                ).await;
+                )
+                .await;
 
                 // 更新进度
                 if let Some(ref broadcaster) = progress_broadcaster_clone {
                     let completed = index + 1;
                     let progress = (completed as f64 / total as f64) * 100.0;
-                    
+
                     broadcaster.send(ProgressMessage {
                         task_id: task_id.clone(),
                         task_type: "batch_hash".to_string(),
@@ -95,10 +97,17 @@ pub async fn batch_calculate_hash_parallel(
             task_type: "batch_hash".to_string(),
             progress: 100.0,
             current_file: None,
-            message: Some(format!("Completed: {}/{} files processed", completed, total)),
+            message: Some(format!(
+                "Completed: {}/{} files processed",
+                completed, total
+            )),
         });
     }
 
-    tracing::info!("Batch hash calculation completed: {}/{} files", completed, total);
+    tracing::info!(
+        "Batch hash calculation completed: {}/{} files",
+        completed,
+        total
+    );
     Ok(())
 }

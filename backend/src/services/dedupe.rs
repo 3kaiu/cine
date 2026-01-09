@@ -1,5 +1,5 @@
+use crate::models::{DuplicateGroup, MediaFile};
 use sqlx::SqlitePool;
-use crate::models::{MediaFile, DuplicateGroup};
 
 /// 查找重复文件（优化版本：使用数据库分组）
 pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGroup>> {
@@ -8,6 +8,7 @@ pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGro
     #[derive(sqlx::FromRow)]
     struct DuplicateHash {
         hash_md5: String,
+        #[allow(dead_code)]
         file_count: i64,
         total_size: i64,
         file_ids: String, // GROUP_CONCAT 结果
@@ -31,7 +32,7 @@ pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGro
         GROUP BY hash_md5
         HAVING COUNT(*) > 1
         ORDER BY total_size DESC
-        "#
+        "#,
     )
     .fetch_all(db)
     .await?;
@@ -41,23 +42,20 @@ pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGro
     let mut duplicate_groups = Vec::new();
     for dup_hash in duplicate_hashes {
         let file_ids: Vec<&str> = dup_hash.file_ids.split(',').collect();
-        
+
         // 如果文件ID列表过长，分批查询
         const BATCH_SIZE: usize = 50; // 每批最多50个文件ID
         let mut all_files = Vec::new();
-        
+
         for chunk in file_ids.chunks(BATCH_SIZE) {
             let placeholders = vec!["?"; chunk.len()].join(",");
-            let query = format!(
-                "SELECT * FROM media_files WHERE id IN ({})",
-                placeholders
-            );
-            
+            let query = format!("SELECT * FROM media_files WHERE id IN ({})", placeholders);
+
             let mut query_builder = sqlx::query_as::<_, MediaFile>(&query);
             for file_id in chunk {
                 query_builder = query_builder.bind(*file_id);
             }
-            
+
             let files = query_builder.fetch_all(db).await?;
             all_files.extend(files);
         }

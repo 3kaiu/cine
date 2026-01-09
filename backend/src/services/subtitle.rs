@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use regex::Regex;
+use std::path::Path;
 use walkdir::WalkDir;
 
 /// 字幕文件信息
@@ -17,7 +17,8 @@ pub fn find_matching_subtitles(
     subtitle_dir: Option<&str>,
 ) -> anyhow::Result<Vec<SubtitleInfo>> {
     let video_path = Path::new(video_path);
-    let video_name = video_path.file_stem()
+    let video_name = video_path
+        .file_stem()
         .and_then(|n| n.to_str())
         .unwrap_or("");
 
@@ -44,7 +45,8 @@ pub fn find_matching_subtitles(
             continue;
         }
 
-        let ext = path.extension()
+        let ext = path
+            .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -53,7 +55,8 @@ pub fn find_matching_subtitles(
             continue;
         }
 
-        let file_name = path.file_stem()
+        let file_name = path
+            .file_stem()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_lowercase();
@@ -74,7 +77,8 @@ pub fn find_matching_subtitles(
 
     // 按语言和格式排序
     subtitles.sort_by(|a, b| {
-        a.language.cmp(&b.language)
+        a.language
+            .cmp(&b.language)
             .then_with(|| a.format.cmp(&b.format))
     });
 
@@ -106,7 +110,10 @@ fn is_subtitle_match(video_name: &str, subtitle_name: &str) -> bool {
     // 如果字幕文件名包含视频文件名的主要部分
     if video_parts.len() >= 2 {
         let main_part = video_parts[0];
-        if subtitle_parts.iter().any(|&part| part == main_part && part.len() > 3) {
+        if subtitle_parts
+            .iter()
+            .any(|&part| part == main_part && part.len() > 3)
+        {
             return true;
         }
     }
@@ -116,7 +123,10 @@ fn is_subtitle_match(video_name: &str, subtitle_name: &str) -> bool {
 
 /// 清理文件名（移除常见后缀）
 fn clean_filename(name: &str) -> String {
-    let re = Regex::new(r"\.(1080p|720p|480p|4k|bluray|webrip|dvdrip|x264|x265|hevc|h264|aac|ac3|dts|mp3|flac)").unwrap();
+    let re = Regex::new(
+        r"\.(1080p|720p|480p|4k|bluray|webrip|dvdrip|x264|x265|hevc|h264|aac|ac3|dts|mp3|flac)",
+    )
+    .unwrap();
     re.replace_all(name, "").to_string()
 }
 
@@ -126,7 +136,11 @@ fn detect_language(filename: &str, path: &str) -> String {
 
     // 常见语言标识
     let languages = vec![
-        ("chinese", "zh", vec!["chinese", "chs", "cht", "zh", "cn", "简体", "繁体", "中文"]),
+        (
+            "chinese",
+            "zh",
+            vec!["chinese", "chs", "cht", "zh", "cn", "简体", "繁体", "中文"],
+        ),
         ("english", "en", vec!["english", "eng", "en"]),
         ("japanese", "ja", vec!["japanese", "jpn", "ja"]),
         ("korean", "ko", vec!["korean", "kor", "ko"]),
@@ -147,6 +161,7 @@ fn detect_language(filename: &str, path: &str) -> String {
 }
 
 /// 下载字幕（从字幕库等）
+#[allow(dead_code)]
 pub async fn download_subtitle(
     _video_path: &str,
     _language: &str,

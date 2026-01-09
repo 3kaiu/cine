@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  media-toolbox:
+  cine:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: media-toolbox
+    container_name: cine
     ports:
       - "3000:3000"
     volumes:
@@ -19,7 +19,7 @@ services:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - MAX_FILE_SIZE=200000000000
       - CHUNK_SIZE=67108864
-      - RUST_LOG=media_toolbox=info,axum=info
+      - RUST_LOG=cine=info,axum=info
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]

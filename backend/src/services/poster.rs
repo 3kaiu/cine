@@ -4,19 +4,20 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 /// 下载海报或背景图
-pub async fn download_image(
-    url: &str,
-    output_path: &Path,
-) -> anyhow::Result<()> {
+#[allow(dead_code)]
+pub async fn download_image(url: &str, output_path: &Path) -> anyhow::Result<()> {
     let client = Client::new();
     let response = client.get(url).send().await?;
-    
+
     if !response.status().is_success() {
-        return Err(anyhow::anyhow!("Failed to download image: {}", response.status()));
+        return Err(anyhow::anyhow!(
+            "Failed to download image: {}",
+            response.status()
+        ));
     }
 
     let bytes = response.bytes().await?;
-    
+
     // 确保目录存在
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).await?;
@@ -32,15 +33,18 @@ pub async fn download_image(
 }
 
 /// 为媒体文件下载海报和背景图
+#[allow(dead_code)]
 pub async fn download_media_images(
     file_path: &str,
     poster_url: Option<&str>,
     backdrop_url: Option<&str>,
 ) -> anyhow::Result<(Option<PathBuf>, Option<PathBuf>)> {
     let media_path = Path::new(file_path);
-    let media_dir = media_path.parent()
+    let media_dir = media_path
+        .parent()
         .ok_or_else(|| anyhow::anyhow!("Invalid file path"))?;
-    let media_name = media_path.file_stem()
+    let media_name = media_path
+        .file_stem()
         .and_then(|n| n.to_str())
         .ok_or_else(|| anyhow::anyhow!("Invalid file name"))?;
 

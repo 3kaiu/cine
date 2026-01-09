@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct MediaFile {
@@ -13,7 +12,7 @@ pub struct MediaFile {
     pub hash_xxhash: Option<String>,
     pub hash_md5: Option<String>,
     pub video_info: Option<String>, // JSON
-    pub metadata: Option<String>,    // JSON
+    pub metadata: Option<String>,   // JSON
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_modified: DateTime<Utc>,
@@ -21,7 +20,7 @@ pub struct MediaFile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoInfo {
-    pub duration: Option<f64>,      // 秒
+    pub duration: Option<f64>, // 秒
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub codec: Option<String>,
@@ -66,6 +65,7 @@ pub struct SeasonInfo {
     pub name: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanTask {
     pub id: String,
@@ -77,12 +77,13 @@ pub struct ScanTask {
     pub updated_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HashTask {
     pub id: String,
     pub file_id: String,
     pub status: String,
-    pub progress: f64, // 0.0 - 1.0
+    pub progress: f64,     // 0.0 - 1.0
     pub hash_type: String, // xxhash, md5
     pub created_at: DateTime<Utc>,
 }

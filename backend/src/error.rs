@@ -9,6 +9,7 @@ use serde_json::json;
 use thiserror::Error;
 
 /// 应用错误类型
+#[allow(dead_code)]
 #[derive(Debug, Error)]
 pub enum AppError {
     /// 数据库错误
@@ -61,11 +62,17 @@ impl IntoResponse for AppError {
         let (status, error_message) = match self {
             AppError::Database(e) => {
                 tracing::error!("Database error: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, "数据库操作失败".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "数据库操作失败".to_string(),
+                )
             }
             AppError::FileIo(e) => {
                 tracing::error!("File I/O error: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("文件操作失败: {}", e))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("文件操作失败: {}", e),
+                )
             }
             AppError::Network(e) => {
                 tracing::error!("Network error: {}", e);
@@ -81,21 +88,19 @@ impl IntoResponse for AppError {
             AppError::DirectoryNotFound(path) => {
                 (StatusCode::NOT_FOUND, format!("目录未找到: {}", path))
             }
-            AppError::Config(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("配置错误: {}", msg))
-            }
-            AppError::Validation(msg) => {
-                (StatusCode::BAD_REQUEST, format!("验证失败: {}", msg))
-            }
-            AppError::Business(msg) => {
-                (StatusCode::BAD_REQUEST, msg)
-            }
-            AppError::Unauthorized(msg) => {
-                (StatusCode::UNAUTHORIZED, format!("未授权: {}", msg))
-            }
+            AppError::Config(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("配置错误: {}", msg),
+            ),
+            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, format!("验证失败: {}", msg)),
+            AppError::Business(msg) => (StatusCode::BAD_REQUEST, msg),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, format!("未授权: {}", msg)),
             AppError::Internal(msg) => {
                 tracing::error!("Internal error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "内部服务器错误".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "内部服务器错误".to_string(),
+                )
             }
         };
 

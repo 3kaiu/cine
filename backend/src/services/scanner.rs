@@ -1,9 +1,9 @@
-use sqlx::SqlitePool;
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
-use uuid::Uuid;
 use chrono::Utc;
+use sqlx::SqlitePool;
+use std::path::Path;
 use std::sync::Arc;
+use uuid::Uuid;
+use walkdir::WalkDir;
 
 use crate::models::MediaFile;
 use crate::websocket::{ProgressBroadcaster, ProgressMessage};
@@ -26,7 +26,7 @@ pub async fn scan_directory(
 
     let mut file_count = 0u64;
     let mut processed_count = 0u64;
-    
+
     // 优化：单次遍历，动态估算进度
     // 使用指数移动平均来估算剩余文件数
     let mut estimated_remaining = 100u64; // 初始估算
@@ -68,7 +68,8 @@ pub async fn scan_directory(
         let file = MediaFile {
             id: Uuid::new_v4().to_string(),
             path: path.to_string_lossy().to_string(),
-            name: path.file_name()
+            name: path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown")
                 .to_string(),
@@ -80,13 +81,12 @@ pub async fn scan_directory(
             metadata: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
-            last_modified: chrono::DateTime::from_timestamp(modified, 0)
-                .unwrap_or(Utc::now()),
+            last_modified: chrono::DateTime::from_timestamp(modified, 0).unwrap_or(Utc::now()),
         };
 
         // 保存文件名用于进度显示
         let file_name = file.name.clone();
-        
+
         // 收集文件信息到批量缓冲区
         file_batch.push(file);
         file_count += 1;
@@ -102,7 +102,9 @@ pub async fn scan_directory(
         if processed_count % 10 == 0 {
             // 每处理10个文件，更新一次估算
             let current_rate = processed_count as f64 / file_count as f64;
-            estimated_remaining = ((1.0 - alpha) * estimated_remaining as f64 + alpha * (file_count as f64 / current_rate.max(0.1))) as u64;
+            estimated_remaining = ((1.0 - alpha) * estimated_remaining as f64
+                + alpha * (file_count as f64 / current_rate.max(0.1)))
+                as u64;
         }
 
         // 发送进度更新（使用动态估算）
@@ -113,7 +115,7 @@ pub async fn scan_directory(
             } else {
                 0.0
             };
-            
+
             // 每处理50个文件或进度变化超过5%时发送更新
             if processed_count % 50 == 0 || processed_count == 1 {
                 broadcaster.send(ProgressMessage {
@@ -121,7 +123,10 @@ pub async fn scan_directory(
                     task_type: "scan".to_string(),
                     progress: progress.min(99.0), // 最大99%，完成时再设为100%
                     current_file: Some(file_name),
-                    message: Some(format!("Scanned {} files (estimated {} total)", file_count, total_estimated)),
+                    message: Some(format!(
+                        "Scanned {} files (estimated {} total)",
+                        file_count, total_estimated
+                    )),
                 });
             }
         }
@@ -147,16 +152,13 @@ pub async fn scan_directory(
             message: Some(format!("Scan completed: {} files found", file_count)),
         });
     }
-    
+
     tracing::info!("Scan completed: {} files found", file_count);
     Ok(())
 }
 
 /// 批量插入文件到数据库（优化性能）
-async fn batch_insert_files(
-    db: &SqlitePool,
-    files: &[MediaFile],
-) -> anyhow::Result<()> {
+async fn batch_insert_files(db: &SqlitePool, files: &[MediaFile]) -> anyhow::Result<()> {
     if files.is_empty() {
         return Ok(());
     }
@@ -192,14 +194,17 @@ async fn batch_insert_files(
 }
 
 pub fn detect_file_type(path: &Path) -> String {
-    let ext = path.extension()
+    let ext = path
+        .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
 
     match ext.as_str() {
         // 视频格式
-        "mp4" | "mkv" | "avi" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg" => "video".to_string(),
+        "mp4" | "mkv" | "avi" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg" => {
+            "video".to_string()
+        }
         // 音频格式
         "mp3" | "flac" | "wav" | "aac" | "ogg" | "wma" | "m4a" => "audio".to_string(),
         // 图片格式

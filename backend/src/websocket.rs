@@ -60,6 +60,7 @@ impl ProgressBroadcaster {
         let _ = self.tx.send(msg);
     }
 
+    #[allow(dead_code)]
     pub fn subscribe(&self) -> broadcast::Receiver<ProgressMessage> {
         self.tx.subscribe()
     }

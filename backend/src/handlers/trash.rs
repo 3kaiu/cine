@@ -1,10 +1,9 @@
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, State},
     response::Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::path::PathBuf;
 
 use crate::handlers::AppState;
 use crate::services::trash;
@@ -30,10 +29,13 @@ pub async fn list_trash(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<TrashListResponse>, (axum::http::StatusCode, String)> {
     // 从配置获取回收站目录
-    let trash_dir = state.config.hash_cache_dir.parent()
+    let trash_dir = state
+        .config
+        .hash_cache_dir
+        .parent()
         .unwrap_or_else(|| std::path::Path::new("./data"))
         .join("trash");
-    
+
     let trash_config = trash::TrashConfig::new(trash_dir);
     let items = trash::list_trash(&state.db, &trash_config)
         .await
@@ -49,10 +51,13 @@ pub async fn move_to_trash(
     State(state): State<Arc<AppState>>,
     Path(file_id): Path<String>,
 ) -> Result<Json<trash::TrashItem>, (axum::http::StatusCode, String)> {
-    let trash_dir = state.config.hash_cache_dir.parent()
+    let trash_dir = state
+        .config
+        .hash_cache_dir
+        .parent()
         .unwrap_or_else(|| std::path::Path::new("./data"))
         .join("trash");
-    
+
     let trash_config = trash::TrashConfig::new(trash_dir);
     let item = trash::move_to_trash(&state.db, &file_id, &trash_config)
         .await
@@ -66,13 +71,9 @@ pub async fn restore_from_trash(
     Path(file_id): Path<String>,
     Json(req): Json<RestoreRequest>,
 ) -> Result<Json<RestoreResponse>, (axum::http::StatusCode, String)> {
-    let restored_path = trash::restore_from_trash(
-        &state.db,
-        &file_id,
-        req.target_path.as_deref(),
-    )
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let restored_path = trash::restore_from_trash(&state.db, &file_id, req.target_path.as_deref())
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(RestoreResponse {
         restored_path: restored_path.clone(),
@@ -96,10 +97,13 @@ pub async fn permanently_delete(
 pub async fn cleanup_trash(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let trash_dir = state.config.hash_cache_dir.parent()
+    let trash_dir = state
+        .config
+        .hash_cache_dir
+        .parent()
         .unwrap_or_else(|| std::path::Path::new("./data"))
         .join("trash");
-    
+
     let trash_config = trash::TrashConfig::new(trash_dir);
     let deleted_count = trash::cleanup_trash(&state.db, &trash_config)
         .await

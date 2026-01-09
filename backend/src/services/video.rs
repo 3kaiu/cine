@@ -1,14 +1,16 @@
-use std::process::Command;
-use serde_json::Value;
 use crate::models::VideoInfo;
+use serde_json::Value;
+use std::process::Command;
 
 /// 使用 ffprobe 提取视频信息（不加载整个文件）
 pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
     // 检查 ffprobe 是否可用
     let ffprobe_output = Command::new("ffprobe")
         .args(&[
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_format",
             "-show_streams",
             file_path,
@@ -25,14 +27,17 @@ pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
     let json: Value = serde_json::from_slice(&ffprobe_output.stdout)?;
 
     // 解析视频流信息
-    let streams = json.get("streams")
+    let streams = json
+        .get("streams")
         .and_then(|s| s.as_array())
         .ok_or_else(|| anyhow::anyhow!("No streams found"))?;
 
-    let video_stream = streams.iter()
+    let video_stream = streams
+        .iter()
         .find(|s| s.get("codec_type").and_then(|c| c.as_str()) == Some("video"));
 
-    let audio_stream = streams.iter()
+    let audio_stream = streams
+        .iter()
         .find(|s| s.get("codec_type").and_then(|c| c.as_str()) == Some("audio"));
 
     let format = json.get("format");
@@ -91,6 +96,7 @@ pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
 }
 
 /// 生成视频缩略图（用于预览）
+#[allow(dead_code)]
 pub async fn generate_thumbnail(
     file_path: &str,
     output_path: &str,
@@ -100,10 +106,14 @@ pub async fn generate_thumbnail(
 
     let output = Command::new("ffmpeg")
         .args(&[
-            "-i", file_path,
-            "-ss", &offset.to_string(),
-            "-vframes", "1",
-            "-vf", "scale=320:-1",
+            "-i",
+            file_path,
+            "-ss",
+            &offset.to_string(),
+            "-vframes",
+            "1",
+            "-vf",
+            "scale=320:-1",
             "-y", // 覆盖输出文件
             output_path,
         ])

@@ -2,21 +2,22 @@ use axum::response::Json;
 use serde::Serialize;
 use std::sync::Arc;
 
-use crate::websocket::ProgressBroadcaster;
 use crate::services::cache::FileHashCache;
+use crate::websocket::ProgressBroadcaster;
 
-pub mod scan;
-pub mod hash;
-pub mod video;
-pub mod scrape;
-pub mod rename;
 pub mod dedupe;
+pub mod hash;
+pub mod rename;
+pub mod scan;
+pub mod scrape;
+pub mod video;
 
 pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub config: Arc<crate::config::AppConfig>,
     pub progress_broadcaster: ProgressBroadcaster,
     pub hash_cache: Arc<FileHashCache>,
+    pub http_client: reqwest::Client, // 复用 HTTP 客户端连接池
 }
 
 #[derive(Serialize)]
@@ -33,19 +34,19 @@ pub async fn health_check() -> Json<HealthResponse> {
 }
 
 // 重新导出各个 handler
-pub use scan::*;
+pub use dedupe::{delete_empty_dirs, find_duplicates, find_empty_dirs, find_large_files};
 pub use hash::*;
-pub use video::*;
-pub use scrape::scrape_metadata;
-pub use scrape::batch_scrape_metadata;
 pub use rename::*;
-pub use dedupe::{find_duplicates, find_empty_dirs, find_large_files, delete_empty_dirs};
+pub use scan::*;
+pub use scrape::batch_scrape_metadata;
+pub use scrape::scrape_metadata;
+pub use video::*;
 
 pub mod subtitle;
 pub use subtitle::find_subtitles;
 
 pub mod file_ops;
-pub use file_ops::{move_file, copy_file, batch_move_files, batch_copy_files};
+pub use file_ops::{batch_copy_files, batch_move_files, copy_file, move_file};
 
 pub mod trash;
-pub use trash::{list_trash, move_to_trash, restore_from_trash, permanently_delete, cleanup_trash};
+pub use trash::{cleanup_trash, list_trash, move_to_trash, permanently_delete, restore_from_trash};
