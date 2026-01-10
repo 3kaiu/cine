@@ -44,6 +44,10 @@ test.describe('基础流程验证 (Smoke Test)', () => {
     // 等待页面稳定
     await page.waitForLoadState('networkidle')
 
+    // 等待侧边栏可见
+    const sidebar = page.locator('[data-testid="sidebar"]')
+    await expect(sidebar).toBeVisible({ timeout: 15000 })
+
     // 点击元数据处理
     await page.locator('text=元数据处理').click()
     await expect(page).toHaveURL(/.*\/scraper/)
@@ -63,9 +67,9 @@ test.describe('基础流程验证 (Smoke Test)', () => {
     // 等待页面稳定
     await page.waitForLoadState('networkidle')
 
-    // 查找主题切换按钮（在 Sidebar 底部）
+    // 等待侧边栏可见
     const sidebar = page.locator('[data-testid="sidebar"]')
-    await expect(sidebar).toBeVisible()
+    await expect(sidebar).toBeVisible({ timeout: 15000 })
 
     // 主题按钮在 Sidebar 底部的版本信息区域中
     const themeButton = sidebar.locator('button').last()
@@ -95,8 +99,8 @@ test.describe('文件扫描功能', () => {
     // 等待页面稳定
     await page.waitForLoadState('networkidle')
 
-    // 检查扫描页面标题 - Scanner 页面显示"媒体库"
-    const title = page.locator('text=媒体库')
+    // 检查扫描页面标题 - 使用更具体的选择器匹配 h2 元素
+    const title = page.locator('h2:has-text("媒体库")')
     await expect(title).toBeVisible({ timeout: 10000 })
   })
 
