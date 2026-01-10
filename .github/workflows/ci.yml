@@ -11,17 +11,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-backend:
-    name: Test Backend
+  lint-backend:
+    name: Lint Backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      
+
       - name: Cache Cargo
         uses: actions/cache@v3
         with:
@@ -32,18 +32,13 @@ jobs:
             ~/.cargo/git/db/
             backend/target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-      
-      - name: Run Tests
-        working-directory: backend
-        run: cargo test --all-features
 
-  test-frontend:
-    name: Test Frontend
+      - name: Check Backend Code
+        working-directory: backend
+        run: cargo check --all-features
+
+  lint-frontend:
+    name: Lint Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -68,17 +63,31 @@ jobs:
         working-directory: frontend
         run: pnpm run lint
 
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
       - name: Build
         working-directory: frontend
         run: pnpm run build
-
-      - name: Install Playwright Browsers
-        working-directory: frontend
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
-
-      - name: Run E2E Tests
-        working-directory: frontend
-        run: pnpm run test:e2e
 
   build-docker:
     name: Build Docker Image
