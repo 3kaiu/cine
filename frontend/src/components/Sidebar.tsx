@@ -57,7 +57,7 @@ const menuItems = [
 
 export default function Sidebar() {
   return (
-    <div className="w-[160px] h-full flex flex-col border-r border-default-100 bg-default-50/50 backdrop-blur-xl shrink-0">
+    <div data-testid="sidebar" className="w-[160px] h-full flex flex-col border-r border-default-100 bg-default-50/50 backdrop-blur-xl shrink-0">
       <div className="h-[88px] flex items-center justify-center py-3 border-b border-transparent">
         <img src="/icon.svg" alt="Cine Logo" className="w-16 h-16 drop-shadow-sm" />
       </div>

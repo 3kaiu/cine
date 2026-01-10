@@ -44,8 +44,8 @@ test.describe('基础流程验证 (Smoke Test)', () => {
     // 等待页面稳定
     await page.waitForLoadState('networkidle')
 
-    // 点击元数据刮削
-    await page.locator('text=元数据刮削').click()
+    // 点击元数据处理
+    await page.locator('text=元数据处理').click()
     await expect(page).toHaveURL(/.*\/scraper/)
 
     // 点击批量重命名
@@ -60,9 +60,16 @@ test.describe('基础流程验证 (Smoke Test)', () => {
   test('暗色主题切换应该正常工作', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
 
-    // 查找主题切换按钮
-    const themeButton = page.locator('header button').first()
-    await expect(themeButton).toBeVisible()
+    // 等待页面稳定
+    await page.waitForLoadState('networkidle')
+
+    // 查找主题切换按钮（在 Sidebar 底部）
+    const sidebar = page.locator('[data-testid="sidebar"]')
+    await expect(sidebar).toBeVisible()
+    
+    // 主题按钮在 Sidebar 底部的版本信息区域中
+    const themeButton = sidebar.locator('button').last()
+    await expect(themeButton).toBeVisible({ timeout: 10000 })
     await themeButton.click()
 
     // 检查主题是否切换
@@ -83,10 +90,13 @@ test.describe('文件扫描功能', () => {
   })
 
   test('扫描页面应该显示', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    
+    // 等待页面稳定
+    await page.waitForLoadState('networkidle')
 
-    // 检查扫描输入框
-    const input = page.locator('input[placeholder*="目录路径"]')
-    await expect(input).toBeVisible()
+    // 检查扫描输入框（placeholder 包含"例如:"）
+    const input = page.locator('input[placeholder*="例如:"]')
+    await expect(input).toBeVisible({ timeout: 10000 })
   })
 })

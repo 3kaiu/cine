@@ -184,6 +184,7 @@ export default function Scanner() {
                 size="lg"
                 onPress={handleScan}
                 isPending={scanning || scanMutation.isPending}
+                data-loading={scanning || scanMutation.isPending ? "true" : "false"}
                 className="font-bold shadow-md shadow-primary/20 px-8 flex items-center gap-2.5 transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 {(!scanning && !scanMutation.isPending) && <Thunderbolt className="w-[18px] h-[18px]" />}
