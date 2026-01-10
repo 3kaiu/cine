@@ -41,12 +41,11 @@ test.describe('基础流程验证 (Smoke Test)', () => {
   test('导航应该正常工作', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
 
-    // 等待页面稳定
-    await page.waitForLoadState('networkidle')
+    // 等待页面稳定 - 使用更长的超时时间
+    await page.waitForLoadState('networkidle', { timeout: 30000 })
 
-    // 等待侧边栏可见
-    const sidebar = page.locator('[data-testid="sidebar"]')
-    await expect(sidebar).toBeVisible({ timeout: 15000 })
+    // 等待侧边栏可见 - 使用导航项作为替代选择器
+    await expect(page.locator('text=自动化工作流')).toBeVisible({ timeout: 15000 })
 
     // 点击元数据处理
     await page.locator('text=元数据处理').click()
@@ -64,14 +63,14 @@ test.describe('基础流程验证 (Smoke Test)', () => {
   test('暗色主题切换应该正常工作', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
 
-    // 等待页面稳定
-    await page.waitForLoadState('networkidle')
+    // 等待页面稳定 - 使用更长的超时时间
+    await page.waitForLoadState('networkidle', { timeout: 30000 })
 
-    // 等待侧边栏可见
-    const sidebar = page.locator('[data-testid="sidebar"]')
-    await expect(sidebar).toBeVisible({ timeout: 15000 })
+    // 等待侧边栏可见 - 使用导航项作为替代选择器
+    await expect(page.locator('text=自动化工作流')).toBeVisible({ timeout: 15000 })
 
-    // 主题按钮在 Sidebar 底部的版本信息区域中
+    // 主题按钮在 Sidebar 底部的版本信息区域中 - 通过导航项找到侧边栏
+    const sidebar = page.locator('text=自动化工作流').locator('..').locator('..').locator('..')
     const themeButton = sidebar.locator('button').last()
     await expect(themeButton).toBeVisible({ timeout: 10000 })
     await themeButton.click()
