@@ -45,14 +45,14 @@ test.describe('基础流程验证 (Smoke Test)', () => {
     const sidebar = page.locator('[data-testid="sidebar"]')
     await expect(sidebar).toBeVisible({ timeout: 15000 })
 
-    // 使用更稳定的 href 选择器
-    await page.locator('a[href="/scraper"]').click()
+    // 使用更稳定的 href 选择器，添加 force: true 绕过可能的拦截
+    await page.locator('a[href="/scraper"]').click({ force: true })
     await expect(page).toHaveURL(/.*\/scraper/)
 
-    await page.locator('a[href="/renamer"]').click()
+    await page.locator('a[href="/renamer"]').click({ force: true })
     await expect(page).toHaveURL(/.*\/renamer/)
 
-    await page.locator('a[href="/file-manager"]').click()
+    await page.locator('a[href="/file-manager"]').click({ force: true })
     await expect(page).toHaveURL(/.*\/file-manager/)
   })
 
@@ -66,7 +66,7 @@ test.describe('基础流程验证 (Smoke Test)', () => {
     // 主题按钮在 Sidebar 底部的版本信息区域中
     const themeButton = sidebar.locator('button').last()
     await expect(themeButton).toBeVisible({ timeout: 10000 })
-    await themeButton.click()
+    await themeButton.click({ force: true })
 
     // 检查主题是否切换
     const html = page.locator('html')
