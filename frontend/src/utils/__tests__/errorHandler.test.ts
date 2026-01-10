@@ -51,12 +51,12 @@ describe('errorHandler', () => {
   describe('handleError', () => {
     it('应该显示错误提示', () => {
       handleError('Test error', undefined, true)
-      expect(toast.error).toHaveBeenCalledWith('Test error')
+      expect(toast.error).toHaveBeenCalledWith('Test error', expect.any(Object))
     })
 
     it('应该使用备用消息', () => {
       handleError(null, 'Fallback message', true)
-      expect(toast.error).toHaveBeenCalledWith('Fallback message')
+      expect(toast.error).toHaveBeenCalledWith('Fallback message', expect.any(Object))
     })
 
     it('应该不显示提示当 showToast 为 false', () => {

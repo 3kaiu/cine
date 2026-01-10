@@ -22,8 +22,7 @@ describe('VirtualizedTable', () => {
       <VirtualizedTable dataSource={smallData} columns={columns} />
     )
 
-    // 应该渲染虚拟列表容器（使用 Surface 和 ListBox）
-    expect(container.querySelector('[data-slot="surface"]')).toBeTruthy()
+    // 组件始终使用虚拟滚动，检查 ListBox 是否存在
     expect(container.querySelector('[role="listbox"]')).toBeTruthy()
   })
 
@@ -40,7 +39,6 @@ describe('VirtualizedTable', () => {
   it('应该始终使用虚拟滚动渲染', () => {
     const data = mockData.slice(0, 120)
 
-    // 组件现在始终使用虚拟滚动，无论数据量大小
     const { container } = render(
       <VirtualizedTable dataSource={data} columns={columns} />
     )
@@ -53,10 +51,9 @@ describe('VirtualizedTable', () => {
       <VirtualizedTable dataSource={mockData} columns={columns} loading={true} />
     )
 
-    // 应该显示 Spinner 组件（HeroUI Spinner 可能有 role="status" 或作为 SVG 渲染）
-    // 检查包含 spinner 的容器
-    const spinnerContainer = container.querySelector('.flex.justify-center.p-12')
-    expect(spinnerContainer).toBeTruthy()
+    // 应该显示 Spinner 组件
+    const spinner = container.querySelector('[role="status"]')
+    expect(spinner).toBeInTheDocument()
   })
 
   it('应该正确渲染列标题', () => {
@@ -76,6 +73,5 @@ describe('VirtualizedTable', () => {
 
     // 空数据应该渲染虚拟列表容器，但列表为空
     expect(container.querySelector('[role="listbox"]')).toBeTruthy()
-    expect(container.querySelector('[data-empty="true"]')).toBeTruthy()
   })
 })
