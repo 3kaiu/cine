@@ -22,6 +22,9 @@ describe('ProgressMonitor', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    // 清理所有 pending 的 timers
+    vi.clearAllTimers()
+    vi.useRealTimers()
   })
 
   it('应该渲染进度监控组件', () => {
