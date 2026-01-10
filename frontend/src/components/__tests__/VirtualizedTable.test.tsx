@@ -51,9 +51,9 @@ describe('VirtualizedTable', () => {
       <VirtualizedTable dataSource={mockData} columns={columns} loading={true} />
     )
 
-    // 应该显示 Spinner 组件
-    const spinner = container.querySelector('[role="status"]')
-    expect(spinner).toBeInTheDocument()
+    // 应该显示加载容器
+    const loadingContainer = container.querySelector('.flex.justify-center.p-12')
+    expect(loadingContainer).toBeInTheDocument()
   })
 
   it('应该正确渲染列标题', () => {
