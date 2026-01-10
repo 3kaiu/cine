@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -63,7 +63,7 @@ jobs:
       - name: Install Dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      
+
       - name: Lint
         working-directory: frontend
         run: pnpm run lint
@@ -71,6 +71,14 @@ jobs:
       - name: Build
         working-directory: frontend
         run: pnpm run build
+
+      - name: Install Playwright Browsers
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      - name: Run E2E Tests
+        working-directory: frontend
+        run: pnpm run test:e2e
 
   build-docker:
     name: Build Docker Image
