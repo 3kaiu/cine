@@ -45,16 +45,14 @@ test.describe('基础流程验证 (Smoke Test)', () => {
     const sidebar = page.locator('[data-testid="sidebar"]')
     await expect(sidebar).toBeVisible({ timeout: 15000 })
 
-    // 点击元数据处理
-    await page.locator('text=元数据处理').click()
+    // 使用更稳定的 href 选择器
+    await page.locator('a[href="/scraper"]').click()
     await expect(page).toHaveURL(/.*\/scraper/)
 
-    // 点击批量重命名
-    await page.locator('text=批量重命名').click()
+    await page.locator('a[href="/renamer"]').click()
     await expect(page).toHaveURL(/.*\/renamer/)
 
-    // 点击文件管理
-    await page.locator('text=文件管理').click()
+    await page.locator('a[href="/file-manager"]').click()
     await expect(page).toHaveURL(/.*\/file-manager/)
   })
 
