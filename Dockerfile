@@ -3,7 +3,7 @@
 # 阶段1: 构建 Rust 后端
 FROM rust:1.70 as rust-builder
 
-WORKDIR /app/backend
+WORKDIR /app
 
 # 复制依赖文件
 COPY backend/Cargo.toml backend/Cargo.lock ./
