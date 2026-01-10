@@ -114,6 +114,132 @@ pub fn generate_new_name(file: &MediaFile, template: &str) -> Option<String> {
         .unwrap_or("");
     new_name = new_name.replace("{ext}", ext);
 
+    // 解析视频信息（如果存在）
+    let video_info: Option<crate::models::VideoInfo> = file
+        .video_info
+        .as_ref()
+        .and_then(|v| serde_json::from_str(v).ok());
+
+    // {resolution} - 分辨率 (4K, 1080p, 720p等)
+    if new_name.contains("{resolution}") {
+        if let Some(ref info) = video_info {
+            if let (Some(w), Some(h)) = (info.width, info.height) {
+                let resolution = if w >= 3840 || h >= 2160 {
+                    "4K"
+                } else if w >= 1920 || h >= 1080 {
+                    "1080p"
+                } else if w >= 1280 || h >= 720 {
+                    "720p"
+                } else {
+                    "SD"
+                };
+                new_name = new_name.replace("{resolution}", resolution);
+            } else {
+                // 没有分辨率信息时，移除{resolution}
+                new_name = new_name.replace(" [{resolution}]", "");
+                new_name = new_name.replace("{resolution}", "");
+            }
+        } else {
+            // 没有视频信息时，移除{resolution}
+            new_name = new_name.replace(" [{resolution}]", "");
+            new_name = new_name.replace("{resolution}", "");
+        }
+    }
+
+    // {quality} - 质量标签（综合分辨率、HDR、来源等）
+    if let Some(ref info) = video_info {
+        let mut quality_parts = Vec::new();
+        
+        // 分辨率
+        if let (Some(w), Some(h)) = (info.width, info.height) {
+            if w >= 3840 || h >= 2160 {
+                quality_parts.push("4K");
+            } else if w >= 1920 || h >= 1080 {
+                quality_parts.push("1080p");
+            } else if w >= 1280 || h >= 720 {
+                quality_parts.push("720p");
+            }
+        }
+        
+        // HDR信息（优先级：DV > HDR10+ > HDR）
+        if info.is_dolby_vision.unwrap_or(false) {
+            quality_parts.push("DV");
+        } else if info.is_hdr10_plus.unwrap_or(false) {
+            quality_parts.push("HDR10+");
+        } else if info.is_hdr.unwrap_or(false) {
+            quality_parts.push("HDR");
+        }
+        
+        // 来源（只在有值时添加）
+        if let Some(ref source) = info.source {
+            match source.as_str() {
+                "BluRay" => quality_parts.push("BluRay"),
+                "iTunes" => quality_parts.push("iTunes"),
+                "WEB-DL" => quality_parts.push("WEB-DL"),
+                "HDTV" => quality_parts.push("HDTV"),
+                _ => {}
+            }
+        }
+        
+        // 如果模板中有{quality}但质量信息为空，则移除整个{quality}标签（包括方括号）
+        if new_name.contains("{quality}") {
+            if !quality_parts.is_empty() {
+                new_name = new_name.replace("{quality}", &quality_parts.join(" "));
+            } else {
+                // 移除 {quality} 及其可能的方括号和空格
+                new_name = new_name.replace(" [{quality}]", "");
+                new_name = new_name.replace("{quality}", "");
+            }
+        }
+    } else if new_name.contains("{quality}") {
+        // 没有视频信息时，也移除{quality}
+        new_name = new_name.replace(" [{quality}]", "");
+        new_name = new_name.replace("{quality}", "");
+    }
+
+    // {hdr} - HDR类型
+    if new_name.contains("{hdr}") {
+        if let Some(ref info) = video_info {
+            let hdr_type = if info.is_dolby_vision.unwrap_or(false) {
+                "DV"
+            } else if info.is_hdr10_plus.unwrap_or(false) {
+                "HDR10+"
+            } else if info.is_hdr.unwrap_or(false) {
+                "HDR"
+            } else {
+                ""
+            };
+            if !hdr_type.is_empty() {
+                new_name = new_name.replace("{hdr}", hdr_type);
+            } else {
+                // 如果没有HDR信息，移除{hdr}及其可能的方括号和空格
+                new_name = new_name.replace(" [{hdr}]", "");
+                new_name = new_name.replace("{hdr}", "");
+            }
+        } else {
+            // 没有视频信息时，移除{hdr}
+            new_name = new_name.replace(" [{hdr}]", "");
+            new_name = new_name.replace("{hdr}", "");
+        }
+    }
+
+    // {source} - 来源
+    if new_name.contains("{source}") {
+        if let Some(ref info) = video_info {
+            if let Some(ref source) = info.source {
+                new_name = new_name.replace("{source}", source);
+            } else {
+                // 没有来源信息时，移除{source}
+                new_name = new_name.replace(" [{source}]", "");
+                new_name = new_name.replace("{source}", "");
+            }
+        } else {
+            // 没有视频信息时，移除{source}
+            new_name = new_name.replace(" [{source}]", "");
+            new_name = new_name.replace("{source}", "");
+        }
+    }
+
     // 清理无效字符
     new_name = sanitize_filename(&new_name);
 

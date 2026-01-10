@@ -156,3 +156,13 @@ pub struct WatchFolder {
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Setting {
+    pub id: String,
+    pub category: String,
+    pub key: String,
+    pub value: Option<String>,
+    pub description: Option<String>,
+    pub updated_at: DateTime<Utc>,
+}

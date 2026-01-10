@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ModalRoot, ModalHeader, ModalBody, ModalFooter, ModalContainer, ModalDialog, ModalBackdrop, Button, Input, TextArea, Skeleton, TextField, Label, InputGroup } from "@heroui/react";
+import { Modal, Button, Input, TextArea, Skeleton, TextField, Label, InputGroup } from "@heroui/react";
 import { mediaApi, MovieNfo } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { CircleInfo, Pencil, FloppyDisk } from '@gravity-ui/icons'
@@ -46,11 +46,12 @@ export default function NfoEditor({ fileId, visible, onClose }: NfoEditorProps) 
   }
 
   return (
-    <ModalRoot isOpen={visible} onOpenChange={(open) => !open && onClose()}>
-      <ModalBackdrop variant="blur" />
-      <ModalContainer size="lg" scroll="inside">
-        <ModalDialog className="max-h-[90vh]">
-          <ModalHeader className="flex flex-col gap-1 pb-2">
+    <Modal isOpen={visible} onOpenChange={(open) => !open && onClose()}>
+      <Modal.Backdrop variant="blur" />
+      <Modal.Container size="lg" scroll="inside">
+        <Modal.Dialog className="max-h-[90vh]">
+          <Modal.CloseTrigger />
+          <Modal.Header className="flex flex-col gap-1 pb-2">
             <div className="flex items-center gap-2.5">
               <div className="p-1.5 bg-primary/5 rounded-lg text-primary border border-primary/10">
                 <Pencil className="w-[18px] h-[18px]" />
@@ -58,9 +59,9 @@ export default function NfoEditor({ fileId, visible, onClose }: NfoEditorProps) 
               <h2 className="text-[16px] font-black tracking-tight text-foreground/90 uppercase">编辑 NFO 元数据</h2>
             </div>
             <p className="text-[11px] text-default-400 font-medium ml-10">精准编辑元数据，确保媒体库信息完美契合。</p>
-          </ModalHeader>
+          </Modal.Header>
 
-          <ModalBody className="px-6 py-4 overflow-hidden flex flex-col min-h-[450px]">
+          <Modal.Body className="px-6 py-4 overflow-hidden flex flex-col min-h-[450px]">
             {isLoading ? (
               <div className="flex flex-col gap-6 py-4">
                 <div className="space-y-2">
@@ -193,9 +194,9 @@ export default function NfoEditor({ fileId, visible, onClose }: NfoEditorProps) 
                 </TextField>
               </div>
             )}
-          </ModalBody>
+          </Modal.Body>
 
-          <ModalFooter className="border-t border-divider/5 px-6 py-4 flex justify-end gap-3">
+          <Modal.Footer className="border-t border-divider/5 px-6 py-4 flex justify-end gap-3">
             <Button
               variant="ghost"
               size="md"
@@ -215,9 +216,9 @@ export default function NfoEditor({ fileId, visible, onClose }: NfoEditorProps) 
               {!mutation.isPending && <FloppyDisk className="w-[14px] h-[14px]" />}
               保存变更
             </Button>
-          </ModalFooter>
-        </ModalDialog>
-      </ModalContainer>
-    </ModalRoot>
+          </Modal.Footer>
+        </Modal.Dialog>
+      </Modal.Container>
+    </Modal>
   )
 }

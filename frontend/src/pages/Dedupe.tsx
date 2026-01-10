@@ -1,14 +1,51 @@
-import { Button, Accordion } from "@heroui/react";
-import { TrashBin, ArrowRotateLeft, CircleExclamation, Filmstrip, CircleInfo, Check } from '@gravity-ui/icons'
+import { useState, useMemo, useEffect } from 'react'
+import { Button, Chip, Card, Surface, Separator, Accordion, SearchField, Select, Popover, ListBox } from "@heroui/react";
+import { Icon } from '@iconify/react'
+import {
+  CircleExclamation,
+  Filmstrip,
+  TrashBin,
+  ArrowRotateLeft,
+  Check,
+} from '@gravity-ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import clsx from "clsx";
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
+import { handleError } from '@/utils/errorHandler'
+import { showSuccess } from '@/utils/toast'
+import clsx from 'clsx'
+import PageHeader from '@/components/PageHeader'
+import StatCard from '@/components/StatCard'
 
-dayjs.extend(relativeTime)
+interface DuplicateMovieGroup {
+  tmdb_id: number
+  title: string
+  files: MediaFile[]
+}
+
+type ViewMode = 'list' | 'grid' | 'compact'
+type SortBy = 'space' | 'count' | 'quality'
+type SortOrder = 'asc' | 'desc'
+
+interface FilterOptions {
+  resolution: string[]
+  hdrType: string[]
+  hasChineseSubtitle: boolean | null
+}
 
 export default function Dedupe() {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set())
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [sortBy, setSortBy] = useState<SortBy>('space')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    resolution: [],
+    hdrType: [],
+    hasChineseSubtitle: null
+  })
+  const [showFilterPopover, setShowFilterPopover] = useState(false)
+
   const { data, refetch, isPending } = useQuery({
     queryKey: ['duplicate-movies'],
     queryFn: async () => {
@@ -22,174 +59,791 @@ export default function Dedupe() {
     mutationFn: (id: string) => mediaApi.moveToTrash(id),
     onSuccess: () => {
       refetch()
+      showSuccess('文件已移入回收站')
+    },
+    onError: (error: any) => {
+      handleError(error, '移动失败')
     },
   })
 
-  // Calculate stats
-  const totalDuplicates = data ? data.reduce((acc: number, group: any) => acc + group.files.length - 1, 0) : 0;
-  const duplicateGroups = data ? data.length : 0;
+  const batchTrashMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map(id => mediaApi.moveToTrash(id))
+      )
+      const failed = results.filter(r => r.status === 'rejected').length
+      if (failed > 0) {
+        throw new Error(`${failed} 个文件移动失败`)
+      }
+      return ids.length
+    },
+    onSuccess: (count: number) => {
+      refetch()
+      setSelectedGroups(new Set())
+      showSuccess(`成功移入 ${count} 个文件到回收站`)
+    },
+    onError: (error: any) => {
+      handleError(error, '批量移动失败')
+    },
+  })
+
+  // 过滤和搜索
+  const filteredData = useMemo(() => {
+    if (!data) return []
+    
+    let result = [...data]
+    
+    // 搜索过滤
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter((group: DuplicateMovieGroup) => 
+        group.title.toLowerCase().includes(term) ||
+        group.files.some(f => f.name.toLowerCase().includes(term))
+      )
+    }
+    
+    // 分辨率过滤
+    if (filterOptions.resolution.length > 0) {
+      result = result.filter((group: DuplicateMovieGroup) => {
+        return group.files.some(file => {
+          const vInfo = file.video_info
+          if (!vInfo?.width || !vInfo?.height) return false
+          const width = vInfo.width
+          const height = vInfo.height
+          return filterOptions.resolution.some(res => {
+            if (res === '4K') return width >= 3840 || height >= 2160
+            if (res === '1080p') return width >= 1920 || height >= 1080
+            if (res === '720p') return width >= 1280 || height >= 720
+            return false
+          })
+        })
+      })
+    }
+    
+    // HDR类型过滤
+    if (filterOptions.hdrType.length > 0) {
+      result = result.filter((group: DuplicateMovieGroup) => {
+        return group.files.some(file => {
+          const vInfo = file.video_info
+          if (!vInfo) return false
+          return filterOptions.hdrType.some(hdr => {
+            if (hdr === 'DV') return vInfo.is_dolby_vision
+            if (hdr === 'HDR10+') return vInfo.is_hdr10_plus
+            if (hdr === 'HDR') return vInfo.is_hdr
+            return false
+          })
+        })
+      })
+    }
+    
+    // 中文字幕过滤
+    if (filterOptions.hasChineseSubtitle !== null) {
+      result = result.filter((group: DuplicateMovieGroup) => {
+        return group.files.some(file => 
+          file.video_info?.has_chinese_subtitle === filterOptions.hasChineseSubtitle
+        )
+      })
+    }
+    
+    return result
+  }, [data, searchTerm, filterOptions])
+  
+  // 排序
+  const sortedData = useMemo(() => {
+    const result = [...filteredData]
+    result.sort((a: DuplicateMovieGroup, b: DuplicateMovieGroup) => {
+      let aValue = 0
+      let bValue = 0
+      
+      if (sortBy === 'space') {
+        const aSorted = [...a.files].sort((x, y) => (y.quality_score || 0) - (x.quality_score || 0))
+        const bSorted = [...b.files].sort((x, y) => (y.quality_score || 0) - (x.quality_score || 0))
+        aValue = aSorted.slice(1).reduce((sum, f) => sum + f.size, 0)
+        bValue = bSorted.slice(1).reduce((sum, f) => sum + f.size, 0)
+      } else if (sortBy === 'count') {
+        aValue = a.files.length
+        bValue = b.files.length
+      } else if (sortBy === 'quality') {
+        aValue = Math.max(...a.files.map(f => f.quality_score || 0))
+        bValue = Math.max(...b.files.map(f => f.quality_score || 0))
+      }
+      
+      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue
+    })
+    return result
+  }, [filteredData, sortBy, sortOrder])
+
+  // 计算统计信息
+  const stats = useMemo(() => {
+    if (!sortedData || sortedData.length === 0) return null
+    
+    const groups = sortedData.length
+    const totalDuplicates = sortedData.reduce((acc: number, group: DuplicateMovieGroup) => 
+      acc + Math.max(0, group.files.length - 1), 0
+    )
+    const totalWastedSpace = sortedData.reduce((acc: number, group: DuplicateMovieGroup) => {
+      if (group.files.length <= 1) return acc
+      const sorted = [...group.files].sort((a, b) => 
+        (b.quality_score || 0) - (a.quality_score || 0)
+      )
+      const wasted = sorted.slice(1).reduce((sum, f) => sum + f.size, 0)
+      return acc + wasted
+    }, 0)
+
+    return { groups, totalDuplicates, totalWastedSpace }
+  }, [sortedData])
+
+  // 获取选中组的所有冗余文件
+  const getSelectedRedundantFiles = () => {
+    const files: string[] = []
+    sortedData?.forEach((group: DuplicateMovieGroup) => {
+      if (selectedGroups.has(group.tmdb_id)) {
+        const sorted = [...group.files].sort((a, b) => 
+          (b.quality_score || 0) - (a.quality_score || 0)
+        )
+        files.push(...sorted.slice(1).map(f => f.id))
+      }
+    })
+    return files
+  }
+
+  const handleScan = () => {
+    refetch()
+  }
+
+  const handleBatchDelete = () => {
+    const files = getSelectedRedundantFiles()
+    if (files.length === 0) return
+    batchTrashMutation.mutate(files)
+  }
+
+  const handleSelectAll = () => {
+    if (selectedGroups.size === sortedData?.length) {
+      setSelectedGroups(new Set())
+    } else {
+      setSelectedGroups(new Set(sortedData?.map((g: DuplicateMovieGroup) => g.tmdb_id) || []))
+    }
+  }
+  
+  const handleExpandAll = () => {
+    if (expandedKeys.size === sortedData?.length) {
+      setExpandedKeys(new Set())
+    } else {
+      setExpandedKeys(new Set(sortedData?.map((g: DuplicateMovieGroup) => String(g.tmdb_id)) || []))
+    }
+  }
+  
+  const handleSmartSelect = () => {
+    setSelectedGroups(new Set(sortedData?.map((g: DuplicateMovieGroup) => g.tmdb_id) || []))
+  }
+  
+  // 快捷键支持
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        e.preventDefault()
+        handleSelectAll()
+      } else if (e.key === 'Escape') {
+        setSelectedGroups(new Set())
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedGroups, sortedData])
+  
+  const handleToggleFilter = (type: 'resolution' | 'hdrType', value: string) => {
+    const current = filterOptions[type]
+    const updated = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value]
+    setFilterOptions(prev => ({ ...prev, [type]: updated }))
+  }
+  
+  const handleToggleSubtitle = () => {
+    setFilterOptions(prev => ({
+      ...prev,
+      hasChineseSubtitle: prev.hasChineseSubtitle === null ? true : 
+                          prev.hasChineseSubtitle === true ? false : null
+    }))
+  }
+  
+  const clearFilters = () => {
+    setFilterOptions({
+      resolution: [],
+      hdrType: [],
+      hasChineseSubtitle: null
+    })
+  }
+  
+  const hasActiveFilters = filterOptions.resolution.length > 0 || 
+                           filterOptions.hdrType.length > 0 || 
+                           filterOptions.hasChineseSubtitle !== null
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      <div className="flex flex-col gap-5 pt-2 pb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 bg-warning/5 rounded-lg text-warning/80 shadow-sm border border-warning/10">
-            <CircleExclamation className="w-[16px] h-[16px]" />
-          </div>
-          <div className="flex flex-col">
-            <h2 className="text-[16px] font-black tracking-tight text-foreground/90 uppercase">重复管理</h2>
-            <p className="text-[11px] text-default-400 font-medium">智能分析并清理影片的冗余副本。</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-5 ml-9">
-          <div className="flex items-center gap-4">
+    <div className="flex flex-col gap-4 h-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <PageHeader
+        title="去重管理"
+        description="智能分析并清理影片的冗余副本"
+        actions={
+          <>
             <Button
               variant="primary"
-              size="md"
-              onPress={() => refetch()}
+              onPress={handleScan}
               isPending={isPending}
-              className="font-bold shadow-md px-6 flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="font-medium flex items-center gap-2"
             >
-              {!isPending && <ArrowRotateLeft className="w-[15px] h-[15px]" />}
+              <ArrowRotateLeft className="w-4 h-4" />
               扫描重复文件
             </Button>
-            {data && (
-              <div className="flex gap-2.5">
-                <div className="flex items-center gap-2 px-3 h-8 bg-warning/5 border border-warning/10 rounded-lg">
-                  <span className="text-[10px] font-black text-warning/80 uppercase tracking-tighter">找到 {duplicateGroups} 组重复</span>
-                </div>
-                <div className="flex items-center gap-2 px-3 h-8 bg-danger/5 border border-danger/10 rounded-lg">
-                  <span className="text-[10px] font-black text-danger/80 uppercase tracking-tighter">{totalDuplicates} 个冗余文件</span>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="flex items-start gap-3 text-default-500 bg-default-50/50 border border-divider/10 p-4 rounded-xl text-[11px] leading-relaxed max-w-2xl shadow-sm">
-            <CircleInfo className="mt-0.5 flex-shrink-0 text-primary/70 w-[14px] h-[14px]" />
-            <p className="font-medium">系统通过分析分辨率、码率、HDR 元数据和字幕对每个版本进行评分。建议保留分数最高的版本，清理其余质量较低的冗余副本。</p>
-          </div>
+            <div className="flex items-center gap-1 bg-default-100 rounded-lg p-1">
+              <Button
+                isIconOnly
+                size="sm"
+                variant={viewMode === 'list' ? 'primary' : 'ghost'}
+                onPress={() => setViewMode('list')}
+              >
+                <Icon icon="mdi:view-list" className="w-4 h-4" />
+              </Button>
+              <Button
+                isIconOnly
+                size="sm"
+                variant={viewMode === 'grid' ? 'primary' : 'ghost'}
+                onPress={() => setViewMode('grid')}
+              >
+                <Icon icon="mdi:view-grid" className="w-4 h-4" />
+              </Button>
+              <Button
+                isIconOnly
+                size="sm"
+                variant={viewMode === 'compact' ? 'primary' : 'ghost'}
+                onPress={() => setViewMode('compact')}
+              >
+                <Icon icon="mdi:view-compact" className="w-4 h-4" />
+              </Button>
+            </div>
+          </>
+        }
+      />
+
+      {/* 统计卡片 */}
+      {stats && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard
+            label="重复组数"
+            value={stats.groups}
+            icon={<Icon icon="mdi:file-multiple" className="w-6 h-6" />}
+            color="warning"
+            description="检测到的重复影片组"
+          />
+          <StatCard
+            label="冗余文件"
+            value={stats.totalDuplicates}
+            icon={<Icon icon="mdi:file-alert" className="w-6 h-6" />}
+            color="danger"
+            description="可删除的重复文件"
+          />
+          <StatCard
+            label="可释放空间"
+            value={formatSize(stats.totalWastedSpace)}
+            icon={<Icon icon="mdi:harddisk" className="w-6 h-6" />}
+            color="success"
+            description="清理后可释放的存储"
+          />
         </div>
-      </div>
+      )}
 
-      {data && (
-        <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500 border-t border-divider/5 pt-6">
-          <h3 className="text-[10px] font-black text-default-400/70 uppercase tracking-[0.2em] px-1">重复组列表</h3>
-          <Accordion
-            variant="surface"
-            allowsMultipleExpanded
-            defaultExpandedKeys={new Set(data.map((g: any) => String(g.tmdb_id)))}
-            className="px-0 gap-4"
-          >
-            {data.map((group: any) => (
-              <Accordion.Item key={String(group.tmdb_id)} id={String(group.tmdb_id)} className="border border-divider/5 rounded-2xl overflow-hidden bg-default-50/10">
-                <Accordion.Heading>
-                  <Accordion.Trigger className="px-5 py-4 hover:bg-default-100/40 transition-colors w-full text-left">
-                    <div className="flex items-center gap-3">
-                      <div className="p-1 px-1.5 bg-default-100/80 rounded-lg border border-divider/20 text-default-500 shadow-sm">
-                        <Filmstrip className="w-[14px] h-[14px]" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-black text-[14px] tracking-tight">{group.title}</span>
-                        <span className="text-[9px] text-default-400 font-mono tracking-widest uppercase opacity-60">ID: {group.tmdb_id}</span>
-                      </div>
-                      <div className="ml-auto flex items-center gap-2 pr-4">
-                        <span className="text-[11px] font-black text-primary">{group.files.length}</span>
-                        <span className="text-[10px] text-default-400 font-bold tracking-tight uppercase">Versions</span>
-                      </div>
-                    </div>
-                  </Accordion.Trigger>
-                </Accordion.Heading>
-                <Accordion.Panel>
-                  <Accordion.Body className="px-5 pb-5 pt-2 flex flex-col gap-3">
-                    {group.files.map((file: MediaFile, index: number) => {
-                      const isBest = index === 0 && group.files.length > 1;
-                      const vInfo = file.video_info;
+      {/* 搜索和筛选栏 */}
+      {sortedData && sortedData.length > 0 && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <SearchField
+                    className="w-full sm:w-[300px]"
+                    value={searchTerm}
+                    onChange={setSearchTerm}
+                  >
+                    <SearchField.Group>
+                      <SearchField.SearchIcon />
+                      <SearchField.Input placeholder="搜索影片名称..." />
+                      <SearchField.ClearButton />
+                    </SearchField.Group>
+                  </SearchField>
+                </div>
 
-                      return (
-                        <div
-                          key={file.id}
-                          className={clsx(
-                            "flex flex-col md:flex-row gap-4 p-4 rounded-xl border transition-all duration-300",
-                            isBest
-                              ? "bg-success/5 border-success/10 shadow-sm"
-                              : "bg-default-100/30 border-divider/5 hover:border-divider/20"
-                          )}
-                        >
-                          <div className="flex-1 flex flex-col gap-2 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-[13px] tracking-tight truncate flex-1 min-w-0 text-foreground/80">{file.name}</span>
-                              {isBest && (
-                                <div className="flex items-center gap-1 px-2 py-0.5 bg-success/10 rounded-lg border border-success/20">
-                                  <Check className="w-[10px] h-[10px]" />
-                                  <span className="text-[9px] font-black uppercase text-success tracking-tighter">Best Quality</span>
-                                </div>
-                              )}
-                            </div>
+                <div className="flex items-center gap-2">
+                  {/* 排序 */}
+                  <Select
+                    selectedKey={sortBy}
+                    onSelectionChange={(keys) => {
+                      if (!keys) return
+                      const selected = Array.isArray(Array.from(keys as any)) 
+                        ? Array.from(keys as any)[0] as SortBy
+                        : keys as SortBy
+                      if (selected) {
+                        setSortBy(selected)
+                      }
+                    }}
+                    className="w-[120px]"
+                    placeholder="排序"
+                  >
+                    <Select.Trigger>
+                      <Select.Value />
+                      <Select.Indicator />
+                    </Select.Trigger>
+                    <Select.Popover>
+                      <ListBox>
+                        <ListBox.Item key="space">可释放空间</ListBox.Item>
+                        <ListBox.Item key="count">冗余数量</ListBox.Item>
+                        <ListBox.Item key="quality">质量分数</ListBox.Item>
+                      </ListBox>
+                    </Select.Popover>
+                  </Select>
 
-                            <div className="flex flex-wrap gap-1.5 items-center">
-                              <span className="text-[10px] font-mono text-default-400/80 font-bold">{formatSize(file.size)}</span>
-                              <span className="w-1 h-1 rounded-full bg-default-300" />
-                              {vInfo && (
-                                <>
-                                  <span className="text-[10px] font-black text-default-500 uppercase">{vInfo.codec}</span>
-                                  <span className="w-1 h-1 rounded-full bg-default-300" />
-                                  <span className="text-[10px] font-black text-default-500">{vInfo.width}x{vInfo.height}</span>
-                                  {vInfo.has_chinese_subtitle && <span className="text-[9px] font-black text-primary/70 border border-primary/10 bg-primary/5 px-1 rounded">SUB</span>}
-                                  {vInfo.is_dolby_vision && <span className="text-[9px] font-black text-secondary/70 border border-secondary/10 bg-secondary/5 px-1 rounded">DV</span>}
-                                  {(vInfo.is_hdr || vInfo.is_hdr10_plus) && !vInfo.is_dolby_vision && <span className="text-[9px] font-black text-warning/70 border border-warning/10 bg-warning/5 px-1 rounded">HDR</span>}
-                                </>
-                              )}
-                              <span className="truncate max-w-[200px] text-[10px] text-default-400/50 font-mono italic ml-auto" title={file.path}>{file.path}</span>
-                            </div>
-                          </div>
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                  >
+                    <Icon 
+                      icon={sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'} 
+                      className="w-4 h-4" 
+                    />
+                  </Button>
 
-                          <div className="flex flex-row md:flex-col items-center justify-between gap-4 md:gap-3 w-full md:w-48 shrink-0">
-                            {file.quality_score !== undefined && (
-                              <div className="flex flex-col w-full gap-1.5">
-                                <div className="flex justify-between items-center text-[9px] font-black">
-                                  <span className="text-default-400/60 uppercase tracking-widest">Quality Score</span>
-                                  <span className={isBest ? "text-success" : "text-warning"}>{file.quality_score}</span>
-                                </div>
-                                <div className="h-1.5 w-full bg-default-200/50 rounded-full overflow-hidden">
-                                  <div
-                                    className={clsx("h-full transition-all duration-1000 rounded-full", isBest ? "bg-success" : "bg-warning")}
-                                    style={{ width: `${file.quality_score}%` }}
-                                  />
-                                </div>
-                              </div>
-                            )}
-
+                  {/* 筛选按钮 */}
+                  <Popover
+                    isOpen={showFilterPopover}
+                    onOpenChange={setShowFilterPopover}
+                  >
+                    <Popover.Trigger>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant={hasActiveFilters ? 'primary' : 'ghost'}
+                      >
+                        <Icon icon="mdi:filter" className="w-4 h-4" />
+                      </Button>
+                    </Popover.Trigger>
+                    <Popover.Content className="p-4 w-[280px]">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold">筛选条件</span>
+                          {hasActiveFilters && (
                             <Button
-                              variant="ghost"
                               size="sm"
-                              isPending={trashMutation.isPending}
-                              isDisabled={isBest}
-                              className={clsx(
-                                "w-full font-bold transition-all flex items-center justify-center gap-2",
-                                !isBest ? "bg-danger/5 hover:bg-danger/10 border border-danger/10 text-danger" : "opacity-0 pointer-events-none"
-                              )}
-                              onPress={() => trashMutation.mutate(file.id)}
+                              variant="ghost"
+                              onPress={clearFilters}
                             >
-                              <TrashBin className="w-[13px] h-[13px]" />
-                              {isBest ? "保留此份" : "移入回收站"}
+                              清除
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* 分辨率筛选 */}
+                        <div>
+                          <p className="text-xs text-default-500 mb-2">分辨率</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['4K', '1080p', '720p'].map(res => (
+                              <Button
+                                key={res}
+                                size="sm"
+                                variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
+                                onPress={() => handleToggleFilter('resolution', res)}
+                              >
+                                {res}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* HDR类型筛选 */}
+                        <div>
+                          <p className="text-xs text-default-500 mb-2">HDR 类型</p>
+                          <div className="flex flex-wrap gap-2">
+                            {['DV', 'HDR10+', 'HDR'].map(hdr => (
+                              <Button
+                                key={hdr}
+                                size="sm"
+                                variant={filterOptions.hdrType.includes(hdr) ? 'primary' : 'ghost'}
+                                onPress={() => handleToggleFilter('hdrType', hdr)}
+                              >
+                                {hdr}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 中文字幕筛选 */}
+                        <div>
+                          <p className="text-xs text-default-500 mb-2">中文字幕</p>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant={filterOptions.hasChineseSubtitle === true ? 'primary' : 'ghost'}
+                              onPress={handleToggleSubtitle}
+                            >
+                              有
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={filterOptions.hasChineseSubtitle === false ? 'primary' : 'ghost'}
+                              onPress={handleToggleSubtitle}
+                            >
+                              无
                             </Button>
                           </div>
                         </div>
-                      )
-                    })}
-                  </Accordion.Body>
-                </Accordion.Panel>
-              </Accordion.Item>
-            ))}
+                      </div>
+                    </Popover.Content>
+                  </Popover>
+
+                  {/* 展开/折叠 */}
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="ghost"
+                    onPress={handleExpandAll}
+                  >
+                    <Icon 
+                      icon={expandedKeys.size === sortedData?.length ? 'mdi:chevron-up' : 'mdi:chevron-down'} 
+                      className="w-4 h-4" 
+                    />
+                  </Button>
+
+                  {/* 智能选择 */}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={handleSmartSelect}
+                  >
+                    <Check className="w-4 h-4" />
+                    智能选择
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={handleSelectAll}
+                  >
+                    {selectedGroups.size === sortedData.length ? '取消全选' : '全选组'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 重复组列表 */}
+      <div className="flex-1 min-h-0">
+        {sortedData && sortedData.length > 0 ? (
+        <div className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold">重复组列表</h2>
+          <Accordion
+            allowsMultipleExpanded
+            expandedKeys={expandedKeys}
+            onExpandedChange={(keys) => {
+              if (keys instanceof Set) {
+                setExpandedKeys(keys as Set<string>)
+              } else {
+                setExpandedKeys(new Set(Array.from(keys)))
+              }
+            }}
+            variant="surface"
+          >
+            {sortedData.map((group: DuplicateMovieGroup) => {
+              const groupKey = String(group.tmdb_id)
+              const isSelected = selectedGroups.has(group.tmdb_id)
+              
+              // 按质量分数排序
+              const sortedFiles = [...group.files].sort((a, b) => 
+                (b.quality_score || 0) - (a.quality_score || 0)
+              )
+              const bestFile = sortedFiles[0]
+              const redundantFiles = sortedFiles.slice(1)
+              const wastedSpace = redundantFiles.reduce((sum, f) => sum + f.size, 0)
+
+              return (
+                <Accordion.Item key={groupKey} id={groupKey}>
+                  <Accordion.Heading>
+                    <Accordion.Trigger>
+                      <div className="flex items-center justify-between w-full pr-4">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="ghost"
+                            onPress={() => {
+                              const newSelected = new Set(selectedGroups)
+                              if (isSelected) {
+                                newSelected.delete(group.tmdb_id)
+                              } else {
+                                newSelected.add(group.tmdb_id)
+                              }
+                              setSelectedGroups(newSelected)
+                            }}
+                            className="shrink-0"
+                          >
+                            {isSelected ? (
+                              <Check className="w-4 h-4 text-primary" />
+                            ) : (
+                              <div className="w-4 h-4 border-2 border-default-300 rounded" />
+                            )}
+                          </Button>
+                          <Filmstrip className="w-5 h-5 text-primary shrink-0" />
+                          <div className="flex flex-col gap-1 text-left min-w-0 flex-1">
+                            <span className="text-base font-semibold truncate">{group.title}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs text-muted">TMDB ID: {group.tmdb_id}</span>
+                              <Chip variant="soft" size="sm" color="warning">
+                                {redundantFiles.length} 个冗余
+                              </Chip>
+                              <Chip variant="soft" size="sm" color="accent">
+                                {formatSize(wastedSpace)} 可释放
+                              </Chip>
+                            </div>
+                          </div>
+                        </div>
+                        <Accordion.Indicator>
+                          <Icon icon="mdi:chevron-down" className="w-4 h-4" />
+                        </Accordion.Indicator>
+                      </div>
+                    </Accordion.Trigger>
+                  </Accordion.Heading>
+                  <Accordion.Panel>
+                    <Accordion.Body>
+                      <div className="space-y-3">
+                        {/* 最佳版本 */}
+                        <Surface
+                          variant="secondary"
+                          className="rounded-lg p-4 border-2 border-success"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Chip color="success" variant="soft" size="sm">
+                                  <Check className="w-3 h-3 mr-1" />
+                                  推荐保留
+                                </Chip>
+                                <span className="text-sm font-semibold text-foreground truncate">
+                                  {bestFile.name}
+                                </span>
+                              </div>
+                              <FileInfo file={bestFile} />
+                            </div>
+                            <div className="flex flex-col gap-2 shrink-0">
+                              <Chip color="success" variant="soft" size="sm">
+                                质量: {bestFile.quality_score || 0}
+                              </Chip>
+                            </div>
+                          </div>
+                        </Surface>
+
+                        {/* 冗余版本 */}
+                        {redundantFiles.map((file) => (
+                          <Surface
+                            key={file.id}
+                            variant="default"
+                            className="rounded-lg p-4 border border-divider"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-sm font-medium text-foreground truncate">
+                                    {file.name}
+                                  </span>
+                                  <Chip variant="soft" size="sm" color="danger">
+                                    冗余版本
+                                  </Chip>
+                                </div>
+                                <FileInfo file={file} compareWith={bestFile} />
+                              </div>
+                              <div className="flex flex-col gap-2 shrink-0">
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onPress={() => trashMutation.mutate(file.id)}
+                                  isPending={trashMutation.isPending}
+                                >
+                                  <TrashBin className="w-4 h-4" />
+                                  移入回收站
+                                </Button>
+                              </div>
+                            </div>
+                          </Surface>
+                        ))}
+                      </div>
+                    </Accordion.Body>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              )
+            })}
           </Accordion>
         </div>
+      ) : data && data.length === 0 ? (
+        <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-4 bg-success/10 rounded-full">
+              <Icon icon="mdi:check-circle" className="w-8 h-8 text-success" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-foreground">未发现重复文件</p>
+              <p className="text-xs text-default-400">您的媒体库中没有重复的影片</p>
+            </div>
+          </div>
+        </Surface>
+      ) : (
+        <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-4 bg-default-100 rounded-full">
+              <CircleExclamation className="w-8 h-8 text-default-400" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-foreground">开始扫描</p>
+              <p className="text-xs text-default-400">点击上方按钮开始扫描重复文件</p>
+            </div>
+          </div>
+        </Surface>
+      )}
+      </div>
+
+      {/* 固定底部操作栏 */}
+      {selectedGroups.size > 0 && (
+        <Surface variant="secondary" className="fixed bottom-0 left-0 right-0 border-t border-divider p-4 z-50">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Check className="w-5 h-5 text-primary" />
+              <span className="text-sm font-medium">
+                已选择 <span className="text-primary font-semibold">{selectedGroups.size}</span> 组，
+                可删除 <span className="text-danger font-semibold">{getSelectedRedundantFiles().length}</span> 个冗余文件
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={() => setSelectedGroups(new Set())}
+              >
+                取消选择
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onPress={handleBatchDelete}
+                isPending={batchTrashMutation.isPending}
+              >
+                <TrashBin className="w-4 h-4" />
+                批量删除 ({getSelectedRedundantFiles().length})
+              </Button>
+            </div>
+          </div>
+        </Surface>
       )}
     </div>
   )
 }
 
+// 文件信息组件
+function FileInfo({ file, compareWith }: { file: MediaFile; compareWith?: MediaFile }) {
+  const vInfo = file.video_info
+
+  const getResolution = () => {
+    if (vInfo?.width && vInfo?.height) {
+      if (vInfo.width >= 3840 || vInfo.height >= 2160) return '4K'
+      if (vInfo.width >= 1920 || vInfo.height >= 1080) return '1080p'
+      if (vInfo.width >= 1280 || vInfo.height >= 720) return '720p'
+      return 'SD'
+    }
+    return null
+  }
+
+  const getHDRType = () => {
+    if (!vInfo) return null
+    if (vInfo.is_dolby_vision) return 'DV'
+    if (vInfo.is_hdr10_plus) return 'HDR10+'
+    if (vInfo.is_hdr) return 'HDR'
+    return null
+  }
+
+  const resolution = getResolution()
+  const hdrType = getHDRType()
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-mono text-default-600">{formatSize(file.size)}</span>
+        {resolution && (
+          <>
+            <span className="text-default-400">·</span>
+            <Chip size="sm" variant="soft" color="accent">
+              {resolution}
+            </Chip>
+          </>
+        )}
+        {hdrType && (
+          <Chip size="sm" variant="soft" color="warning">
+            {hdrType}
+          </Chip>
+        )}
+        {vInfo?.source && (
+          <Chip size="sm" variant="soft" color="default">
+            {vInfo.source}
+          </Chip>
+        )}
+        {vInfo?.has_chinese_subtitle && (
+          <Chip size="sm" variant="soft" color="accent">
+            中字
+          </Chip>
+        )}
+        {vInfo?.codec && (
+          <>
+            <span className="text-default-400">·</span>
+            <span className="text-default-500 font-mono">{vInfo.codec}</span>
+          </>
+        )}
+      </div>
+
+      {file.quality_score !== undefined && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-default-500">质量评分</span>
+          <div className="flex-1 h-2 bg-default-100 rounded-full overflow-hidden max-w-[200px]">
+            <div
+              className={clsx(
+                "h-full rounded-full transition-all",
+                file.quality_score >= 70 ? "bg-success" : 
+                file.quality_score >= 50 ? "bg-warning" : "bg-danger"
+              )}
+              style={{ width: `${file.quality_score}%` }}
+            />
+          </div>
+          <span className={clsx(
+            "text-xs font-semibold min-w-[30px] text-right",
+            file.quality_score >= 70 ? "text-success" : 
+            file.quality_score >= 50 ? "text-warning" : "text-danger"
+          )}>
+            {file.quality_score}
+          </span>
+          {compareWith && compareWith.quality_score !== undefined && (
+            <span className={clsx(
+              "text-xs",
+              file.quality_score < compareWith.quality_score ? "text-danger" : "text-default-400"
+            )}>
+              ({file.quality_score < compareWith.quality_score ? '-' : '+'}
+              {Math.abs(file.quality_score - compareWith.quality_score)})
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="text-xs text-default-400 font-mono truncate" title={file.path}>
+        {file.path}
+      </div>
+    </div>
+  )
+}
+
 function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let size = bytes
   let unitIndex = 0

@@ -1,6 +1,6 @@
 import { Component, ReactNode } from 'react'
-import { TriangleExclamation, ArrowsRotateRight } from '@gravity-ui/icons'
-import { Button } from '@heroui/react'
+import { Icon } from '@iconify/react'
+import { Button, Surface } from '@heroui/react'
 
 interface Props {
   children: ReactNode
@@ -31,6 +31,11 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload()
   }
 
+  handleGoHome = () => {
+    this.setState({ hasError: false, error: null })
+    window.location.href = '/'
+  }
+
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
@@ -38,23 +43,57 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8 bg-default-50/20 rounded-3xl backdrop-blur-sm border border-divider/5">
-          <div className="w-20 h-20 rounded-2xl bg-danger/10 flex items-center justify-center mb-8 border border-danger/20 shadow-lg shadow-danger/5">
-            <TriangleExclamation className="w-[36px] h-[36px] text-danger" />
-          </div>
-          <h2 className="text-2xl font-black mb-3 tracking-tight">发生了意外错误</h2>
-          <p className="text-default-500 mb-10 max-w-md text-sm font-medium leading-relaxed">
-            {this.state.error?.message || '加载此页面时发生了未知错误。这可能是一个临时问题。'}
-          </p>
-          <Button
-            variant="secondary"
-            size="md"
-            className="font-bold px-8 border border-divider/10 shadow-md shadow-default-200/10 flex items-center gap-2"
-            onPress={this.handleReset}
-          >
-            <ArrowsRotateRight className="w-[18px] h-[18px] text-default-400" />
-            刷新并重试
-          </Button>
+        <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-background">
+          <Surface variant="secondary" className="w-full max-w-md rounded-xl p-6 border border-divider/10">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-danger/10 flex items-center justify-center">
+                <Icon icon="mdi:alert-circle" className="w-6 h-6 text-danger" />
+              </div>
+              
+              <div className="space-y-2">
+                <h1 className="text-lg font-semibold tracking-tight text-foreground">
+                  发生了意外错误
+                </h1>
+                <p className="text-xs text-default-500 leading-relaxed">
+                  {this.state.error?.message || '加载此页面时发生了未知错误。这可能是一个临时问题。'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="secondary"
+                size="md"
+                className="flex-1 font-medium"
+                onPress={this.handleGoHome}
+              >
+                <Icon icon="mdi:arrow-left" className="w-4 h-4 mr-2" />
+                返回首页
+              </Button>
+              <Button
+                variant="primary"
+                size="md"
+                className="flex-1 font-medium"
+                onPress={this.handleReset}
+              >
+                <Icon icon="mdi:refresh" className="w-4 h-4 mr-2" />
+                刷新重试
+              </Button>
+            </div>
+
+            {this.state.error && (
+              <details className="group pt-2">
+                <summary className="text-xs text-default-400 cursor-pointer hover:text-default-500 transition-colors">
+                  查看错误详情
+                </summary>
+                <div className="mt-3 p-3 bg-default-50 rounded-lg border border-divider/10">
+                  <pre className="text-[10px] text-default-600 font-mono whitespace-pre-wrap break-all">
+                    {this.state.error.toString()}
+                  </pre>
+                </div>
+              </details>
+            )}
+          </Surface>
         </div>
       )
     }

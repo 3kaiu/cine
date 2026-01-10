@@ -10,6 +10,11 @@ import ThemeToggle from './ThemeToggle'
 const menuItems = [
   {
     path: '/',
+    icon: <Icon icon="lucide:play-circle" />,
+    label: '自动化工作流',
+  },
+  {
+    path: '/scanner',
     icon: <Icon icon="lucide:scan-search" />,
     label: '媒体扫描',
   },
@@ -27,11 +32,6 @@ const menuItems = [
     path: '/renamer',
     icon: <Icon icon="lucide:type" />,
     label: '批量重命名',
-  },
-  {
-    path: '/empty-dirs',
-    icon: <Icon icon="lucide:folder-search" />,
-    label: '空目录清理',
   },
   {
     path: '/file-manager',

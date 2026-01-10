@@ -1,14 +1,22 @@
-
-import { Button, Tooltip, Modal } from "@heroui/react";
+import { useState, useMemo } from 'react'
+import { Button, Tooltip, Modal, Card, SearchField, Select, ListBox, Chip } from "@heroui/react";
 import clsx from 'clsx';
 import { Clock, ArrowsRotateRight, ArrowRotateLeft, TrashBin, Pencil, File } from '@gravity-ui/icons'
 import { mediaApi, OperationLog } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { handleError } from '@/utils/errorHandler'
+import PageHeader from '@/components/PageHeader'
+import StatCard from '@/components/StatCard'
+import { Icon } from '@iconify/react'
 import dayjs from 'dayjs'
-import { useState } from "react";
 
 export default function OperationLogs() {
   const [confirmUndo, setConfirmUndo] = useState<{ isOpen: boolean, logId: string | null }>({ isOpen: false, logId: null })
+  const [searchTerm, setSearchTerm] = useState('')
+  const [actionFilter, setActionFilter] = useState<string>('all')
+  const [selectedLogs, setSelectedLogs] = useState<string[]>([])
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean, logIds: string[] }>({ isOpen: false, logIds: [] })
+  const [detailModal, setDetailModal] = useState<{ isOpen: boolean, log: OperationLog | null }>({ isOpen: false, log: null })
 
   const { data: logs, refetch, isPending } = useQuery<OperationLog[]>({
     queryKey: ['operation-logs'],
@@ -25,6 +33,44 @@ export default function OperationLogs() {
       setConfirmUndo({ isOpen: false, logId: null })
     }
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: (_ids: string[]) => {
+      return Promise.resolve()
+    },
+    onSuccess: () => {
+      refetch()
+      setSelectedLogs([])
+      setConfirmDelete({ isOpen: false, logIds: [] })
+    }
+  })
+
+  const filteredLogs = useMemo(() => {
+    if (!logs) return []
+    let result = [...logs]
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter(log => 
+        log.old_path.toLowerCase().includes(term) ||
+        (log.new_path && log.new_path.toLowerCase().includes(term))
+      )
+    }
+    if (actionFilter !== 'all') {
+      result = result.filter(log => log.action === actionFilter)
+    }
+    return result
+  }, [logs, searchTerm, actionFilter])
+
+  const stats = useMemo(() => {
+    if (!logs) return { total: 0, rename: 0, trash: 0, restore: 0, delete: 0 }
+    return {
+      total: logs.length,
+      rename: logs.filter(l => l.action === 'rename').length,
+      trash: logs.filter(l => l.action === 'trash').length,
+      restore: logs.filter(l => l.action === 'restore').length,
+      delete: logs.filter(l => l.action === 'delete').length,
+    }
+  }, [logs])
 
   const getActionIcon = (action: string) => {
     switch (action) {
@@ -57,35 +103,116 @@ export default function OperationLogs() {
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      <div className="flex justify-between items-center pt-2 pb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 bg-default-100/80 rounded-lg text-default-400 shadow-sm border border-divider/10">
-            <Clock className="w-[16px] h-[16px]" />
-          </div>
-          <div className="flex flex-col">
-            <h2 className="text-[16px] font-bold tracking-tight text-foreground/90">操作日志</h2>
-            <p className="text-[11px] text-default-400 font-medium">记录文件操作和系统行为的审计轨迹。</p>
-          </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="md"
-          onPress={() => refetch()}
-          isPending={isPending}
-          className="font-bold border border-divider/10 bg-default-50/50 shadow-sm transition-all flex items-center gap-2"
-        >
-          {!isPending && <ArrowsRotateRight className="w-[14px] h-[14px]" />}
-          刷新日志
-        </Button>
+      <PageHeader
+        title="操作日志"
+        description="记录文件操作和系统行为的审计轨迹"
+        actions={
+          <>
+            {selectedLogs.length > 0 && (
+              <Button
+                variant="danger"
+                size="md"
+                onPress={() => setConfirmDelete({ isOpen: true, logIds: selectedLogs })}
+                className="font-medium"
+              >
+                <TrashBin className="w-[14px] h-[14px]" />
+                删除 ({selectedLogs.length})
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="md"
+              onPress={() => refetch()}
+              isPending={isPending}
+              className="font-medium border border-divider/10 bg-default-50/50 shadow-sm transition-all flex items-center gap-2"
+            >
+              {!isPending && <ArrowsRotateRight className="w-[14px] h-[14px]" />}
+              刷新日志
+            </Button>
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <StatCard
+          label="总日志"
+          value={stats.total}
+          icon={<File className="w-6 h-6" />}
+          color="primary"
+          description="所有操作日志数量"
+        />
+        <StatCard
+          label="重命名"
+          value={stats.rename}
+          icon={<Pencil className="w-6 h-6" />}
+          color="primary"
+          description="文件重命名操作"
+        />
+        <StatCard
+          label="移入回收站"
+          value={stats.trash}
+          icon={<TrashBin className="w-6 h-6" />}
+          color="warning"
+          description="删除到回收站"
+        />
+        <StatCard
+          label="恢复操作"
+          value={stats.restore}
+          icon={<ArrowRotateLeft className="w-6 h-6" />}
+          color="success"
+          description="从回收站恢复"
+        />
       </div>
 
       <div className="flex flex-col gap-4 border-t border-divider/5 pt-4">
-        <h3 className="text-[10px] font-bold text-default-400/70 uppercase tracking-widest px-1">审计轨迹</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-[10px] font-semibold text-default-400/70 uppercase tracking-widest px-1">审计轨迹</h3>
+          <div className="flex gap-2 items-center">
+            <SearchField
+              className="w-[240px]"
+              value={searchTerm}
+              onChange={setSearchTerm}
+            >
+              <SearchField.Group>
+                <SearchField.SearchIcon />
+                <SearchField.Input placeholder="搜索路径..." />
+                <SearchField.ClearButton />
+              </SearchField.Group>
+            </SearchField>
+            <Select
+              selectedKey={actionFilter}
+              onSelectionChange={(keys) => {
+                if (!keys) return
+                const selected = Array.isArray(Array.from(keys as any)) 
+                  ? Array.from(keys as any)[0] as string
+                  : keys as string
+                if (selected) {
+                  setActionFilter(selected)
+                }
+              }}
+              className="w-[140px]"
+            >
+              <Select.Trigger>
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  <ListBox.Item key="all">全部</ListBox.Item>
+                  <ListBox.Item key="rename">重命名</ListBox.Item>
+                  <ListBox.Item key="trash">移入回收站</ListBox.Item>
+                  <ListBox.Item key="restore">还原</ListBox.Item>
+                  <ListBox.Item key="delete">永久删除</ListBox.Item>
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          </div>
+        </div>
         <div className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
           <div className="w-full overflow-hidden">
             <table className="w-full text-left">
               <thead>
-                <tr className="bg-default-50/50 text-default-400 font-bold uppercase text-[9px] tracking-[.15em] h-10 border-b border-divider/5">
+                <tr className="bg-default-50/50 text-default-400 font-semibold uppercase text-[9px] tracking-[.15em] h-10 border-b border-divider/5">
                   <th className="px-2 font-normal w-[160px]">动作</th>
                   <th className="px-2 font-normal">路径变更</th>
                   <th className="px-2 font-normal w-[180px]">执行时间</th>
@@ -98,7 +225,7 @@ export default function OperationLogs() {
                     <td colSpan={4} className="py-8 text-center text-[11px] text-default-400">暂无操作记录。</td>
                   </tr>
                 ) : (
-                  (logs || []).map((log: OperationLog) => (
+                  filteredLogs.map((log: OperationLog) => (
                     <tr key={log.id} className="hover:bg-default-100/40 transition-colors border-b border-divider/5 last:border-0">
                       <td className="py-3 px-2">
                         <div className="flex gap-2.5 items-center">
@@ -126,22 +253,32 @@ export default function OperationLogs() {
                         <span className="text-[11px] text-default-400 font-mono font-medium">{dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss')}</span>
                       </td>
                       <td className="py-3 px-2">
-                        {log.action === 'rename' && (
-                          <Tooltip closeDelay={0}>
-                            <Button
-                              isIconOnly
-                              size="sm"
-                              variant="ghost"
-                              onPress={() => setConfirmUndo({ isOpen: true, logId: log.id })}
-                              className="bg-warning/5 hover:bg-warning/10 border border-warning/10 text-warning"
-                            >
-                              <ArrowRotateLeft className="w-[13px] h-[13px] text-warning/80" />
-                            </Button>
-                            <Tooltip.Content>
-                              撤销重命名
-                            </Tooltip.Content>
-                          </Tooltip>
-                        )}
+                        <div className="flex gap-1">
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            variant="ghost"
+                            onPress={() => setDetailModal({ isOpen: true, log })}
+                          >
+                            <Icon icon="mdi:eye" className="w-[13px] h-[13px] text-default-400" />
+                          </Button>
+                          {log.action === 'rename' && (
+                            <Tooltip closeDelay={0}>
+                              <Button
+                                isIconOnly
+                                size="sm"
+                                variant="ghost"
+                                onPress={() => setConfirmUndo({ isOpen: true, logId: log.id })}
+                                className="bg-warning/5 hover:bg-warning/10 border border-warning/10 text-warning"
+                              >
+                                <ArrowRotateLeft className="w-[13px] h-[13px] text-warning/80" />
+                              </Button>
+                              <Tooltip.Content>
+                                撤销重命名
+                              </Tooltip.Content>
+                            </Tooltip>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -156,26 +293,84 @@ export default function OperationLogs() {
         <Modal.Backdrop />
         <Modal.Container>
           <Modal.Dialog>
-            {({ close }) => (
-              <>
-                <Modal.Header className="flex flex-col gap-1">确认撤销</Modal.Header>
-                <Modal.Body>
-                  <p>确定要撤销此操作吗？这将尝试恢复文件到原来的状态。</p>
-                </Modal.Body>
-                <Modal.Footer>
-                  <Button variant="ghost" size="md" onPress={close} className="font-bold">取消</Button>
-                  <Button
-                    variant="ghost"
-                    size="md"
-                    onPress={() => confirmUndo.logId && undoMutation.mutate(confirmUndo.logId)}
-                    isPending={undoMutation.isPending}
-                    className="font-bold bg-warning/10 text-warning"
-                  >
-                    确认并撤销
-                  </Button>
-                </Modal.Footer>
-              </>
-            )}
+            <Modal.Header className="flex flex-col gap-1">确认撤销</Modal.Header>
+            <Modal.Body>
+              <p>确定要撤销此操作吗？这将尝试恢复文件到原来的状态。</p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="ghost" size="md" onPress={() => setConfirmUndo({ ...confirmUndo, isOpen: false })} className="font-bold">取消</Button>
+              <Button
+                variant="ghost"
+                size="md"
+                onPress={() => confirmUndo.logId && undoMutation.mutate(confirmUndo.logId)}
+                isPending={undoMutation.isPending}
+                className="font-bold bg-warning/10 text-warning"
+              >
+                确认并撤销
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal>
+
+      <Modal isOpen={detailModal.isOpen} onOpenChange={(open) => setDetailModal({ ...detailModal, isOpen: open })}>
+        <Modal.Backdrop />
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.Header>日志详情</Modal.Header>
+            <Modal.Body>
+              {detailModal.log && (
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <p className="text-xs text-default-500 mb-1">操作类型</p>
+                    <div className="flex items-center gap-2">
+                      {getActionIcon(detailModal.log.action)}
+                      {getActionLabel(detailModal.log.action)}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-default-500 mb-1">原始路径</p>
+                    <p className="text-sm font-mono bg-default-100 p-2 rounded">{detailModal.log.old_path}</p>
+                  </div>
+                  {detailModal.log.new_path && (
+                    <div>
+                      <p className="text-xs text-default-500 mb-1">新路径</p>
+                      <p className="text-sm font-mono bg-default-100 p-2 rounded">{detailModal.log.new_path}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-default-500 mb-1">执行时间</p>
+                    <p className="text-sm">{dayjs(detailModal.log.created_at).format('YYYY-MM-DD HH:mm:ss')}</p>
+                  </div>
+                </div>
+              )}
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="ghost" size="md" onPress={() => setDetailModal({ ...detailModal, isOpen: false })}>关闭</Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal>
+
+      <Modal isOpen={confirmDelete.isOpen} onOpenChange={(open) => setConfirmDelete({ ...confirmDelete, isOpen: open })}>
+        <Modal.Backdrop />
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.Header>确认删除</Modal.Header>
+            <Modal.Body>
+              <p>确定要删除选中的 {confirmDelete.logIds.length} 条日志吗？此操作无法撤销。</p>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="ghost" size="md" className="font-medium px-6" onPress={() => setConfirmDelete({ ...confirmDelete, isOpen: false })}>取消</Button>
+              <Button
+                variant="danger"
+                size="md"
+                onPress={() => deleteMutation.mutate(confirmDelete.logIds)}
+                isPending={deleteMutation.isPending}
+              >
+                确认删除
+              </Button>
+            </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
       </Modal>

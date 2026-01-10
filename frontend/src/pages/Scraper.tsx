@@ -1,62 +1,122 @@
-import { useState } from 'react'
-import { Button, Checkbox, ModalRoot as Modal, ModalHeader, ModalBody, ModalFooter, ModalContainer, ModalDialog, ModalBackdrop, Chip } from "@heroui/react";
-import VirtualizedTable from '@/components/VirtualizedTable';
+import { useState, useMemo, useEffect } from 'react'
+import { Button, Checkbox, Chip, Card, Modal, Surface, Separator, Label, SearchField, ListBox, Select } from "@heroui/react";
+import { Icon } from '@iconify/react'
 import {
   Cloud,
   Filmstrip,
-  Magnifier,
-  ArrowDownToLine,
   MagicWand,
   Pencil,
+  ArrowDownToLine,
+  Check,
 } from '@gravity-ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import clsx from 'clsx'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
+import VirtualizedTable from '@/components/VirtualizedTable'
 import NfoEditor from '@/components/NfoEditor'
-
-dayjs.extend(relativeTime)
+import { handleError } from '@/utils/errorHandler'
+import { showSuccess, showBatchProgress, updateBatchProgress, dismissLoading } from '@/utils/toast'
+import PageHeader from '@/components/PageHeader'
+import StatCard from '@/components/StatCard'
 
 export default function Scraper() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [source, setSource] = useState<string>('tmdb')
   const [downloadImages, setDownloadImages] = useState(true)
   const [generateNfo, setGenerateNfo] = useState(true)
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [previewVisible, setPreviewVisible] = useState(false)
   const [previewMetadata, setPreviewMetadata] = useState<any>(null)
   const [editingFileId, setEditingFileId] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 
   const { data: files, refetch, isPending } = useQuery({
     queryKey: ['files'],
     queryFn: () => mediaApi.getFiles({ file_type: 'video', page_size: 100 })
   })
 
+  // 过滤和搜索
+  const filteredFiles = useMemo(() => {
+    if (!files?.files) return []
+    
+    let result = [...files.files]
+    
+    // 搜索过滤
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter((file: MediaFile) => 
+        file.name.toLowerCase().includes(term)
+      )
+    }
+    
+    // 状态过滤
+    if (filterStatus !== 'all') {
+      result = result.filter((file: MediaFile) => {
+        const hasMetadata = !!file.metadata
+        if (filterStatus === 'scraped') return hasMetadata
+        if (filterStatus === 'unscraped') return !hasMetadata
+        return true
+      })
+    }
+    
+    return result
+  }, [files, searchTerm, filterStatus])
+
+  // 统计数据
+  const stats = useMemo(() => {
+    if (!files?.files) return { total: 0, scraped: 0, unscraped: 0, avgRating: 0 }
+    
+    const scraped = files.files.filter((f: MediaFile) => f.metadata).length
+    const unscraped = files.files.length - scraped
+    
+    let totalRating = 0
+    let ratingCount = 0
+    files.files.forEach((file: MediaFile) => {
+      if (file.metadata) {
+        try {
+          const data = typeof file.metadata === 'string' ? JSON.parse(file.metadata) : file.metadata
+          if (data.rating) {
+            totalRating += data.rating
+            ratingCount++
+          }
+        } catch {}
+      }
+    })
+    
+    return {
+      total: files.files.length,
+      scraped,
+      unscraped,
+      avgRating: ratingCount > 0 ? (totalRating / ratingCount).toFixed(1) : 0
+    }
+  }, [files])
+
   const currentFile = files?.files?.find((f: any) => f.id === selectedFile)
 
-  // Mutations (Simplified error handling for brevity)
   const scrapeMutation = useMutation({
     mutationFn: mediaApi.scrapeMetadata,
     onSuccess: () => {
       refetch()
-    }
+      setPreviewVisible(false)
+      showSuccess('元数据刮削成功')
+    },
+    onError: (error: any) => handleError(error, '刮削失败'),
   })
 
-  const batchScrapeMutation = useMutation({
-    mutationFn: mediaApi.batchScrapeMetadata,
-    onSuccess: () => {
-      refetch()
-    }
-  })
+  // 批量刮削进度
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false)
 
+  // 刮削元数据（支持手动选择）
   const handleScrape = async (fileId: string, autoMatch: boolean = true) => {
     setSelectedFile(fileId)
+    
     if (!autoMatch) {
+      // 手动模式：先获取搜索结果供用户选择
       try {
         const result = await mediaApi.scrapeMetadata({
           file_id: fileId,
-          source,
+          source: 'tmdb',
           auto_match: false,
           download_images: false,
           generate_nfo: false,
@@ -67,44 +127,100 @@ export default function Scraper() {
           return
         }
       } catch (e) {
-        // Silently fail to auto-match
+        handleError(e, '获取搜索结果失败')
       }
     }
 
+    // 自动匹配模式：直接应用
     scrapeMutation.mutate({
       file_id: fileId,
-      source,
+      source: 'tmdb',
       auto_match: autoMatch,
       download_images: downloadImages,
       generate_nfo: generateNfo,
     })
   }
 
-  const handleBatchScrape = () => {
-    if (selectedFiles.length === 0) return
-    batchScrapeMutation.mutate({
-      file_ids: selectedFiles,
-      source,
-      auto_match: true,
-      download_images: downloadImages,
-      generate_nfo: generateNfo,
-    })
-  }
-
+  // 选择并应用元数据
   const handleSelectMetadata = (metadata?: any) => {
     if (!selectedFile) return
 
     scrapeMutation.mutate({
       file_id: selectedFile,
-      source,
+      source: 'tmdb',
       auto_match: !metadata,
       download_images: downloadImages,
       generate_nfo: generateNfo,
       tmdb_id: metadata?.tmdb_id,
-      douban_id: metadata?.douban_id,
     })
     setPreviewVisible(false)
   }
+
+  const handleBatchScrape = async () => {
+    if (selectedFiles.length === 0) return
+    setIsBatchProcessing(true)
+    
+    const toastId = showBatchProgress(0, selectedFiles.length, '正在刮削...')
+    
+    for (let i = 0; i < selectedFiles.length; i++) {
+      try {
+        await mediaApi.scrapeMetadata({
+          file_id: selectedFiles[i],
+          source: 'tmdb',
+          auto_match: true,
+          download_images: downloadImages,
+          generate_nfo: generateNfo,
+        })
+        updateBatchProgress(toastId, i + 1, selectedFiles.length, '正在刮削...')
+      } catch (e) {
+        handleError(e, `刮削失败: ${selectedFiles[i]}`)
+      }
+    }
+    
+    setIsBatchProcessing(false)
+    refetch()
+    setSelectedFiles([])
+    dismissLoading(toastId, `成功刮削 ${selectedFiles.length} 个文件`, 'success')
+  }
+
+  // 快捷键支持
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + A: 全选
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        e.preventDefault()
+        if (filteredFiles.length > 0) {
+          setSelectedFiles(filteredFiles.map(f => f.id))
+        }
+      }
+      // Cmd/Ctrl + S: 刮削选中
+      else if ((e.metaKey || e.ctrlKey) && e.key === 's' && selectedFiles.length > 0) {
+        e.preventDefault()
+        handleBatchScrape()
+      }
+      // Cmd/Ctrl + E: 编辑 NFO
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'e' && selectedFiles.length === 1) {
+        e.preventDefault()
+        setEditingFileId(selectedFiles[0])
+      }
+      // Escape: 清除选择
+      else if (e.key === 'Escape') {
+        setSelectedFiles([])
+        setEditingFileId(null)
+      }
+      // Cmd/Ctrl + F: 聚焦搜索框
+      else if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        const searchInput = document.querySelector('input[placeholder*="搜索"]') as HTMLInputElement
+        if (searchInput) {
+          searchInput.focus()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [filteredFiles, selectedFiles])
 
   const columns = [
     {
@@ -112,32 +228,38 @@ export default function Scraper() {
       dataIndex: 'name',
       key: 'name',
       width: 400,
-      render: (text: string) => <span className="font-bold text-foreground/90 text-[13px]">{text}</span>
+      render: (text: string) => <span className="text-sm font-medium text-foreground">{text}</span>
     },
     {
       title: '大小',
       dataIndex: 'size',
       key: 'size',
-      width: 100,
-      render: (size: number) => <span className="text-default-400 font-mono text-[11px] font-medium">{formatSize(size)}</span>,
+      width: 120,
+      render: (size: number) => <span className="text-xs text-muted font-mono">{formatSize(size)}</span>,
     },
     {
       title: '元数据状态',
       dataIndex: 'metadata',
       key: 'metadata',
+      width: 300,
       render: (metadata: any) => {
-        if (!metadata) return <Chip size="sm" variant="soft" className="text-[10px] font-bold h-5">未刮削</Chip>
+        if (!metadata) return <Chip size="sm" variant="soft">未刮削</Chip>
         try {
           const data = typeof metadata === 'string' ? JSON.parse(metadata) : metadata
           return (
             <div className="flex items-center gap-2">
-              <Chip size="sm" color="success" variant="soft" className="text-[11px] font-bold h-6">{data.title || data.name}</Chip>
-              {data.poster_url && <Filmstrip className="w-[12px] h-[12px] text-secondary/60" />}
-              {data.rating && <span className="text-[11px] text-warning font-black tracking-tight flex items-center gap-0.5">★ {data.rating}</span>}
+              <Chip size="sm" color="success" variant="soft">{data.title || data.name}</Chip>
+              {data.poster_url && <Filmstrip className="w-4 h-4 text-muted" />}
+              {data.rating && (
+                <span className="text-xs text-warning font-medium flex items-center gap-0.5">
+                  <Icon icon="mdi:star" className="w-3 h-3" />
+                  {data.rating}
+                </span>
+              )}
             </div>
           )
         } catch {
-          return <Chip size="sm" color="accent" variant="soft" className="text-[10px] font-bold h-5">已刮削</Chip>
+          return <Chip size="sm" color="accent" variant="soft">已刮削</Chip>
         }
       },
     },
@@ -146,16 +268,15 @@ export default function Scraper() {
       key: 'action',
       width: 150,
       render: (_: any, record: MediaFile) => (
-        <div className="flex gap-1.5 px-1">
+        <div className="flex gap-2">
           <Button
             size="sm"
             variant="ghost"
             onPress={() => handleScrape(record.id, true)}
             isPending={scrapeMutation.isPending && selectedFile === record.id}
             isIconOnly
-            className="bg-primary/5 hover:bg-primary/10 border border-primary/10 text-primary"
           >
-            <MagicWand className="w-[14px] h-[14px]" />
+            <MagicWand className="w-4 h-4" />
           </Button>
           <Button
             size="sm"
@@ -163,18 +284,16 @@ export default function Scraper() {
             onPress={() => handleScrape(record.id, false)}
             isPending={scrapeMutation.isPending && selectedFile === record.id}
             isIconOnly
-            className="bg-default-100/50 border border-divider/10"
           >
-            <Magnifier className="w-[14px] h-[14px]" />
+            <Icon icon="mdi:magnify" className="w-4 h-4" />
           </Button>
           <Button
             size="sm"
             variant="ghost"
             onPress={() => setEditingFileId(record.id)}
             isIconOnly
-            className="bg-default-100/50 border border-divider/10"
           >
-            <Pencil className="w-[14px] h-[14px]" />
+            <Pencil className="w-4 h-4" />
           </Button>
         </div>
       ),
@@ -182,148 +301,287 @@ export default function Scraper() {
   ]
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      <div className="flex flex-col gap-6 pt-2 pb-4">
-        <div className="flex items-center gap-4">
-          <div className="p-2.5 bg-secondary/5 rounded-2xl text-secondary/80 shadow-sm border border-secondary/10">
-            <Cloud className="w-[22px] h-[22px]" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <h2 className="text-[18px] font-black tracking-tight text-foreground">元数据刮削</h2>
-            <p className="text-[11px] text-default-400 font-medium">从 TMDB/豆瓣获取信息并生成 NFO 文件</p>
-          </div>
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <PageHeader
+        title="元数据刮削"
+        description="从 TMDB 获取元数据并生成 NFO 文件"
+        actions={
+          <>
+            <Button
+              variant="primary"
+              onPress={handleBatchScrape}
+              isDisabled={selectedFiles.length === 0}
+              className="font-medium flex items-center gap-2"
+            >
+              <MagicWand className="w-4 h-4" />
+              批量刮削
+            </Button>
+          </>
+        }
+      />
+
+      {/* 统计卡片 */}
+      {stats.total > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <StatCard
+            label="视频文件"
+            value={stats.total}
+            icon={<Filmstrip className="w-6 h-6" />}
+            color="primary"
+            description="库中视频文件总数"
+          />
+          <StatCard
+            label="已刮削"
+            value={stats.scraped}
+            icon={<Check className="w-6 h-6" />}
+            color="success"
+            description="已获取元数据的文件"
+          />
+          <StatCard
+            label="未刮削"
+            value={stats.unscraped}
+            icon={<MagicWand className="w-6 h-6" />}
+            color="warning"
+            description="待刮削的文件数量"
+          />
+          <StatCard
+            label="平均评分"
+            value={stats.avgRating}
+            icon={<Icon icon="mdi:star" className="w-6 h-6" />}
+            color="accent"
+            description="TMDB 平均评分"
+          />
         </div>
+      )}
 
-        <div className="flex flex-wrap gap-10 items-center ml-12">
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-black text-default-400/70 uppercase tracking-[0.2em] flex items-center gap-2">
-              <Filmstrip className="w-[16px] h-[16px]" /> 数据源
-            </span>
-            <div className="flex bg-default-100/40 p-1 rounded-xl border border-divider/10 shadow-sm h-11 items-center">
-              {['tmdb', 'douban'].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSource(s)}
-                  className={clsx(
-                    "px-5 h-9 rounded-lg text-[11px] font-bold transition-all",
-                    source === s
-                      ? "bg-background text-foreground shadow-sm ring-1 ring-border/10"
-                      : "text-default-400 hover:text-foreground/80"
-                  )}
-                >
-                  {s === 'tmdb' ? 'TMDB' : '豆瓣'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6 h-11">
+      {/* 操作栏 */}
+      <Surface variant="secondary" className="rounded-xl p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-6">
             <Checkbox
+              id="download-images"
               isSelected={downloadImages}
               onChange={setDownloadImages}
             >
-              <div className="text-[11px] font-bold text-default-400/80 uppercase tracking-tight">下载图片</div>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              <Checkbox.Content>
+                <Label htmlFor="download-images">下载图片</Label>
+              </Checkbox.Content>
             </Checkbox>
             <Checkbox
+              id="generate-nfo"
               isSelected={generateNfo}
               onChange={setGenerateNfo}
             >
-              <div className="text-[11px] font-bold text-default-400/80 uppercase tracking-tight">生成 NFO</div>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              <Checkbox.Content>
+                <Label htmlFor="generate-nfo">生成 NFO</Label>
+              </Checkbox.Content>
             </Checkbox>
           </div>
 
-          {selectedFiles.length > 0 && (
-            <div className="flex gap-2 animate-in fade-in zoom-in-95 duration-300">
-              <Button
-                variant="primary"
-                size="md"
-                onPress={handleBatchScrape}
-                isPending={batchScrapeMutation.isPending}
-                className="font-bold shadow-md shadow-primary/10 px-6 flex items-center gap-2.5 transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                {!batchScrapeMutation.isPending && <ArrowDownToLine className="w-[16px] h-[16px]" />}
-                批量刮削 ({selectedFiles.length})
-              </Button>
-              <Button
-                onPress={() => setSelectedFiles([])}
-                variant="ghost"
-                size="md"
-                className="border border-divider/10 font-bold px-5 hover:bg-default-100/50"
-              >
-                取消
-              </Button>
-            </div>
-          )}
+          <div className="flex gap-1 ml-auto">
+            <Button
+              isIconOnly
+              size="sm"
+              variant={viewMode === 'list' ? 'primary' : 'ghost'}
+              onPress={() => setViewMode('list')}
+            >
+              <Icon icon="mdi:view-list" className="w-4 h-4" />
+            </Button>
+            <Button
+              isIconOnly
+              size="sm"
+              variant={viewMode === 'grid' ? 'primary' : 'ghost'}
+              onPress={() => setViewMode('grid')}
+            >
+              <Icon icon="mdi:view-grid" className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
+      </Surface>
+
+      {/* 搜索和筛选栏 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchField
+          className="flex-1 min-w-[200px]"
+          value={searchTerm}
+          onChange={setSearchTerm}
+        >
+          <SearchField.Group>
+            <SearchField.SearchIcon />
+            <SearchField.Input placeholder="搜索文件名..." />
+            <SearchField.ClearButton />
+          </SearchField.Group>
+        </SearchField>
+
+        <Select
+          selectedKey={filterStatus}
+          onSelectionChange={(keys) => {
+            if (!keys) return
+            const selected = Array.isArray(Array.from(keys as any)) 
+              ? Array.from(keys as any)[0] as string
+              : keys as string
+            if (selected) {
+              setFilterStatus(selected)
+            }
+          }}
+          className="w-[140px]"
+        >
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              <ListBox.Item key="all">全部</ListBox.Item>
+              <ListBox.Item key="scraped">已刮削</ListBox.Item>
+              <ListBox.Item key="unscraped">未刮削</ListBox.Item>
+            </ListBox>
+          </Select.Popover>
+        </Select>
       </div>
 
-      <div className="flex flex-col gap-5 border-t border-divider/5 pt-8">
-        <h3 className="text-[10px] font-black text-default-400/70 uppercase tracking-[0.2em] px-1">视频文件</h3>
-        <div className="h-[600px]">
-          <VirtualizedTable<MediaFile>
-            columns={columns}
-            dataSource={files?.files || []}
-            height={600}
-            rowHeight={56}
-            loading={isPending}
-            selectionMode="multiple"
-            selectedKeys={new Set(selectedFiles)}
-            onSelectionChange={(keys) => {
-              if (keys === "all") {
-                setSelectedFiles(files?.files?.map((f: any) => f.id) || [])
-              } else {
-                setSelectedFiles(Array.from(keys) as string[])
-              }
-            }}
-          />
-        </div>
-      </div>
-
-      <Modal isOpen={previewVisible} onOpenChange={setPreviewVisible}>
-        <ModalBackdrop variant="blur" />
-        <ModalContainer size="lg">
-          <ModalDialog className="max-w-[80vw] h-[80vh]">
-            {({ close }: any) => (
-              <>
-                <ModalHeader className="flex gap-1 items-center font-bold">
-                  <MagicWand className="w-[18px] h-[18px] text-primary" />
-                  手动刮削
-                  {currentFile && <span className="text-default-400 text-sm font-normal ml-2">{(currentFile as any).title || currentFile.name}</span>}
-                </ModalHeader>
-                <ModalBody className="p-0 overflow-hidden">
-                  <div className="flex h-full w-full">
-                    <div className="w-[300px] border-r border-divider/50 flex flex-col bg-default-50/30 overflow-y-auto scrollbar-hide">
-                      <div className="p-4 space-y-3">
-                        {previewMetadata && Array.isArray(previewMetadata) && previewMetadata.map((item: any) => (
-                          <button
-                            key={item.tmdb_id || item.douban_id}
-                            onClick={() => handleSelectMetadata(item)}
-                            className="text-left w-full p-2.5 hover:bg-default-100 rounded-xl text-xs transition-colors border border-transparent hover:border-divider/10"
-                          >
-                            <div className="font-bold text-foreground/90">{item.title || item.name}</div>
-                            <div className="text-[10px] text-default-500 mt-0.5">{item.year}</div>
-                          </button>
-                        ))}
-                      </div>
+      {/* 文件列表 */}
+      <div className="flex-1 min-h-0">
+        {viewMode === 'list' ? (
+          <Surface className="rounded-xl overflow-hidden" variant="default">
+            <VirtualizedTable<MediaFile>
+              columns={columns}
+              dataSource={filteredFiles}
+              height={600}
+              rowHeight={56}
+              loading={isPending}
+              selectionMode="multiple"
+              selectedKeys={new Set(selectedFiles)}
+              onSelectionChange={(keys) => {
+                if (keys === "all") {
+                  setSelectedFiles(filteredFiles.map((f: any) => f.id) || [])
+                } else {
+                  setSelectedFiles(Array.from(keys) as string[])
+                }
+              }}
+            />
+          </Surface>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredFiles.map((file: MediaFile) => (
+              <Card key={file.id} className="overflow-hidden">
+                <Card.Content className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate mb-2">{file.name}</p>
+                      <p className="text-xs text-muted mb-3">{formatSize(file.size)}</p>
+                      {file.metadata ? (
+                        <div className="flex items-center gap-2">
+                          <Chip size="sm" color="success" variant="soft">已刮削</Chip>
+                        </div>
+                      ) : (
+                        <Chip size="sm" variant="soft">未刮削</Chip>
+                      )}
                     </div>
-                    <div className="flex-1 p-4 overflow-y-auto flex items-center justify-center text-default-400 text-[13px] font-medium bg-background/50">
-                      请从左侧选择一个结果进行预览
+                    <div className="flex gap-1">
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        onPress={() => handleScrape(file.id, true)}
+                        isPending={scrapeMutation.isPending && selectedFile === file.id}
+                      >
+                        <MagicWand className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        onPress={() => setEditingFileId(file.id)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
-                </ModalBody>
-                <ModalFooter className="border-t border-divider/5">
-                  <Button variant="ghost" className="font-bold" onPress={close}>
-                    关闭
-                  </Button>
-                  <Button variant="primary" className="font-bold px-6" onPress={() => handleSelectMetadata()}>
-                    自动匹配
-                  </Button>
-                </ModalFooter>
-              </>
-            )}
-          </ModalDialog>
-        </ModalContainer>
-      </Modal>
+                </Card.Content>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 搜索结果选择模态框 */}
+      <Modal.Backdrop isOpen={previewVisible} onOpenChange={setPreviewVisible}>
+        <Modal.Container size="lg" scroll="inside">
+          <Modal.Dialog className="max-h-[85vh]">
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Icon className="bg-accent-soft text-accent-soft-foreground">
+                <MagicWand className="w-5 h-5" />
+              </Modal.Icon>
+              <Modal.Heading>选择元数据</Modal.Heading>
+              {currentFile && (
+                <p className="text-sm text-muted mt-1">{currentFile.name}</p>
+              )}
+            </Modal.Header>
+            <Modal.Body>
+              <div className="space-y-2">
+                {previewMetadata && Array.isArray(previewMetadata) && previewMetadata.length > 0 ? (
+                  previewMetadata.map((item: any, idx: number) => (
+                    <button
+                      key={item.tmdb_id || idx}
+                      onClick={() => handleSelectMetadata(item)}
+                      className="w-full text-left p-4 rounded-lg hover:bg-default-100 transition-colors border border-divider"
+                    >
+                      <div className="flex items-start gap-4">
+                        {item.poster_url && (
+                          <img
+                            src={item.poster_url}
+                            alt={item.title || item.name}
+                            className="w-16 h-24 object-cover rounded-lg shrink-0"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-lg font-semibold mb-1">{item.title || item.name}</h3>
+                          {item.overview && (
+                            <p className="text-sm text-muted line-clamp-2 mb-2">{item.overview}</p>
+                          )}
+                          <div className="flex items-center gap-4 text-sm">
+                            {item.year && (
+                              <span className="text-muted">年份: <span className="font-medium text-foreground">{item.year}</span></span>
+                            )}
+                            {item.rating && (
+                              <span className="text-muted flex items-center gap-1">
+                                评分: <span className="font-medium text-warning flex items-center gap-0.5">
+                                  <Icon icon="mdi:star" className="w-3 h-3" />
+                                  {item.rating}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-center py-12 text-muted">
+                    未找到搜索结果
+                  </div>
+                )}
+              </div>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="ghost" slot="close">
+                取消
+              </Button>
+              <Button variant="primary" onPress={() => handleSelectMetadata()}>
+                自动匹配第一个
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
 
       <NfoEditor
         fileId={editingFileId || ''}
@@ -333,6 +591,7 @@ export default function Scraper() {
     </div>
   )
 }
+
 
 function formatSize(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

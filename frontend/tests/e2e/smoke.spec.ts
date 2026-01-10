@@ -91,12 +91,23 @@ test.describe('文件扫描功能', () => {
 
   test('扫描页面应该显示', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
-    
+
     // 等待页面稳定
     await page.waitForLoadState('networkidle')
 
-    // 检查扫描输入框（placeholder 包含"例如:"）
-    const input = page.locator('input[placeholder*="例如:"]')
-    await expect(input).toBeVisible({ timeout: 10000 })
+    // 检查扫描页面标题
+    const title = page.locator('text=媒体扫描')
+    await expect(title).toBeVisible({ timeout: 10000 })
+  })
+
+  test('扫描页面应该显示搜索框', async ({ page }) => {
+    await page.goto('/scanner', { waitUntil: 'domcontentloaded' })
+
+    // 等待页面稳定
+    await page.waitForLoadState('networkidle')
+
+    // 检查搜索框
+    const searchInput = page.locator('input[placeholder*="搜索"]')
+    await expect(searchInput).toBeVisible({ timeout: 10000 })
   })
 })

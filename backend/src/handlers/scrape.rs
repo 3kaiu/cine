@@ -9,7 +9,7 @@ use chrono::Utc;
 #[derive(Deserialize)]
 pub struct ScrapeRequest {
     pub file_id: String,
-    pub source: Option<String>, // tmdb, douban
+    pub source: Option<String>, // tmdb
     pub auto_match: Option<bool>,
 }
 

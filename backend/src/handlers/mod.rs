@@ -62,3 +62,6 @@ pub use log::{list_operation_logs, undo_operation};
 
 pub mod history;
 pub use history::list_scan_history;
+
+pub mod settings;
+pub use settings::{get_settings, update_settings};

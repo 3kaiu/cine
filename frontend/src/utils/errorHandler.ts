@@ -1,4 +1,4 @@
-import { toast } from 'sonner'
+import { showError } from './toast'
 
 /**
  * 错误消息映射表 - 将技术错误转换为用户友好的提示
@@ -94,7 +94,7 @@ export function handleError(
   }
 
   if (showToast) {
-    toast.error(errorMessage)
+    showError(errorMessage)
   }
 
   // 记录错误日志

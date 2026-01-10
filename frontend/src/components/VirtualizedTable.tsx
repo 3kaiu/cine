@@ -1,6 +1,6 @@
 import React from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Spinner, ListBox, Surface } from "@heroui/react";
+import { Spinner, ListBox } from "@heroui/react";
 
 interface VirtualizedTableProps<T> {
   dataSource: T[]
@@ -47,7 +47,7 @@ export default function VirtualizedTable<T extends { id: string }>({
   // for consistency, but we keep the threshold logic if needed.
 
   const headerContent = (
-    <div className="flex border-b border-divider/10 bg-default-100/30 backdrop-blur-md sticky top-0 z-20 font-bold text-default-400 text-[10px] uppercase tracking-widest shrink-0 shadow-sm">
+    <div className="flex border-b border-divider sticky top-0 z-20 bg-surface text-xs font-medium text-muted shrink-0">
       {columns.map((col, index) => (
         <div
           key={index}
@@ -55,7 +55,7 @@ export default function VirtualizedTable<T extends { id: string }>({
             flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
             minWidth: (col.width as number) || 120,
           }}
-          className="px-6 py-4"
+          className="px-4 py-3"
         >
           {typeof col.title === 'function' ? col.title({}) : col.title}
         </div>
@@ -64,7 +64,7 @@ export default function VirtualizedTable<T extends { id: string }>({
   );
 
   return (
-    <Surface className="flex flex-col border border-divider/10 rounded-2xl overflow-hidden bg-background/5 shadow-none h-full">
+    <div className="flex flex-col overflow-hidden h-full">
       {headerContent}
       <div
         ref={parentRef}
@@ -93,7 +93,7 @@ export default function VirtualizedTable<T extends { id: string }>({
                   key={virtualRow.key}
                   id={record.id}
                   textValue={record.id}
-                  className="p-0 border-b border-divider/5 last:border-0 data-[hover=true]:bg-default-100/50 data-[selected=true]:bg-primary/5 transition-all duration-200"
+                  className="p-0 border-b border-divider last:border-0 data-[hover=true]:bg-default-100 data-[selected=true]:bg-primary/5 transition-colors"
                   style={{
                     position: 'absolute',
                     top: 0,
@@ -120,7 +120,7 @@ export default function VirtualizedTable<T extends { id: string }>({
                             flex: col.width ? `0 0 ${col.width}px` : '1 1 0',
                             minWidth: (col.width as number) || 120,
                           }}
-                          className="px-6 text-[13px] font-medium text-foreground/80 whitespace-nowrap overflow-hidden text-ellipsis"
+                          className="px-4 text-sm text-foreground whitespace-nowrap overflow-hidden text-ellipsis"
                         >
                           {displayValue}
                         </div>
@@ -133,6 +133,6 @@ export default function VirtualizedTable<T extends { id: string }>({
           </ListBox>
         </div>
       </div>
-    </Surface>
+    </div>
   );
 }

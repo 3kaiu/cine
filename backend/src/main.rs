@@ -112,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/api/watch-folders/:id", delete(delete_watch_folder))
         .route("/api/files/:id/nfo", get(get_nfo).put(update_nfo))
+        .route("/api/settings", get(get_settings).post(update_settings))
         .route("/ws", get(ws_handler))
         .layer(ServiceBuilder::new().layer(cors))
         .with_state(app_state);

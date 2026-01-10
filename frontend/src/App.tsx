@@ -6,11 +6,11 @@ import LoadingWrapper from './components/LoadingWrapper'
 import { Toaster } from 'sonner'
 
 // Lazy load page components
+const Workflow = lazy(() => import('./pages/Workflow'))
 const Scanner = lazy(() => import('./pages/Scanner'))
 const Scraper = lazy(() => import('./pages/Scraper'))
 const Dedupe = lazy(() => import('./pages/Dedupe'))
 const Renamer = lazy(() => import('./pages/Renamer'))
-const EmptyDirs = lazy(() => import('./pages/EmptyDirs'))
 const FileManager = lazy(() => import('./pages/FileManager'))
 const Trash = lazy(() => import('./pages/Trash'))
 const OperationLogs = lazy(() => import('./pages/OperationLogs'))
@@ -28,11 +28,11 @@ function App() {
               <div className="w-full space-y-4">
                 <Suspense fallback={<LoadingWrapper loading={true} />}>
                   <Routes>
-                    <Route path="/" element={<Scanner />} />
+                    <Route path="/" element={<Workflow />} />
+                    <Route path="/scanner" element={<Scanner />} />
                     <Route path="/scraper" element={<Scraper />} />
                     <Route path="/dedupe" element={<Dedupe />} />
                     <Route path="/renamer" element={<Renamer />} />
-                    <Route path="/empty-dirs" element={<EmptyDirs />} />
                     <Route path="/file-manager" element={<FileManager />} />
                     <Route path="/trash" element={<Trash />} />
                     <Route path="/logs" element={<OperationLogs />} />
@@ -45,7 +45,17 @@ function App() {
           </div>
         </div>
       </BrowserRouter>
-      <Toaster richColors position="top-right" />
+      <Toaster 
+        richColors 
+        position="top-right"
+        toastOptions={{
+          classNames: {
+            error: 'border-danger/10 bg-danger/5',
+            success: 'border-success/10 bg-success/5',
+            warning: 'border-warning/10 bg-warning/5',
+          }
+        }}
+      />
     </ErrorBoundary>
   )
 }
