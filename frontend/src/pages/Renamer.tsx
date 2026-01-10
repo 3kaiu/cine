@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Chip, TextField, InputGroup, Surface, Separator, SearchField, Alert, Card, Label } from '@heroui/react'
+import { Button, Chip, TextField, InputGroup, Surface, SearchField, Alert } from '@heroui/react'
 import { Icon } from '@iconify/react'
 import VirtualizedTable from '@/components/VirtualizedTable'
 import { Play, ArrowRotateLeft, Check, CircleExclamation, Filmstrip, Tv } from '@gravity-ui/icons'
@@ -101,14 +101,6 @@ export default function Renamer() {
     }
   }, [files, movies, tvShows])
 
-  // 根据模式获取模板
-  const getTemplateForFile = (file: MediaFile): string => {
-    if (templateMode === 'unified') {
-      return movieTemplate // 统一模式使用电影模板
-    }
-    return isTVShow(file) ? tvTemplate : movieTemplate
-  }
-
   const renameMutation = useMutation({
     mutationFn: async (data: { file_ids: string[], isPreview: boolean }) => {
       // 为电影和电视剧分别调用API
@@ -129,8 +121,8 @@ export default function Renamer() {
           template: movieTemplate,
           preview: data.isPreview,
         })
-        if (movieRes.data?.preview) {
-          results.push(...movieRes.data.preview)
+        if (movieRes.preview) {
+          results.push(...movieRes.preview)
         }
       }
       
@@ -140,8 +132,8 @@ export default function Renamer() {
           template: tvTemplate,
           preview: data.isPreview,
         })
-        if (tvRes.data?.preview) {
-          results.push(...tvRes.data.preview)
+        if (tvRes.preview) {
+          results.push(...tvRes.preview)
         }
       }
       
@@ -316,7 +308,7 @@ export default function Renamer() {
               {newName}
             </span>
             {isChanged && !isDuplicate && (
-              <Chip size="sm" color="primary" variant="soft">
+              <Chip size="sm" color="accent" variant="soft">
                 <Check className="w-3 h-3 mr-1" />
                 已变更
               </Chip>
@@ -437,7 +429,6 @@ export default function Renamer() {
                 <TextField
                   value={movieTemplate}
                   onChange={setMovieTemplate}
-                  placeholder="例如: {title} ({year}).{ext}"
                   fullWidth
                   className="w-full"
                 >
@@ -463,7 +454,6 @@ export default function Renamer() {
                 <TextField
                   value={tvTemplate}
                   onChange={setTvTemplate}
-                  placeholder="例如: {title}.S{season:02d}E{episode:02d}.{ext}"
                   fullWidth
                   className="w-full"
                 >
@@ -512,7 +502,7 @@ export default function Renamer() {
                 <Chip size="sm" variant="soft" color="accent">
                   总计 {previewStats.total}
                 </Chip>
-                <Chip size="sm" variant="soft" color="primary">
+                <Chip size="sm" variant="soft" color="accent">
                   将变更 {previewStats.changed}
                 </Chip>
                 {previewStats.unchanged > 0 && (
@@ -562,16 +552,13 @@ export default function Renamer() {
               提交重命名
             </Button>
             {lastExecuted && (
-              <Button
-                variant="ghost"
-                size="sm"
-                as="a"
+              <a
                 href="/logs"
-                className="ml-auto"
+                className="ml-auto text-xs text-primary hover:underline"
               >
-                <ArrowRotateLeft className="w-4 h-4" />
+                <ArrowRotateLeft className="w-4 h-4 inline mr-1" />
                 查看日志以撤销
-              </Button>
+              </a>
             )}
           </div>
         </div>
@@ -597,7 +584,7 @@ export default function Renamer() {
             )}
             {selectedIds.length > 0 && (
               <>
-                <Chip color="primary" variant="soft" size="sm">
+                <Chip color="accent" variant="soft" size="sm">
                   已选择 {selectedIds.length}
                 </Chip>
                 <Button

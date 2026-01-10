@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { Button, Chip, Card, SearchField, Surface, Separator, Select, ListBox, Popover } from "@heroui/react";
+import { Button, Chip, Card, SearchField, Surface, Select, ListBox, Popover } from "@heroui/react";
 import { Icon } from '@iconify/react'
 import {
   ArrowRotateLeft,

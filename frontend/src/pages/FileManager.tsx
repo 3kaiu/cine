@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Chip, Modal, Checkbox, Card, SearchField, Select, ListBox } from "@heroui/react";
+import { Button, Chip, Modal, Checkbox, SearchField, Select, ListBox } from "@heroui/react";
 import { Copy, TrashBin, ArrowRight, File, HardDrive, TriangleExclamation, Video, Picture, ArrowDownToLine } from '@gravity-ui/icons'
 import { mediaApi } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'

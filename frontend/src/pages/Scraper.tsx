@@ -1,12 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Checkbox, Chip, Card, Modal, Surface, Separator, Label, SearchField, ListBox, Select } from "@heroui/react";
+import { Button, Checkbox, Chip, Card, Modal, Surface, Label, SearchField, ListBox, Select } from "@heroui/react";
 import { Icon } from '@iconify/react'
 import {
-  Cloud,
   Filmstrip,
   MagicWand,
   Pencil,
-  ArrowDownToLine,
   Check,
 } from '@gravity-ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
@@ -103,10 +101,6 @@ export default function Scraper() {
     onError: (error: any) => handleError(error, '刮削失败'),
   })
 
-  // 批量刮削进度
-  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
-  const [isBatchProcessing, setIsBatchProcessing] = useState(false)
-
   // 刮削元数据（支持手动选择）
   const handleScrape = async (fileId: string, autoMatch: boolean = true) => {
     setSelectedFile(fileId)
@@ -158,7 +152,6 @@ export default function Scraper() {
 
   const handleBatchScrape = async () => {
     if (selectedFiles.length === 0) return
-    setIsBatchProcessing(true)
     
     const toastId = showBatchProgress(0, selectedFiles.length, '正在刮削...')
     
@@ -177,7 +170,6 @@ export default function Scraper() {
       }
     }
     
-    setIsBatchProcessing(false)
     refetch()
     setSelectedFiles([])
     dismissLoading(toastId, `成功刮削 ${selectedFiles.length} 个文件`, 'success')

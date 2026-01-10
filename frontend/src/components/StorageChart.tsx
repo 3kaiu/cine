@@ -1,5 +1,5 @@
 import { Card } from "@heroui/react"
-import { HardDrive, Video, Picture, File } from '@gravity-ui/icons'
+import { HardDrive } from '@gravity-ui/icons'
 
 interface StorageData {
   label: string
