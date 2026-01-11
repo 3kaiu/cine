@@ -2,6 +2,7 @@ import { ReactElement } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import userEvent from '@testing-library/user-event'
 
 // 创建测试用的 QueryClient
 const createTestQueryClient = () =>
@@ -21,8 +22,6 @@ const createTestQueryClient = () =>
 interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   queryClient?: QueryClient
 }
-
-import userEvent from '@testing-library/user-event'
 
 export function renderWithProviders(
   ui: ReactElement,
@@ -44,5 +43,5 @@ export function renderWithProviders(
 }
 
 // 重新导出所有内容
-export * from '@testing-library/react'
-export { renderWithProviders as render }
+export { render, screen, waitFor, fireEvent } from '@testing-library/react'
+export { renderWithProviders as default }

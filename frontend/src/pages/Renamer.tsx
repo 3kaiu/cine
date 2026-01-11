@@ -63,16 +63,12 @@ export default function Renamer() {
   const selectedIds = Array.from(selectedKeys) as string[]
 
   // 搜索防抖
-  const debouncedSearch = useCallback(
-    debounce((value: string) => {
-      setSearchTerm(value)
-    }, 500),
-    []
-  )
-
   const handleSearchChange = useCallback((value: string) => {
-    debouncedSearch(value)
-  }, [debouncedSearch])
+    const debouncedFn = debounce((val: string) => {
+      setSearchTerm(val)
+    }, 500)
+    debouncedFn(value)
+  }, [])
 
   // 根据文件类型分类
   const { movies, tvShows } = useMemo(() => {
@@ -175,7 +171,7 @@ export default function Renamer() {
   }
 
   // 过滤有元数据的文件
-  const filesWithMetadata = [...movies, ...tvShows]
+  const filesWithMetadata = useMemo(() => [...movies, ...tvShows], [movies, tvShows])
 
   // 全选/反选
   const handleSelectAll = () => {
@@ -221,7 +217,7 @@ export default function Renamer() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedIds, filesWithMetadata])
+  }, [selectedIds, filesWithMetadata, handleSelectAll, handlePreview, handleRename])
 
   // 预览统计
   const previewStats = useMemo(() => {

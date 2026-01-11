@@ -136,16 +136,12 @@ export default function Scanner() {
   }
 
   // 搜索防抖
-  const debouncedSearch = useCallback(
-    debounce((value: string) => {
-      setSearchTerm(value)
-    }, 500),
-    []
-  )
-
   const handleSearchChange = useCallback((value: string) => {
-    debouncedSearch(value)
-  }, [debouncedSearch])
+    const debouncedFn = debounce((val: string) => {
+      setSearchTerm(val)
+    }, 500)
+    debouncedFn(value)
+  }, [])
 
   const scanMutation = useMutation({
     mutationFn: mediaApi.scanDirectory,

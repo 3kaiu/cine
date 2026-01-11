@@ -212,7 +212,7 @@ export default function Scraper() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [filteredFiles, selectedFiles])
+  }, [filteredFiles, selectedFiles, handleBatchScrape])
 
   const columns = [
     {
