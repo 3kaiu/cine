@@ -95,6 +95,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
@@ -103,5 +105,8 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
+          file: ./Dockerfile
           push: false
           tags: media-toolbox:latest,media-toolbox:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

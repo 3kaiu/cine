@@ -1,7 +1,7 @@
 # 多阶段构建 Dockerfile
 
 # 阶段1: 构建 Rust 后端
-FROM rust:1.70 as rust-builder
+FROM rust:1.70 AS rust-builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ COPY backend/build.rs ./
 RUN cargo build --release
 
 # 阶段2: 构建前端
-FROM node:18-alpine as frontend-builder
+FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
