@@ -1,24 +1,37 @@
 use axum::{extract::State, response::Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::handlers::AppState;
 use crate::services::{quality, scraper, video};
 use chrono::Utc;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct ScrapeRequest {
     pub file_id: String,
     pub source: Option<String>, // tmdb
     pub auto_match: Option<bool>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ScrapeResponse {
+    #[schema(value_type = Option<Object>)]
     pub metadata: Option<serde_json::Value>,
     pub error: Option<String>,
 }
 
+/// 单文件刮削
+#[utoipa::path(
+    post,
+    path = "/api/scrape",
+    tag = "scrape",
+    request_body = ScrapeRequest,
+    responses(
+        (status = 200, description = "刮削成功", body = ScrapeResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn scrape_metadata(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ScrapeRequest>,
@@ -91,7 +104,7 @@ pub async fn scrape_metadata(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct BatchScrapeRequest {
     pub file_ids: Vec<String>,
     pub source: Option<String>,
@@ -100,6 +113,17 @@ pub struct BatchScrapeRequest {
     pub generate_nfo: Option<bool>,
 }
 
+/// 批量刮削
+#[utoipa::path(
+    post,
+    path = "/api/scrape/batch",
+    tag = "scrape",
+    request_body = BatchScrapeRequest,
+    responses(
+        (status = 200, description = "批量任务提交成功", body = TaskActionResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn batch_scrape_metadata(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchScrapeRequest>,

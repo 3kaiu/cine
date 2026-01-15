@@ -7,6 +7,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::services::task_queue::{TaskQueue, TaskStatus as DbTaskStatus, TaskType};
+use sysinfo::System;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
 
 /// 工作节点消息 (Worker -> Master)
@@ -228,6 +229,7 @@ pub struct WorkerService {
     pub master_url: String,
     pub task_queue: Arc<TaskQueue>,
     pub capabilities: Vec<TaskType>,
+    pub sys: Arc<tokio::sync::Mutex<System>>,
 }
 
 impl WorkerService {
@@ -248,6 +250,7 @@ impl WorkerService {
             master_url,
             task_queue,
             capabilities,
+            sys: Arc::new(tokio::sync::Mutex::new(System::new_all())),
         }
     }
 
@@ -291,13 +294,21 @@ impl WorkerService {
 
         // 2. 启动心跳循环 (后台)
         let node_id = self.node_id.clone();
+        let sys = self.sys.clone();
         let (heartbeat_tx, mut heartbeat_rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+                // 获取真实负载
+                let mut sys_guard = sys.lock().await;
+                sys_guard.refresh_cpu();
+                // 简单的平均负载计算：CPU 使用率 / 100
+                let load = sys_guard.global_cpu_info().cpu_usage() as f64 / 100.0;
+
                 let hb = WorkerMessage::Heartbeat {
                     node_id: node_id.clone(),
-                    load: 0.0, // TODO: 获取真实负载
+                    load,
                 };
                 if heartbeat_tx.send(hb).await.is_err() {
                     break;

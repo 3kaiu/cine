@@ -1,25 +1,26 @@
 use axum::{extract::State, response::Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::handlers::AppState;
 use crate::services::renamer;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RenameRequest {
     pub file_ids: Vec<String>,
     pub template: String, // 例如: "{title}.S{season:02d}E{episode:02d}.{ext}"
     pub preview: Option<bool>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct RenamePreview {
     pub file_id: String,
     pub old_name: String,
     pub new_name: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 #[serde(untagged)]
 pub enum RenameActionResponse {
     Preview {
@@ -29,6 +30,17 @@ pub enum RenameActionResponse {
     Task(crate::handlers::tasks::TaskActionResponse),
 }
 
+/// 批量重命名
+#[utoipa::path(
+    post,
+    path = "/api/rename",
+    tag = "rename",
+    request_body = RenameRequest,
+    responses(
+        (status = 200, description = "重命名请求成功（预览或任务提交）", body = RenameActionResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn batch_rename(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RenameRequest>,

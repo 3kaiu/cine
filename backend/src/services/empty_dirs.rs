@@ -1,9 +1,9 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use std::fs;
 
 /// 空文件夹分类
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct EmptyDirInfo {
     pub path: String,
     pub category: String, // cache, build, system, other
@@ -11,10 +11,7 @@ pub struct EmptyDirInfo {
 }
 
 /// 查找空文件夹
-pub fn find_empty_directories(
-    root: &str,
-    recursive: bool,
-) -> anyhow::Result<Vec<EmptyDirInfo>> {
+pub fn find_empty_directories(root: &str, recursive: bool) -> anyhow::Result<Vec<EmptyDirInfo>> {
     let root_path = Path::new(root);
     if !root_path.exists() {
         return Err(anyhow::anyhow!("Directory does not exist: {}", root));
@@ -69,7 +66,8 @@ fn is_empty_directory(path: &Path) -> anyhow::Result<bool> {
 /// 分类目录类型
 fn categorize_directory(path: &Path) -> String {
     let _path_str = path.to_string_lossy().to_lowercase();
-    let name = path.file_name()
+    let name = path
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("")
         .to_lowercase();
@@ -80,15 +78,26 @@ fn categorize_directory(path: &Path) -> String {
     }
 
     // 构建产物目录
-    if name == "dist" || name == "build" || name == "target" 
-        || name == ".next" || name == "out" || name == "bin" 
-        || name == "obj" || name == ".gradle" {
+    if name == "dist"
+        || name == "build"
+        || name == "target"
+        || name == ".next"
+        || name == "out"
+        || name == "bin"
+        || name == "obj"
+        || name == ".gradle"
+    {
         return "build".to_string();
     }
 
     // 系统目录
-    if name.starts_with('.') && (name == ".git" || name == ".vscode" 
-        || name == ".idea" || name == ".ds_store" || name == "thumbs.db") {
+    if name.starts_with('.')
+        && (name == ".git"
+            || name == ".vscode"
+            || name == ".idea"
+            || name == ".ds_store"
+            || name == "thumbs.db")
+    {
         return "system".to_string();
     }
 
@@ -102,9 +111,7 @@ fn categorize_directory(path: &Path) -> String {
 }
 
 /// 批量删除空文件夹
-pub async fn delete_empty_directories(
-    dirs: &[String],
-) -> anyhow::Result<Vec<String>> {
+pub async fn delete_empty_directories(dirs: &[String]) -> anyhow::Result<Vec<String>> {
     let mut deleted = Vec::new();
     let mut errors = Vec::new();
 

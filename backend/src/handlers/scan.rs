@@ -6,20 +6,32 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct ScanRequest {
     pub directory: String,
     pub recursive: Option<bool>,
     pub file_types: Option<Vec<String>>, // video, audio, image, document
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ScanResponse {
     pub task_id: String,
     pub message: String,
 }
 
+/// 扫描目录
+#[utoipa::path(
+    post,
+    path = "/api/scan",
+    tag = "scan",
+    request_body = ScanRequest,
+    responses(
+        (status = 200, description = "扫描任务创建成功", body = ScanResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn scan_directory(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ScanRequest>,
@@ -52,7 +64,7 @@ pub async fn scan_directory(
     }))
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct FileListResponse {
     pub files: Vec<MediaFile>,
     pub total: u64,
@@ -60,7 +72,7 @@ pub struct FileListResponse {
     pub page_size: u64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct FileListQuery {
     pub page: Option<u64>,
     pub page_size: Option<u64>,
@@ -70,6 +82,19 @@ pub struct FileListQuery {
     pub max_size: Option<i64>,
 }
 
+/// 获取文件列表
+#[utoipa::path(
+    get,
+    path = "/api/files",
+    tag = "scan",
+    params(
+        FileListQuery
+    ),
+    responses(
+        (status = 200, description = "获取文件列表成功", body = FileListResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn list_files(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileListQuery>,

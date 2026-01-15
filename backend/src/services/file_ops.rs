@@ -1,10 +1,10 @@
+use crate::models::MediaFile;
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use crate::models::MediaFile;
 
 /// 文件操作结果
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct FileOperationResult {
     pub file_id: String,
     pub success: bool,
@@ -19,12 +19,10 @@ pub async fn move_file(
     target_dir: &str,
 ) -> anyhow::Result<FileOperationResult> {
     // 获取文件信息
-    let file: MediaFile = sqlx::query_as(
-        "SELECT * FROM media_files WHERE id = ?"
-    )
-    .bind(file_id)
-    .fetch_one(db)
-    .await?;
+    let file: MediaFile = sqlx::query_as("SELECT * FROM media_files WHERE id = ?")
+        .bind(file_id)
+        .fetch_one(db)
+        .await?;
 
     let source_path = PathBuf::from(&file.path);
     let target_dir_path = Path::new(target_dir);
@@ -35,7 +33,8 @@ pub async fn move_file(
     }
 
     // 构建目标路径
-    let file_name = source_path.file_name()
+    let file_name = source_path
+        .file_name()
         .ok_or_else(|| anyhow::anyhow!("Invalid file name"))?;
     let target_path = target_dir_path.join(file_name);
 
@@ -55,14 +54,12 @@ pub async fn move_file(
     let new_path_str = target_path.to_string_lossy().to_string();
 
     // 更新数据库
-    sqlx::query(
-        "UPDATE media_files SET path = ?, updated_at = ? WHERE id = ?"
-    )
-    .bind(&new_path_str)
-    .bind(chrono::Utc::now().to_rfc3339())
-    .bind(file_id)
-    .execute(db)
-    .await?;
+    sqlx::query("UPDATE media_files SET path = ?, updated_at = ? WHERE id = ?")
+        .bind(&new_path_str)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(file_id)
+        .execute(db)
+        .await?;
 
     Ok(FileOperationResult {
         file_id: file_id.to_string(),
@@ -79,12 +76,10 @@ pub async fn copy_file(
     target_dir: &str,
 ) -> anyhow::Result<FileOperationResult> {
     // 获取文件信息
-    let file: MediaFile = sqlx::query_as(
-        "SELECT * FROM media_files WHERE id = ?"
-    )
-    .bind(file_id)
-    .fetch_one(db)
-    .await?;
+    let file: MediaFile = sqlx::query_as("SELECT * FROM media_files WHERE id = ?")
+        .bind(file_id)
+        .fetch_one(db)
+        .await?;
 
     let source_path = PathBuf::from(&file.path);
     let target_dir_path = Path::new(target_dir);
@@ -95,7 +90,8 @@ pub async fn copy_file(
     }
 
     // 构建目标路径
-    let file_name = source_path.file_name()
+    let file_name = source_path
+        .file_name()
         .ok_or_else(|| anyhow::anyhow!("Invalid file name"))?;
     let target_path = target_dir_path.join(file_name);
 
@@ -112,7 +108,7 @@ pub async fn copy_file(
     // 流式复制文件（支持大文件）
     let mut source_file = tokio::fs::File::open(&source_path).await?;
     let mut target_file = tokio::fs::File::create(&target_path).await?;
-    
+
     let chunk_size = 64 * 1024 * 1024; // 64MB chunks
     let mut buffer = vec![0u8; chunk_size];
 

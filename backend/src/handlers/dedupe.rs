@@ -4,17 +4,28 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::handlers::AppState;
 use crate::services::{dedupe, empty_dirs};
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct DuplicateResponse {
     pub groups: Vec<crate::models::DuplicateGroup>,
     pub total_duplicates: u64,
     pub total_wasted_space: i64,
 }
 
+/// 查找重复文件
+#[utoipa::path(
+    post,
+    path = "/api/dedupe",
+    tag = "dedupe",
+    responses(
+        (status = 200, description = "重复文件查找成功", body = DuplicateResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn find_duplicates(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<DuplicateResponse>, (axum::http::StatusCode, String)> {
@@ -35,20 +46,33 @@ pub async fn find_duplicates(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct EmptyDirsQuery {
     pub directory: Option<String>,
     pub recursive: Option<bool>,
     pub category: Option<String>, // cache, build, system, other
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct EmptyDirsResponse {
     pub dirs: Vec<empty_dirs::EmptyDirInfo>,
     pub total: usize,
     pub by_category: std::collections::HashMap<String, usize>,
 }
 
+/// 查找空目录
+#[utoipa::path(
+    get,
+    path = "/api/empty-dirs",
+    tag = "scan",
+    params(
+        EmptyDirsQuery
+    ),
+    responses(
+        (status = 200, description = "获取空目录成功", body = EmptyDirsResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn find_empty_dirs(
     State(_state): State<Arc<AppState>>,
     Query(query): Query<EmptyDirsQuery>,
@@ -81,17 +105,28 @@ pub async fn find_empty_dirs(
     }))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct DeleteEmptyDirsRequest {
     pub dirs: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct DeleteEmptyDirsResponse {
     pub deleted: Vec<String>,
     pub message: String,
 }
 
+/// 删除空目录
+#[utoipa::path(
+    post,
+    path = "/api/empty-dirs/delete",
+    tag = "scan",
+    request_body = DeleteEmptyDirsRequest,
+    responses(
+        (status = 200, description = "删除空目录成功", body = DeleteEmptyDirsResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn delete_empty_dirs(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<DeleteEmptyDirsRequest>,
@@ -106,6 +141,16 @@ pub async fn delete_empty_dirs(
     }))
 }
 
+/// 查找大文件
+#[utoipa::path(
+    get,
+    path = "/api/large-files",
+    tag = "scan",
+    responses(
+        (status = 200, description = "获取大文件成功", body = [crate::models::MediaFile]),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn find_large_files(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::models::MediaFile>>, (axum::http::StatusCode, String)> {
@@ -120,6 +165,16 @@ pub async fn find_large_files(
     Ok(Json(files))
 }
 
+/// 查找 TMDB 重复电影
+#[utoipa::path(
+    get,
+    path = "/api/dedupe/movies",
+    tag = "dedupe",
+    responses(
+        (status = 200, description = "获取重复电影成功", body = [crate::models::DuplicateMovieGroup]),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
 pub async fn find_duplicate_movies(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::models::DuplicateMovieGroup>>, (axum::http::StatusCode, String)> {

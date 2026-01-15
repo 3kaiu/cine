@@ -323,6 +323,7 @@ impl TaskQueue {
         let payload: serde_json::Value =
             serde_json::from_str(&task.payload.unwrap_or_else(|| "{}".to_string()))?;
         let task_id_clone = task_id.clone();
+        tracing::info!(task_id = %task_id, task_type = %task.task_type, "Task submitted");
 
         tokio::spawn(async move {
             crate::services::metrics::METRICS.active_tasks.inc();
@@ -429,6 +430,13 @@ impl TaskQueue {
             .bind(&task_id_clone)
             .execute(&db)
             .await;
+
+            tracing::info!(
+                task_id = %task_id_clone,
+                status = final_status_str,
+                duration = duration,
+                "Task finished"
+            );
 
             {
                 let mut count = active_count.write().await;

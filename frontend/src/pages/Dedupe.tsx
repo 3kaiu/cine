@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Button, Chip, Surface, Accordion, SearchField, Select, Popover, ListBox } from "@heroui/react";
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { Button, Chip, Surface, SearchField, Select, Popover, ListBox, Spinner } from "@heroui/react";
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Icon } from '@iconify/react'
 import {
   CircleExclamation,
@@ -21,6 +22,12 @@ interface DuplicateMovieGroup {
   title: string
   files: MediaFile[]
 }
+
+type FlatItem =
+  | { type: 'header'; group: DuplicateMovieGroup; isExpanded: boolean; isSelected: boolean }
+  | { type: 'best'; file: MediaFile }
+  | { type: 'redundant'; file: MediaFile; bestFile: MediaFile };
+
 
 type ViewMode = 'list' | 'grid' | 'compact'
 type SortBy = 'space' | 'count' | 'quality'
@@ -90,18 +97,18 @@ export default function Dedupe() {
   // 过滤和搜索
   const filteredData = useMemo(() => {
     if (!data) return []
-    
+
     let result = [...data]
-    
+
     // 搜索过滤
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
-      result = result.filter((group: DuplicateMovieGroup) => 
+      result = result.filter((group: DuplicateMovieGroup) =>
         group.title.toLowerCase().includes(term) ||
         group.files.some(f => f.name.toLowerCase().includes(term))
       )
     }
-    
+
     // 分辨率过滤
     if (filterOptions.resolution.length > 0) {
       result = result.filter((group: DuplicateMovieGroup) => {
@@ -119,7 +126,7 @@ export default function Dedupe() {
         })
       })
     }
-    
+
     // HDR类型过滤
     if (filterOptions.hdrType.length > 0) {
       result = result.filter((group: DuplicateMovieGroup) => {
@@ -135,26 +142,26 @@ export default function Dedupe() {
         })
       })
     }
-    
+
     // 中文字幕过滤
     if (filterOptions.hasChineseSubtitle !== null) {
       result = result.filter((group: DuplicateMovieGroup) => {
-        return group.files.some(file => 
+        return group.files.some(file =>
           file.video_info?.has_chinese_subtitle === filterOptions.hasChineseSubtitle
         )
       })
     }
-    
+
     return result
   }, [data, searchTerm, filterOptions])
-  
+
   // 排序
   const sortedData = useMemo(() => {
     const result = [...filteredData]
     result.sort((a: DuplicateMovieGroup, b: DuplicateMovieGroup) => {
       let aValue = 0
       let bValue = 0
-      
+
       if (sortBy === 'space') {
         const aSorted = [...a.files].sort((x, y) => (y.quality_score || 0) - (x.quality_score || 0))
         const bSorted = [...b.files].sort((x, y) => (y.quality_score || 0) - (x.quality_score || 0))
@@ -167,7 +174,7 @@ export default function Dedupe() {
         aValue = Math.max(...a.files.map(f => f.quality_score || 0))
         bValue = Math.max(...b.files.map(f => f.quality_score || 0))
       }
-      
+
       return sortOrder === 'asc' ? aValue - bValue : bValue - aValue
     })
     return result
@@ -176,14 +183,14 @@ export default function Dedupe() {
   // 计算统计信息
   const stats = useMemo(() => {
     if (!sortedData || sortedData.length === 0) return null
-    
+
     const groups = sortedData.length
-    const totalDuplicates = sortedData.reduce((acc: number, group: DuplicateMovieGroup) => 
+    const totalDuplicates = sortedData.reduce((acc: number, group: DuplicateMovieGroup) =>
       acc + Math.max(0, group.files.length - 1), 0
     )
     const totalWastedSpace = sortedData.reduce((acc: number, group: DuplicateMovieGroup) => {
       if (group.files.length <= 1) return acc
-      const sorted = [...group.files].sort((a, b) => 
+      const sorted = [...group.files].sort((a, b) =>
         (b.quality_score || 0) - (a.quality_score || 0)
       )
       const wasted = sorted.slice(1).reduce((sum, f) => sum + f.size, 0)
@@ -198,7 +205,7 @@ export default function Dedupe() {
     const files: string[] = []
     sortedData?.forEach((group: DuplicateMovieGroup) => {
       if (selectedGroups.has(group.tmdb_id)) {
-        const sorted = [...group.files].sort((a, b) => 
+        const sorted = [...group.files].sort((a, b) =>
           (b.quality_score || 0) - (a.quality_score || 0)
         )
         files.push(...sorted.slice(1).map(f => f.id))
@@ -224,7 +231,7 @@ export default function Dedupe() {
       setSelectedGroups(new Set(sortedData?.map((g: DuplicateMovieGroup) => g.tmdb_id) || []))
     }
   }
-  
+
   const handleExpandAll = () => {
     if (expandedKeys.size === sortedData?.length) {
       setExpandedKeys(new Set())
@@ -232,11 +239,11 @@ export default function Dedupe() {
       setExpandedKeys(new Set(sortedData?.map((g: DuplicateMovieGroup) => String(g.tmdb_id)) || []))
     }
   }
-  
+
   const handleSmartSelect = () => {
     setSelectedGroups(new Set(sortedData?.map((g: DuplicateMovieGroup) => g.tmdb_id) || []))
   }
-  
+
   // 快捷键支持
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -247,11 +254,11 @@ export default function Dedupe() {
         setSelectedGroups(new Set())
       }
     }
-    
+
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedGroups, sortedData])
-  
+
   const handleToggleFilter = (type: 'resolution' | 'hdrType', value: string) => {
     const current = filterOptions[type]
     const updated = current.includes(value)
@@ -259,15 +266,15 @@ export default function Dedupe() {
       : [...current, value]
     setFilterOptions(prev => ({ ...prev, [type]: updated }))
   }
-  
+
   const handleToggleSubtitle = () => {
     setFilterOptions(prev => ({
       ...prev,
-      hasChineseSubtitle: prev.hasChineseSubtitle === null ? true : 
-                          prev.hasChineseSubtitle === true ? false : null
+      hasChineseSubtitle: prev.hasChineseSubtitle === null ? true :
+        prev.hasChineseSubtitle === true ? false : null
     }))
   }
-  
+
   const clearFilters = () => {
     setFilterOptions({
       resolution: [],
@@ -275,10 +282,66 @@ export default function Dedupe() {
       hasChineseSubtitle: null
     })
   }
-  
-  const hasActiveFilters = filterOptions.resolution.length > 0 || 
-                           filterOptions.hdrType.length > 0 || 
-                           filterOptions.hasChineseSubtitle !== null
+
+  const hasActiveFilters = filterOptions.resolution.length > 0 ||
+    filterOptions.hdrType.length > 0 ||
+    filterOptions.hasChineseSubtitle !== null
+
+
+  /* ------------------ Virtualization Logic ------------------ */
+
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const flatData = useMemo<FlatItem[]>(() => {
+    if (!sortedData) return [];
+
+    const items: FlatItem[] = [];
+
+    sortedData.forEach((group: DuplicateMovieGroup) => {
+      const groupKey = String(group.tmdb_id);
+      const isExpanded = expandedKeys.has(groupKey);
+      const isSelected = selectedGroups.has(group.tmdb_id);
+
+      items.push({
+        type: 'header',
+        group,
+        isExpanded,
+        isSelected
+      });
+
+      if (isExpanded) {
+        // Sort files by quality score
+        const sortedFiles = [...group.files].sort((a, b) =>
+          (b.quality_score || 0) - (a.quality_score || 0)
+        );
+        const bestFile = sortedFiles[0];
+        const redundantFiles = sortedFiles.slice(1);
+
+        // Add best file
+        items.push({ type: 'best', file: bestFile });
+
+        // Add redundant files
+        redundantFiles.forEach(f => {
+          items.push({ type: 'redundant', file: f, bestFile });
+        });
+      }
+    });
+
+    return items;
+  }, [sortedData, expandedKeys, selectedGroups]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: flatData.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => {
+      const item = flatData[index];
+      if (item.type === 'header') return 64;
+      if (item.type === 'best') return 140;
+      if (item.type === 'redundant') return 160;
+      return 60;
+    },
+    overscan: 10,
+  });
 
   return (
     <div className="flex flex-col gap-4 h-full animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -357,266 +420,280 @@ export default function Dedupe() {
       {sortedData && sortedData.length > 0 && (
         <div className="mt-4">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <SearchField
-                    className="w-full sm:w-[300px]"
-                    value={searchTerm}
-                    onChange={setSearchTerm}
-                  >
-                    <SearchField.Group>
-                      <SearchField.SearchIcon />
-                      <SearchField.Input placeholder="搜索影片名称..." />
-                      <SearchField.ClearButton />
-                    </SearchField.Group>
-                  </SearchField>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {/* 排序 */}
-                  <Select
-                    selectedKey={sortBy}
-                    onSelectionChange={(keys) => {
-                      if (!keys) return
-                      const selected = Array.isArray(Array.from(keys as any)) 
-                        ? Array.from(keys as any)[0] as SortBy
-                        : keys as SortBy
-                      if (selected) {
-                        setSortBy(selected)
-                      }
-                    }}
-                    className="w-[120px]"
-                    placeholder="排序"
-                  >
-                    <Select.Trigger>
-                      <Select.Value />
-                      <Select.Indicator />
-                    </Select.Trigger>
-                    <Select.Popover>
-                      <ListBox>
-                        <ListBox.Item key="space">可释放空间</ListBox.Item>
-                        <ListBox.Item key="count">冗余数量</ListBox.Item>
-                        <ListBox.Item key="quality">质量分数</ListBox.Item>
-                      </ListBox>
-                    </Select.Popover>
-                  </Select>
-
-                  <Button
-                    isIconOnly
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  >
-                    <Icon 
-                      icon={sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'} 
-                      className="w-4 h-4" 
-                    />
-                  </Button>
-
-                  {/* 筛选按钮 */}
-                  <Popover
-                    isOpen={showFilterPopover}
-                    onOpenChange={setShowFilterPopover}
-                  >
-                    <Popover.Trigger>
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant={hasActiveFilters ? 'primary' : 'ghost'}
-                      >
-                        <Icon icon="mdi:filter" className="w-4 h-4" />
-                      </Button>
-                    </Popover.Trigger>
-                    <Popover.Content className="p-4 w-[280px]">
-                      <div className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold">筛选条件</span>
-                          {hasActiveFilters && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onPress={clearFilters}
-                            >
-                              清除
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* 分辨率筛选 */}
-                        <div>
-                          <p className="text-xs text-default-500 mb-2">分辨率</p>
-                          <div className="flex flex-wrap gap-2">
-                            {['4K', '1080p', '720p'].map(res => (
-                              <Button
-                                key={res}
-                                size="sm"
-                                variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
-                                onPress={() => handleToggleFilter('resolution', res)}
-                              >
-                                {res}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* HDR类型筛选 */}
-                        <div>
-                          <p className="text-xs text-default-500 mb-2">HDR 类型</p>
-                          <div className="flex flex-wrap gap-2">
-                            {['DV', 'HDR10+', 'HDR'].map(hdr => (
-                              <Button
-                                key={hdr}
-                                size="sm"
-                                variant={filterOptions.hdrType.includes(hdr) ? 'primary' : 'ghost'}
-                                onPress={() => handleToggleFilter('hdrType', hdr)}
-                              >
-                                {hdr}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* 中文字幕筛选 */}
-                        <div>
-                          <p className="text-xs text-default-500 mb-2">中文字幕</p>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant={filterOptions.hasChineseSubtitle === true ? 'primary' : 'ghost'}
-                              onPress={handleToggleSubtitle}
-                            >
-                              有
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant={filterOptions.hasChineseSubtitle === false ? 'primary' : 'ghost'}
-                              onPress={handleToggleSubtitle}
-                            >
-                              无
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </Popover.Content>
-                  </Popover>
-
-                  {/* 展开/折叠 */}
-                  <Button
-                    isIconOnly
-                    size="sm"
-                    variant="ghost"
-                    onPress={handleExpandAll}
-                  >
-                    <Icon 
-                      icon={expandedKeys.size === sortedData?.length ? 'mdi:chevron-up' : 'mdi:chevron-down'} 
-                      className="w-4 h-4" 
-                    />
-                  </Button>
-
-                  {/* 智能选择 */}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onPress={handleSmartSelect}
-                  >
-                    <Check className="w-4 h-4" />
-                    智能选择
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onPress={handleSelectAll}
-                  >
-                    {selectedGroups.size === sortedData.length ? '取消全选' : '全选组'}
-                  </Button>
-                </div>
-              </div>
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <SearchField
+                className="w-full sm:w-[300px]"
+                value={searchTerm}
+                onChange={setSearchTerm}
+              >
+                <SearchField.Group>
+                  <SearchField.SearchIcon />
+                  <SearchField.Input placeholder="搜索影片名称..." />
+                  <SearchField.ClearButton />
+                </SearchField.Group>
+              </SearchField>
             </div>
-          )}
 
-          {/* 重复组列表 */}
+            <div className="flex items-center gap-2">
+              {/* 排序 */}
+              <Select
+                selectedKey={sortBy}
+                onSelectionChange={(keys) => {
+                  if (!keys) return
+                  const selected = Array.isArray(Array.from(keys as any))
+                    ? Array.from(keys as any)[0] as SortBy
+                    : keys as SortBy
+                  if (selected) {
+                    setSortBy(selected)
+                  }
+                }}
+                className="w-[120px]"
+                placeholder="排序"
+              >
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    <ListBox.Item key="space">可释放空间</ListBox.Item>
+                    <ListBox.Item key="count">冗余数量</ListBox.Item>
+                    <ListBox.Item key="quality">质量分数</ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              >
+                <Icon
+                  icon={sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'}
+                  className="w-4 h-4"
+                />
+              </Button>
+
+              {/* 筛选按钮 */}
+              <Popover
+                isOpen={showFilterPopover}
+                onOpenChange={setShowFilterPopover}
+              >
+                <Popover.Trigger>
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant={hasActiveFilters ? 'primary' : 'ghost'}
+                  >
+                    <Icon icon="mdi:filter" className="w-4 h-4" />
+                  </Button>
+                </Popover.Trigger>
+                <Popover.Content className="p-4 w-[280px]">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold">筛选条件</span>
+                      {hasActiveFilters && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onPress={clearFilters}
+                        >
+                          清除
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* 分辨率筛选 */}
+                    <div>
+                      <p className="text-xs text-default-500 mb-2">分辨率</p>
+                      <div className="flex flex-wrap gap-2">
+                        {['4K', '1080p', '720p'].map(res => (
+                          <Button
+                            key={res}
+                            size="sm"
+                            variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
+                            onPress={() => handleToggleFilter('resolution', res)}
+                          >
+                            {res}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* HDR类型筛选 */}
+                    <div>
+                      <p className="text-xs text-default-500 mb-2">HDR 类型</p>
+                      <div className="flex flex-wrap gap-2">
+                        {['DV', 'HDR10+', 'HDR'].map(hdr => (
+                          <Button
+                            key={hdr}
+                            size="sm"
+                            variant={filterOptions.hdrType.includes(hdr) ? 'primary' : 'ghost'}
+                            onPress={() => handleToggleFilter('hdrType', hdr)}
+                          >
+                            {hdr}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 中文字幕筛选 */}
+                    <div>
+                      <p className="text-xs text-default-500 mb-2">中文字幕</p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant={filterOptions.hasChineseSubtitle === true ? 'primary' : 'ghost'}
+                          onPress={handleToggleSubtitle}
+                        >
+                          有
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={filterOptions.hasChineseSubtitle === false ? 'primary' : 'ghost'}
+                          onPress={handleToggleSubtitle}
+                        >
+                          无
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </Popover.Content>
+              </Popover>
+
+              {/* 展开/折叠 */}
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                onPress={handleExpandAll}
+              >
+                <Icon
+                  icon={expandedKeys.size === sortedData?.length ? 'mdi:chevron-up' : 'mdi:chevron-down'}
+                  className="w-4 h-4"
+                />
+              </Button>
+
+              {/* 智能选择 */}
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={handleSmartSelect}
+              >
+                <Check className="w-4 h-4" />
+                智能选择
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={handleSelectAll}
+              >
+                {selectedGroups.size === sortedData.length ? '取消全选' : '全选组'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重复组列表 */}
       <div className="flex-1 min-h-0">
         {sortedData && sortedData.length > 0 ? (
-        <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">重复组列表</h2>
-          <Accordion
-            allowsMultipleExpanded
-            expandedKeys={expandedKeys}
-            onExpandedChange={(keys) => {
-              if (keys instanceof Set) {
-                setExpandedKeys(keys as Set<string>)
-              } else {
-                setExpandedKeys(new Set(Array.from(keys)))
-              }
-            }}
-            variant="surface"
-          >
-            {sortedData.map((group: DuplicateMovieGroup) => {
-              const groupKey = String(group.tmdb_id)
-              const isSelected = selectedGroups.has(group.tmdb_id)
-              
-              // 按质量分数排序
-              const sortedFiles = [...group.files].sort((a, b) => 
-                (b.quality_score || 0) - (a.quality_score || 0)
-              )
-              const bestFile = sortedFiles[0]
-              const redundantFiles = sortedFiles.slice(1)
-              const wastedSpace = redundantFiles.reduce((sum, f) => sum + f.size, 0)
+          <div className="flex flex-col gap-4 h-full">
+            <h2 className="text-lg font-semibold shrink-0">重复组列表</h2>
+            <div ref={parentRef} className="flex-1 overflow-auto scrollbar-hide relative bg-background/5 rounded-xl border border-divider/10">
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = flatData[virtualRow.index];
+                  const style = {
+                    position: 'absolute' as const,
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  };
 
-              return (
-                <Accordion.Item key={groupKey} id={groupKey}>
-                  <Accordion.Heading>
-                    <Accordion.Trigger>
-                      <div className="flex items-center justify-between w-full pr-4">
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="ghost"
-                            onPress={() => {
-                              const newSelected = new Set(selectedGroups)
-                              if (isSelected) {
-                                newSelected.delete(group.tmdb_id)
-                              } else {
-                                newSelected.add(group.tmdb_id)
-                              }
-                              setSelectedGroups(newSelected)
-                            }}
-                            className="shrink-0"
-                          >
-                            {isSelected ? (
-                              <Check className="w-4 h-4 text-primary" />
-                            ) : (
-                              <div className="w-4 h-4 border-2 border-default-300 rounded" />
-                            )}
-                          </Button>
-                          <Filmstrip className="w-5 h-5 text-primary shrink-0" />
-                          <div className="flex flex-col gap-1 text-left min-w-0 flex-1">
-                            <span className="text-base font-semibold truncate">{group.title}</span>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs text-muted">TMDB ID: {group.tmdb_id}</span>
-                              <Chip variant="soft" size="sm" color="warning">
-                                {redundantFiles.length} 个冗余
-                              </Chip>
-                              <Chip variant="soft" size="sm" color="accent">
-                                {formatSize(wastedSpace)} 可释放
-                              </Chip>
+                  if (item.type === 'header') {
+                    const { group, isExpanded, isSelected } = item;
+                    const redundantCount = group.files.length - 1;
+                    const sortedFiles = [...group.files].sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0));
+                    const redundantFiles = sortedFiles.slice(1);
+                    const wastedSpace = redundantFiles.reduce((sum, f) => sum + f.size, 0);
+
+                    return (
+                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '4px', zIndex: 10 }} className="px-1 pt-1">
+                        <Surface
+                          variant="default"
+                          className={clsx(
+                            "w-full rounded-lg border transition-all cursor-pointer h-full flex flex-col justify-center",
+                            isExpanded ? "border-primary/50 bg-default-50" : "border-divider/50 bg-surface hover:bg-default-50"
+                          )}
+                          onClick={() => {
+                            const newExpanded = new Set(expandedKeys);
+                            if (isExpanded) newExpanded.delete(String(group.tmdb_id));
+                            else newExpanded.add(String(group.tmdb_id));
+                            setExpandedKeys(newExpanded);
+                          }}
+                        >
+                          <div className="flex items-center justify-between w-full px-4 py-2">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div
+                                className="shrink-0 z-20"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newSelected = new Set(selectedGroups)
+                                  if (isSelected) {
+                                    newSelected.delete(group.tmdb_id)
+                                  } else {
+                                    newSelected.add(group.tmdb_id)
+                                  }
+                                  setSelectedGroups(newSelected)
+                                }}
+                              >
+                                <div className="p-1 cursor-pointer hover:bg-default-200 rounded-full transition-colors">
+                                  {isSelected ? (
+                                    <Check className="w-4 h-4 text-primary" />
+                                  ) : (
+                                    <div className="w-4 h-4 border-2 border-default-300 rounded" />
+                                  )}
+                                </div>
+                              </div>
+                              <Filmstrip className="w-5 h-5 text-primary shrink-0" />
+                              <div className="flex flex-col gap-1 text-left min-w-0 flex-1">
+                                <span className="text-base font-semibold truncate">{group.title}</span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs text-muted">TMDB ID: {group.tmdb_id}</span>
+                                  <Chip variant="soft" size="sm" color="warning">
+                                    {redundantCount} 个冗余
+                                  </Chip>
+                                  <Chip variant="soft" size="sm" color="accent">
+                                    {formatSize(wastedSpace)} 可释放
+                                  </Chip>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-default-400">
+                              <Icon icon={isExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} className="w-5 h-5" />
                             </div>
                           </div>
-                        </div>
-                        <Accordion.Indicator>
-                          <Icon icon="mdi:chevron-down" className="w-4 h-4" />
-                        </Accordion.Indicator>
+                        </Surface>
                       </div>
-                    </Accordion.Trigger>
-                  </Accordion.Heading>
-                  <Accordion.Panel>
-                    <Accordion.Body>
-                      <div className="space-y-3">
-                        {/* 最佳版本 */}
+                    )
+                  }
+                  else if (item.type === 'best') {
+                    return (
+                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '8px' }} className="pl-6 pr-1">
                         <Surface
                           variant="secondary"
-                          className="rounded-lg p-4 border-2 border-success"
+                          className="rounded-lg p-4 border-2 border-success/50 h-full flex flex-col justify-center shadow-sm"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
@@ -625,86 +702,83 @@ export default function Dedupe() {
                                   <Check className="w-3 h-3 mr-1" />
                                   推荐保留
                                 </Chip>
-                                <span className="text-sm font-semibold text-foreground truncate">
-                                  {bestFile.name}
-                                </span>
+                                <span className="text-sm font-semibold text-foreground truncate">{item.file.name}</span>
                               </div>
-                              <FileInfo file={bestFile} />
+                              <FileInfo file={item.file} />
                             </div>
                             <div className="flex flex-col gap-2 shrink-0">
-                              <Chip color="success" variant="soft" size="sm">
-                                质量: {bestFile.quality_score || 0}
-                              </Chip>
+                              <Chip color="success" variant="soft" size="sm">质量: {item.file.quality_score || 0}</Chip>
                             </div>
                           </div>
                         </Surface>
-
-                        {/* 冗余版本 */}
-                        {redundantFiles.map((file) => (
-                          <Surface
-                            key={file.id}
-                            variant="default"
-                            className="rounded-lg p-4 border border-divider"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-sm font-medium text-foreground truncate">
-                                    {file.name}
-                                  </span>
-                                  <Chip variant="soft" size="sm" color="danger">
-                                    冗余版本
-                                  </Chip>
-                                </div>
-                                <FileInfo file={file} compareWith={bestFile} />
-                              </div>
-                              <div className="flex flex-col gap-2 shrink-0">
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  onPress={() => trashMutation.mutate(file.id)}
-                                  isPending={trashMutation.isPending}
-                                >
-                                  <TrashBin className="w-4 h-4" />
-                                  移入回收站
-                                </Button>
-                              </div>
-                            </div>
-                          </Surface>
-                        ))}
                       </div>
-                    </Accordion.Body>
-                  </Accordion.Panel>
-                </Accordion.Item>
-              )
-            })}
-          </Accordion>
-        </div>
-      ) : data && data.length === 0 ? (
-        <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
-          <div className="flex flex-col items-center gap-3">
-            <div className="p-4 bg-success/10 rounded-full">
-              <Icon icon="mdi:check-circle" className="w-8 h-8 text-success" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-semibold text-foreground">未发现重复文件</p>
-              <p className="text-xs text-default-400">您的媒体库中没有重复的影片</p>
+                    )
+                  }
+                  else if (item.type === 'redundant') {
+                    return (
+                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '8px' }} className="pl-6 pr-1">
+                        <Surface
+                          variant="default"
+                          className="rounded-lg p-4 border border-divider/50 h-full flex flex-col justify-center shadow-sm hover:border-danger/30 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-medium text-foreground truncate">
+                                  {item.file.name}
+                                </span>
+                                <Chip variant="soft" size="sm" color="danger">
+                                  冗余版本
+                                </Chip>
+                              </div>
+                              <FileInfo file={item.file} compareWith={item.bestFile} />
+                            </div>
+                            <div className="flex flex-col gap-2 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onPress={() => trashMutation.mutate(item.file.id)}
+                                isPending={trashMutation.isPending}
+                              >
+                                <TrashBin className="w-4 h-4" />
+                                移入回收站
+                              </Button>
+                            </div>
+                          </div>
+                        </Surface>
+                      </div>
+                    )
+                  }
+                  return null;
+                })}
+              </div>
             </div>
           </div>
-        </Surface>
-      ) : (
-        <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
-          <div className="flex flex-col items-center gap-3">
-            <div className="p-4 bg-default-100 rounded-full">
-              <CircleExclamation className="w-8 h-8 text-default-400" />
+        ) : data && data.length === 0 ? (
+          <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-4 bg-success/10 rounded-full">
+                <Icon icon="mdi:check-circle" className="w-8 h-8 text-success" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold text-foreground">未发现重复文件</p>
+                <p className="text-xs text-default-400">您的媒体库中没有重复的影片</p>
+              </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-semibold text-foreground">开始扫描</p>
-              <p className="text-xs text-default-400">点击上方按钮开始扫描重复文件</p>
+          </Surface>
+        ) : (
+          <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-4 bg-default-100 rounded-full">
+                <CircleExclamation className="w-8 h-8 text-default-400" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold text-foreground">开始扫描</p>
+                <p className="text-xs text-default-400">点击上方按钮开始扫描重复文件</p>
+              </div>
             </div>
-          </div>
-        </Surface>
-      )}
+          </Surface>
+        )}
       </div>
 
       {/* 固定底部操作栏 */}
@@ -810,16 +884,16 @@ function FileInfo({ file, compareWith }: { file: MediaFile; compareWith?: MediaF
             <div
               className={clsx(
                 "h-full rounded-full transition-all",
-                file.quality_score >= 70 ? "bg-success" : 
-                file.quality_score >= 50 ? "bg-warning" : "bg-danger"
+                file.quality_score >= 70 ? "bg-success" :
+                  file.quality_score >= 50 ? "bg-warning" : "bg-danger"
               )}
               style={{ width: `${file.quality_score}%` }}
             />
           </div>
           <span className={clsx(
             "text-xs font-semibold min-w-[30px] text-right",
-            file.quality_score >= 70 ? "text-success" : 
-            file.quality_score >= 50 ? "text-warning" : "text-danger"
+            file.quality_score >= 70 ? "text-success" :
+              file.quality_score >= 50 ? "text-warning" : "text-danger"
           )}>
             {file.quality_score}
           </span>
