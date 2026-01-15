@@ -22,6 +22,7 @@ pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub config: Arc<crate::config::AppConfig>,
     pub progress_broadcaster: ProgressBroadcaster,
+    #[allow(dead_code)]
     pub hash_cache: Arc<FileHashCache>,
     pub http_client: reqwest::Client, // 复用 HTTP 客户端连接池
     pub task_queue: Arc<TaskQueue>,   // 任务队列
@@ -51,7 +52,7 @@ pub use rename::*;
 pub use scan::*;
 pub use scrape::batch_scrape_metadata;
 pub use scrape::scrape_metadata;
-pub use tasks::task_routes;
+// pub use tasks::task_routes;
 pub use video::*;
 pub use watcher::*;
 

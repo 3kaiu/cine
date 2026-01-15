@@ -7,6 +7,7 @@
 /// let size = format_size(1536);
 /// assert_eq!(size, "1.50 KB");
 /// ```
+#[allow(dead_code)]
 pub fn format_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
@@ -27,6 +28,7 @@ pub fn format_size(bytes: i64) -> String {
 /// let duration = format_duration(3665.0);
 /// assert_eq!(duration, "1:01:05");
 /// ```
+#[allow(dead_code)]
 pub fn format_duration(seconds: f64) -> String {
     let hours = (seconds / 3600.0) as u32;
     let minutes = ((seconds % 3600.0) / 60.0) as u32;

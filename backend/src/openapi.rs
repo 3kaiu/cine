@@ -56,6 +56,7 @@ use utoipa::OpenApi;
 pub struct ApiDoc;
 
 /// 获取 OpenAPI JSON 规范
+#[allow(dead_code)]
 pub fn openapi_json() -> String {
     ApiDoc::openapi().to_json().unwrap()
 }

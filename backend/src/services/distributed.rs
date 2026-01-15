@@ -68,8 +68,11 @@ pub enum MasterMessage {
 /// 工作节点信息
 #[derive(Debug, Clone)]
 pub struct WorkerInfo {
+    #[allow(dead_code)]
     pub node_id: String,
+    #[allow(dead_code)]
     pub hostname: String,
+    #[allow(dead_code)]
     pub capabilities: Vec<TaskType>,
     pub last_heartbeat: DateTime<Utc>,
     pub load: f64,

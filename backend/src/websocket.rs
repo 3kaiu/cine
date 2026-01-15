@@ -12,11 +12,13 @@ use tokio::sync::broadcast;
 use crate::handlers::AppState;
 
 /// WebSocket 处理器，用于实时推送进度
+#[allow(dead_code)]
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
     let rx = state.progress_broadcaster.subscribe();
     ws.on_upgrade(|socket| handle_socket(socket, rx))
 }
 
+#[allow(dead_code)]
 async fn handle_socket(socket: WebSocket, mut rx: broadcast::Receiver<ProgressMessage>) {
     let (mut sender, mut receiver) = socket.split();
 
@@ -79,10 +81,12 @@ impl ProgressBroadcaster {
         Self { tx }
     }
 
+    #[allow(dead_code)]
     pub fn send(&self, msg: ProgressMessage) {
         let _ = self.tx.send(msg);
     }
 
+    #[allow(dead_code)]
     pub fn subscribe(&self) -> broadcast::Receiver<ProgressMessage> {
         self.tx.subscribe()
     }

@@ -204,6 +204,7 @@ pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
 ///
 /// # 用途
 /// 用于生成视频预览图，增强用户界面体验
+#[allow(dead_code)]
 pub async fn generate_thumbnail(
     file_path: &str,
     output_path: &str,

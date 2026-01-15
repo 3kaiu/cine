@@ -21,7 +21,7 @@ mod websocket;
 
 use config::AppConfig;
 use handlers::*;
-use websocket::ws_handler;
+// use websocket::ws_handler;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -140,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/health", get(health_check))
                 .route("/api/metrics", get(crate::handlers::metrics::get_dashboard_metrics))
                 .route("/metrics", get(crate::handlers::metrics::get_metrics))
-                .route("/api/ws", get(crate::websocket::ws_handler))
+                // .route("/api/ws", get(crate::websocket::ws_handler))
                 .route(
                     "/api/ws/worker",
                     get(

@@ -36,22 +36,27 @@ pub enum AppError {
 
     /// 目录未找到
     #[error("Directory not found: {0}")]
+    #[allow(dead_code)]
     DirectoryNotFound(String),
 
     /// 配置错误
     #[error("Configuration error: {0}")]
+    #[allow(dead_code)]
     Config(String),
 
     /// 验证错误
     #[error("Validation error: {0}")]
+    #[allow(dead_code)]
     Validation(String),
 
     /// 业务逻辑错误
     #[error("Business error: {0}")]
+    #[allow(dead_code)]
     Business(String),
 
     /// 未授权
     #[error("Unauthorized: {0}")]
+    #[allow(dead_code)]
     Unauthorized(String),
 
     /// 内部服务器错误

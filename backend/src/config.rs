@@ -21,122 +21,76 @@ pub struct AppConfig {
     pub log_format: String, // 日志格式: "pretty" 或 "json"
 }
 
-/// 配置文件结构（所有字段可选，用于部分覆盖）
-#[derive(Debug, Clone, Deserialize, Default)]
-struct FileConfig {
-    port: Option<u16>,
-    database_url: Option<String>,
-    tmdb_api_key: Option<String>,
-    max_file_size: Option<u64>,
-    chunk_size: Option<usize>,
-    hash_cache_dir: Option<String>,
-    trash_dir: Option<String>,
-    media_directories: Option<Vec<String>>,
-    log_level: Option<String>,
-    log_format: Option<String>,
-}
+// FileConfig struct removed
 
 impl AppConfig {
     /// 加载配置
     ///
-    /// 优先级：环境变量 > 配置文件 > 默认值
+    /// 优先级：环境变量 (CINE_*) > 配置文件 (config.json) > 默认值
     pub fn load() -> anyhow::Result<Self> {
-        // 1. 尝试加载配置文件
-        let file_config = Self::load_file_config();
-
-        // 2. 构建最终配置（环境变量 > 配置文件 > 默认值）
-        let port = std::env::var("PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .or(file_config.port)
-            .unwrap_or(3000);
-
-        let database_url = std::env::var("DATABASE_URL")
-            .ok()
-            .or(file_config.database_url)
-            .unwrap_or_else(|| "sqlite:./data/cine.db".to_string());
-
-        let tmdb_api_key = std::env::var("TMDB_API_KEY")
-            .ok()
-            .or(file_config.tmdb_api_key);
-
-        let max_file_size = std::env::var("MAX_FILE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .or(file_config.max_file_size)
-            .unwrap_or(200_000_000_000); // 默认 200GB
-
-        let chunk_size = std::env::var("CHUNK_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .or(file_config.chunk_size)
-            .unwrap_or(64 * 1024 * 1024); // 默认 64MB
-
-        let hash_cache_dir = std::env::var("HASH_CACHE_DIR")
-            .ok()
-            .or(file_config.hash_cache_dir)
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("./data/hash_cache"));
-
-        let trash_dir = std::env::var("TRASH_DIR")
-            .ok()
-            .or(file_config.trash_dir)
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("./data/trash"));
-
-        let media_directories = file_config
-            .media_directories
-            .map(|dirs| dirs.into_iter().map(PathBuf::from).collect())
-            .unwrap_or_default();
-
-        let log_level = std::env::var("RUST_LOG")
-            .ok()
-            .or(file_config.log_level)
-            .unwrap_or_else(|| "cine=info,axum=info".to_string());
-
-        let log_format = std::env::var("LOG_FORMAT")
-            .ok()
-            .or(file_config.log_format)
-            .unwrap_or_else(|| "pretty".to_string());
-
-        // 确保必要目录存在
-        std::fs::create_dir_all(&hash_cache_dir)?;
-        std::fs::create_dir_all(&trash_dir)?;
-
-        Ok(Self {
-            port,
-            database_url,
-            tmdb_api_key,
-            max_file_size,
-            chunk_size,
-            hash_cache_dir,
-            trash_dir,
-            media_directories,
-            log_level,
-            log_format,
-        })
-    }
-
-    /// 从配置文件加载配置
-    fn load_file_config() -> FileConfig {
         let config_path =
             std::env::var("CONFIG_PATH").unwrap_or_else(|_| "./config/config.json".to_string());
 
-        match std::fs::read_to_string(&config_path) {
-            Ok(content) => match serde_json::from_str::<FileConfig>(&content) {
-                Ok(config) => {
-                    tracing::info!("Loaded config from: {}", config_path);
-                    config
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse config file {}: {}", config_path, e);
-                    FileConfig::default()
-                }
-            },
-            Err(_) => {
-                tracing::debug!("No config file found at: {}", config_path);
-                FileConfig::default()
-            }
-        }
+        // 确保必要目录存在 (使用默认值检查，后续由 config crate 覆盖)
+        let default_hash_cache = PathBuf::from("./data/hash_cache");
+        let default_trash = PathBuf::from("./data/trash");
+
+        let builder = config::Config::builder()
+            // 1. 设置默认值
+            .set_default("port", 3000)?
+            .set_default("database_url", "sqlite:./data/cine.db")?
+            .set_default("max_file_size", 200_000_000_000_u64)? // 200GB
+            .set_default("chunk_size", 64 * 1024 * 1024)? // 64MB
+            .set_default("hash_cache_dir", default_hash_cache.to_str().unwrap())?
+            .set_default("trash_dir", default_trash.to_str().unwrap())?
+            .set_default("log_level", "cine=info,axum=info")?
+            .set_default("log_format", "pretty")?
+            // 2. 加载配置文件 (如果存在)
+            .add_source(config::File::with_name(&config_path).required(false))
+            // 3. 加载环境变量 (CINE_ 前缀，例如 CINE_PORT=8080)
+            // 注意：数组类型的环境变量暂不支持直接映射，需特殊处理或忽略
+            .add_source(config::Environment::with_prefix("CINE").separator("_"));
+
+        let config: Dictionary = builder.build()?.try_deserialize()?;
+
+        // 分别转换字段以构建 AppConfig，处理 PathBuf 和 Vec
+        let app_config = AppConfig {
+            port: config.port,
+            database_url: config.database_url,
+            tmdb_api_key: config.tmdb_api_key,
+            max_file_size: config.max_file_size,
+            chunk_size: config.chunk_size,
+            hash_cache_dir: PathBuf::from(config.hash_cache_dir),
+            trash_dir: PathBuf::from(config.trash_dir),
+            media_directories: config
+                .media_directories
+                .unwrap_or_default()
+                .into_iter()
+                .map(PathBuf::from)
+                .collect(),
+            log_level: config.log_level,
+            log_format: config.log_format,
+        };
+
+        // 确保目录存在
+        std::fs::create_dir_all(&app_config.hash_cache_dir)?;
+        std::fs::create_dir_all(&app_config.trash_dir)?;
+
+        Ok(app_config)
     }
+}
+
+// 中间结构体，用于 serde 反序列化（避免 PathBuf 兼容性问题）
+#[derive(Debug, Deserialize)]
+struct Dictionary {
+    port: u16,
+    database_url: String,
+    tmdb_api_key: Option<String>,
+    max_file_size: u64,
+    chunk_size: usize,
+    hash_cache_dir: String,
+    trash_dir: String,
+    media_directories: Option<Vec<String>>,
+    log_level: String,
+    log_format: String,
 }

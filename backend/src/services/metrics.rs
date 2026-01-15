@@ -6,6 +6,7 @@ pub struct Metrics {
     pub hash_throughput_bytes: Counter,
     pub scrape_requests_total: Counter,
     pub active_tasks: Gauge,
+    #[allow(dead_code)]
     pub db_query_duration: Histogram,
 }
 

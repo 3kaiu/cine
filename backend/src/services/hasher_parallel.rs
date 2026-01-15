@@ -22,6 +22,7 @@ use crate::services::hasher;
 ///
 /// # 用途
 /// 用于大规模文件去重时的高性能并行哈希计算
+#[allow(dead_code)]
 pub async fn batch_calculate_hash_parallel(
     db: &SqlitePool,
     file_ids: &[String],

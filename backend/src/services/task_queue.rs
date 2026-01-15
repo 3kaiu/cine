@@ -110,6 +110,7 @@ impl TaskContext {
     }
 
     /// 检查任务是否被取消
+    #[allow(dead_code)]
     pub async fn is_cancelled(&self) -> bool {
         *self.is_cancelled.read().await
     }
@@ -147,6 +148,7 @@ impl TaskContext {
     }
 
     /// 获取任务 ID
+    #[allow(dead_code)]
     pub fn task_id(&self) -> &str {
         &self.task_id
     }
@@ -166,6 +168,7 @@ impl TaskContext {
 
 #[derive(Debug)]
 pub struct TaskStatusUpdate {
+    #[allow(dead_code)]
     pub task_id: String,
     pub status: TaskStatus,
 }
