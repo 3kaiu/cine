@@ -14,6 +14,7 @@ pub mod scanner;
 pub mod scheduler;
 pub mod scraper;
 pub mod subtitle;
+pub mod task_queue;
 pub mod trash;
 pub mod video;
 pub mod watcher;

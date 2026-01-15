@@ -44,6 +44,11 @@ const menuItems = [
     label: '回收站',
   },
   {
+    path: '/tasks',
+    icon: <Icon icon="lucide:list-checks" />,
+    label: '任务队列',
+  },
+  {
     path: '/logs',
     icon: <Icon icon="lucide:scroll-text" />,
     label: '系统日志',

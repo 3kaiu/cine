@@ -142,16 +142,9 @@ export const mediaApi = {
     download_images?: boolean
     generate_nfo?: boolean
   }) => api.post<{
-    results: Array<{
-      file_id: string
-      file_name: string
-      success: boolean
-      metadata?: any
-      error?: string
-    }>
-    total: number
-    success: number
-    failed: number
+    task_id: string
+    status: string
+    message: string
   }>('/scrape/batch', data),
 
   // 批量重命名
@@ -160,11 +153,13 @@ export const mediaApi = {
     template: string
     preview?: boolean
   }) => api.post<{
-    preview: Array<{
+    preview?: Array<{
       file_id: string
       old_name: string
       new_name: string
     }>
+    task_id?: string
+    status?: string
     message: string
   }>('/rename', data),
 

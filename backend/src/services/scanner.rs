@@ -16,8 +16,7 @@ pub async fn scan_directory(
     directory: &str,
     recursive: bool,
     file_types: &[String],
-    task_id: &str,
-    progress_broadcaster: Option<Arc<ProgressBroadcaster>>,
+    mut ctx: crate::services::task_queue::TaskContext,
 ) -> anyhow::Result<()> {
     let dir_path = Path::new(directory);
     if !dir_path.exists() {
@@ -44,6 +43,11 @@ pub async fn scan_directory(
     };
 
     for entry in walker {
+        // 检查暂停和取消
+        if ctx.check_pause().await {
+            return Err(anyhow::anyhow!("Scan task cancelled"));
+        }
+
         let entry = entry?;
         let path = entry.path();
 
@@ -112,28 +116,24 @@ pub async fn scan_directory(
                 as u64;
         }
 
-        // 发送进度更新（使用动态估算）
-        if let Some(ref broadcaster) = progress_broadcaster {
-            let total_estimated = file_count + estimated_remaining;
-            let progress = if total_estimated > 0 {
-                (file_count as f64 / total_estimated as f64) * 100.0
-            } else {
-                0.0
-            };
+        // 报告进度
+        let total_estimated = file_count + estimated_remaining;
+        let progress = if total_estimated > 0 {
+            (file_count as f64 / total_estimated as f64) * 100.0
+        } else {
+            0.0
+        };
 
-            // 每处理50个文件或进度变化超过5%时发送更新
-            if processed_count % 50 == 0 || processed_count == 1 {
-                broadcaster.send(ProgressMessage {
-                    task_id: task_id.to_string(),
-                    task_type: "scan".to_string(),
-                    progress: progress.min(99.0), // 最大99%，完成时再设为100%
-                    current_file: Some(file_name),
-                    message: Some(format!(
-                        "Scanned {} files (estimated {} total)",
-                        file_count, total_estimated
-                    )),
-                });
-            }
+        // 每处理50个文件或进度变化超过5%时发送更新
+        if processed_count % 50 == 0 || processed_count == 1 {
+            ctx.report_progress(
+                progress.min(99.0),
+                Some(&format!(
+                    "Scanned {} files (estimated {} total)",
+                    file_count, total_estimated
+                )),
+            )
+            .await;
         }
 
         // 每处理100个文件，记录一次日志
@@ -145,17 +145,6 @@ pub async fn scan_directory(
     // 插入剩余的文件
     if !file_batch.is_empty() {
         batch_insert_files(db, &file_batch).await?;
-    }
-
-    // 发送完成消息
-    if let Some(ref broadcaster) = progress_broadcaster {
-        broadcaster.send(ProgressMessage {
-            task_id: task_id.to_string(),
-            task_type: "scan".to_string(),
-            progress: 100.0,
-            current_file: None,
-            message: Some(format!("Scan completed: {} files found", file_count)),
-        });
     }
 
     tracing::info!("Scan completed: {} files found", file_count);

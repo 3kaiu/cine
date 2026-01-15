@@ -1,14 +1,12 @@
+use crate::handlers::AppState;
+use crate::models::*;
+use crate::services::scanner;
 use axum::{
     extract::{Query, State},
     response::Json,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use uuid::Uuid;
-
-use crate::handlers::AppState;
-use crate::models::*;
-use crate::services::scanner;
 
 #[derive(Deserialize)]
 pub struct ScanRequest {
@@ -27,37 +25,40 @@ pub async fn scan_directory(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ScanRequest>,
 ) -> Result<Json<ScanResponse>, (axum::http::StatusCode, String)> {
-    let task_id = Uuid::new_v4().to_string();
-    let task_id_clone = task_id.clone();
-
-    // 启动异步扫描任务
-    let state_clone = state.clone();
     let directory = req.directory.clone();
     let recursive = req.recursive.unwrap_or(true);
     let file_types = req
         .file_types
+        .clone()
         .unwrap_or_else(|| vec!["video".to_string(), "audio".to_string()]);
 
-    let progress_broadcaster = Some(Arc::new(state_clone.progress_broadcaster.clone()));
+    let state_clone = state.clone();
+    let directory_clone = directory.clone();
+    let file_types_clone = file_types.clone();
 
-    tokio::spawn(async move {
-        if let Err(e) = scanner::scan_directory(
-            &state_clone.db,
-            &directory,
-            recursive,
-            &file_types,
-            &task_id_clone,
-            progress_broadcaster,
+    // 提交到任务队列
+    let task_id = state
+        .task_queue
+        .submit(
+            crate::services::task_queue::TaskType::Scan,
+            Some(format!("扫描目录: {}", directory)),
+            move |ctx| async move {
+                scanner::scan_directory(
+                    &state_clone.db,
+                    &directory_clone,
+                    recursive,
+                    &file_types_clone,
+                    ctx,
+                )
+                .await?;
+                Ok(None)
+            },
         )
-        .await
-        {
-            tracing::error!("Scan task {} failed: {}", task_id_clone, e);
-        }
-    });
+        .await;
 
     Ok(Json(ScanResponse {
         task_id,
-        message: "Scan task started".to_string(),
+        message: "Scan task submitted to queue".to_string(),
     }))
 }
 

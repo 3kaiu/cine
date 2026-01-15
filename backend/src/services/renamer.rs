@@ -149,7 +149,7 @@ pub fn generate_new_name(file: &MediaFile, template: &str) -> Option<String> {
     // {quality} - 质量标签（综合分辨率、HDR、来源等）
     if let Some(ref info) = video_info {
         let mut quality_parts = Vec::new();
-        
+
         // 分辨率
         if let (Some(w), Some(h)) = (info.width, info.height) {
             if w >= 3840 || h >= 2160 {
@@ -160,7 +160,7 @@ pub fn generate_new_name(file: &MediaFile, template: &str) -> Option<String> {
                 quality_parts.push("720p");
             }
         }
-        
+
         // HDR信息（优先级：DV > HDR10+ > HDR）
         if info.is_dolby_vision.unwrap_or(false) {
             quality_parts.push("DV");
@@ -169,7 +169,7 @@ pub fn generate_new_name(file: &MediaFile, template: &str) -> Option<String> {
         } else if info.is_hdr.unwrap_or(false) {
             quality_parts.push("HDR");
         }
-        
+
         // 来源（只在有值时添加）
         if let Some(ref source) = info.source {
             match source.as_str() {
@@ -180,7 +180,7 @@ pub fn generate_new_name(file: &MediaFile, template: &str) -> Option<String> {
                 _ => {}
             }
         }
-        
+
         // 如果模板中有{quality}但质量信息为空，则移除整个{quality}标签（包括方括号）
         if new_name.contains("{quality}") {
             if !quality_parts.is_empty() {
@@ -255,7 +255,39 @@ pub(crate) fn sanitize_filename(name: &str) -> String {
         .collect()
 }
 
-/// 执行文件重命名
+/// 批量执行物理磁盘重命名
+pub async fn batch_rename(
+    db: &SqlitePool,
+    rename_items: Vec<(String, String)>, // (file_id, new_name)
+    mut ctx: crate::services::task_queue::TaskContext,
+) -> anyhow::Result<()> {
+    let total = rename_items.len();
+
+    for (index, (file_id, new_name)) in rename_items.into_iter().enumerate() {
+        // 检查暂停/取消
+        if ctx.check_pause().await {
+            return Err(anyhow::anyhow!("Rename task cancelled"));
+        }
+
+        // 执行单个文件重命名
+        if let Err(e) = rename_file(db, &file_id, &new_name).await {
+            tracing::error!("Failed to rename file {}: {}", file_id, e);
+        }
+
+        // 报告进度
+        let completed = index + 1;
+        let progress = (completed as f64 / total as f64) * 100.0;
+        ctx.report_progress(
+            progress,
+            Some(&format!("Renaming {}/{} files", completed, total)),
+        )
+        .await;
+    }
+
+    Ok(())
+}
+
+/// 执行单个文件重命名
 pub async fn rename_file(db: &SqlitePool, file_id: &str, new_name: &str) -> anyhow::Result<()> {
     // 获取文件信息
     let file: MediaFile = sqlx::query_as("SELECT * FROM media_files WHERE id = ?")

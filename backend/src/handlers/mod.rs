@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::sync::Arc;
 
 use crate::services::cache::FileHashCache;
+use crate::services::task_queue::TaskQueue;
 use crate::websocket::ProgressBroadcaster;
 
 pub mod dedupe;
@@ -11,6 +12,7 @@ pub mod nfo;
 pub mod rename;
 pub mod scan;
 pub mod scrape;
+pub mod tasks;
 pub mod video;
 pub mod watcher;
 
@@ -20,6 +22,7 @@ pub struct AppState {
     pub progress_broadcaster: ProgressBroadcaster,
     pub hash_cache: Arc<FileHashCache>,
     pub http_client: reqwest::Client, // 复用 HTTP 客户端连接池
+    pub task_queue: Arc<TaskQueue>,   // 任务队列
 }
 
 #[derive(Serialize)]
@@ -45,6 +48,7 @@ pub use rename::*;
 pub use scan::*;
 pub use scrape::batch_scrape_metadata;
 pub use scrape::scrape_metadata;
+pub use tasks::task_routes;
 pub use video::*;
 pub use watcher::*;
 

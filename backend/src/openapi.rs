@@ -34,6 +34,9 @@ use utoipa::OpenApi;
         crate::models::ScanHistory,
         crate::models::WatchFolder,
         crate::models::Setting,
+        crate::services::task_queue::TaskInfo,
+        crate::services::task_queue::TaskStatus,
+        crate::services::task_queue::TaskType,
     )),
     tags(
         (name = "scan", description = "文件扫描 - 扫描目录并索引媒体文件"),
@@ -46,6 +49,7 @@ use utoipa::OpenApi;
         (name = "file_ops", description = "文件操作 - 移动/复制文件"),
         (name = "trash", description = "回收站 - 安全删除和恢复文件"),
         (name = "log", description = "操作日志 - 查看和撤销操作"),
+        (name = "tasks", description = "任务队列 - 管理后台任务的暂停/恢复/取消"),
         (name = "settings", description = "系统设置 - 配置应用参数"),
     )
 )]

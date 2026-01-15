@@ -63,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
         progress_broadcaster: websocket::ProgressBroadcaster::new(),
         hash_cache: Arc::new(crate::services::cache::FileHashCache::new()),
         http_client: reqwest::Client::new(),
+        task_queue: Arc::new(crate::services::task_queue::TaskQueue::default()),
     };
     let app_state = Arc::new(app_state);
 
@@ -118,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/watch-folders/:id", delete(delete_watch_folder))
         .route("/api/files/:id/nfo", get(get_nfo).put(update_nfo))
         .route("/api/settings", get(get_settings).post(update_settings))
+        .nest("/api/tasks", handlers::task_routes())
         .route("/ws", get(ws_handler))
         // OpenAPI 文档
         .merge(
@@ -156,20 +158,31 @@ async fn start_background_services(
     tokio::spawn(async move {
         while let Some(path) = rx.recv().await {
             tracing::info!("Auto-processing directory: {}", path);
-            // 触发全量扫描（暂定，后续可优化为单文件触发）
+            let state_clone = state.clone();
+            let path_clone = path.clone();
             let file_types: Vec<String> = ["video", "audio", "image"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
-            let _ = crate::services::scanner::scan_directory(
-                &state.db,
-                &path,
-                true,
-                &file_types,
-                "AUTO_WATCHER",
-                Some(Arc::new(state.progress_broadcaster.clone())),
-            )
-            .await;
+
+            let _ = state
+                .task_queue
+                .submit(
+                    crate::services::task_queue::TaskType::Scan,
+                    Some(format!("自动扫描: {}", path)),
+                    move |ctx| async move {
+                        crate::services::scanner::scan_directory(
+                            &state_clone.db,
+                            &path_clone,
+                            true,
+                            &file_types,
+                            ctx,
+                        )
+                        .await?;
+                        Ok(None)
+                    },
+                )
+                .await;
         }
     });
 

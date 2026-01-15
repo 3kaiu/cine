@@ -197,7 +197,6 @@ pub async fn search_tv_tmdb(
     Ok(shows)
 }
 
-
 /// 执行元数据刮削（使用共享 HTTP 客户端）
 pub async fn scrape_metadata(
     client: &Client,
@@ -264,16 +263,26 @@ pub async fn batch_scrape_metadata(
     config: &AppConfig,
     download_images: bool,
     generate_nfo: bool,
-    max_concurrent: usize, // 新增：并发控制
+    max_concurrent: usize,
+    ctx: crate::services::task_queue::TaskContext,
 ) -> anyhow::Result<Vec<(String, Result<Value, String>)>> {
     use futures::stream::{self, StreamExt};
 
-    let results: Vec<_> = stream::iter(files.to_vec())
-        .map(|file| {
+    let total = files.len();
+    let results: Vec<_> = stream::iter(files.to_vec().into_iter().enumerate())
+        .map(|(index, file)| {
             let client = client.clone();
             let source = source.to_string();
             let config = config.clone();
+            let sub_ctx = ctx.duplicate();
+
             async move {
+                let mut sub_ctx = sub_ctx;
+                // 检查暂停/取消
+                if sub_ctx.check_pause().await {
+                    return (file.id.clone(), Err("Task cancelled".to_string()));
+                }
+
                 let result = match scrape_metadata(&client, &file, &source, auto_match, &config)
                     .await
                 {
@@ -327,6 +336,16 @@ pub async fn batch_scrape_metadata(
                     }
                     Err(e) => Err(e.to_string()),
                 };
+
+                // 报告总体进度
+                let completed = index + 1;
+                let progress = (completed as f64 / total as f64) * 100.0;
+                sub_ctx
+                    .report_progress(
+                        progress,
+                        Some(&format!("Scraping {}/{} files", completed, total)),
+                    )
+                    .await;
 
                 (file.id.clone(), result)
             }

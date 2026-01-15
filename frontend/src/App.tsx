@@ -14,6 +14,7 @@ const Renamer = lazy(() => import('./pages/Renamer'))
 const FileManager = lazy(() => import('./pages/FileManager'))
 const Trash = lazy(() => import('./pages/Trash'))
 const OperationLogs = lazy(() => import('./pages/OperationLogs'))
+const Tasks = lazy(() => import('./pages/Tasks'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
                     <Route path="/file-manager" element={<FileManager />} />
                     <Route path="/trash" element={<Trash />} />
                     <Route path="/logs" element={<OperationLogs />} />
+                    <Route path="/tasks" element={<Tasks />} />
                     <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </Suspense>
@@ -45,8 +47,8 @@ function App() {
           </div>
         </div>
       </BrowserRouter>
-      <Toaster 
-        richColors 
+      <Toaster
+        richColors
         position="top-right"
         toastOptions={{
           classNames: {

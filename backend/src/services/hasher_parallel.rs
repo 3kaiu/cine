@@ -27,8 +27,7 @@ pub async fn batch_calculate_hash_parallel(
     db: &SqlitePool,
     file_ids: &[String],
     max_concurrent: usize,
-    task_id: &str,
-    progress_broadcaster: Option<Arc<ProgressBroadcaster>>,
+    mut ctx: crate::services::task_queue::TaskContext,
     hash_cache: Option<Arc<FileHashCache>>,
 ) -> anyhow::Result<()> {
     let total = file_ids.len();
@@ -40,38 +39,35 @@ pub async fn batch_calculate_hash_parallel(
         .map(|(index, file_id)| {
             let db = db.clone();
             let file_id = file_id.clone();
-            let task_id = task_id.to_string();
             let semaphore = semaphore.clone();
-            let progress_broadcaster_clone = progress_broadcaster.clone();
             let hash_cache = hash_cache.clone();
+            // 为每个任务复制一份上下文
+            let sub_ctx = ctx.duplicate();
 
             async move {
                 // 获取信号量许可（控制并发）
                 let _permit = semaphore.acquire().await.unwrap();
 
-                // 计算哈希
-                let result = hasher::calculate_file_hash(
-                    &db,
-                    &file_id,
-                    &task_id,
-                    progress_broadcaster_clone.clone(),
-                    hash_cache,
-                )
-                .await;
-
-                // 更新进度
-                if let Some(ref broadcaster) = progress_broadcaster_clone {
-                    let completed = index + 1;
-                    let progress = (completed as f64 / total as f64) * 100.0;
-
-                    broadcaster.send(ProgressMessage {
-                        task_id: task_id.clone(),
-                        task_type: "batch_hash".to_string(),
-                        progress,
-                        current_file: Some(file_id.clone()),
-                        message: Some(format!("Processed {}/{} files", completed, total)),
-                    });
+                // 检查暂停/取消
+                let mut sub_ctx = sub_ctx;
+                if sub_ctx.check_pause().await {
+                    return Err(anyhow::anyhow!("Task cancelled"));
                 }
+
+                // 计算哈希
+                let result =
+                    hasher::calculate_file_hash(&db, &file_id, sub_ctx.duplicate(), hash_cache)
+                        .await;
+
+                // 报告总体进度
+                let completed = index + 1;
+                let progress = (completed as f64 / total as f64) * 100.0;
+                sub_ctx
+                    .report_progress(
+                        progress,
+                        Some(&format!("Processed {}/{} files", completed, total)),
+                    )
+                    .await;
 
                 result
             }
@@ -92,20 +88,6 @@ pub async fn batch_calculate_hash_parallel(
 
     if !errors.is_empty() {
         tracing::warn!("{} files failed to hash: {:?}", errors.len(), errors);
-    }
-
-    // 发送完成消息
-    if let Some(ref broadcaster) = progress_broadcaster {
-        broadcaster.send(ProgressMessage {
-            task_id: task_id.to_string(),
-            task_type: "batch_hash".to_string(),
-            progress: 100.0,
-            current_file: None,
-            message: Some(format!(
-                "Completed: {}/{} files processed",
-                completed, total
-            )),
-        });
     }
 
     tracing::info!(

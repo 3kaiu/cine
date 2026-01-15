@@ -41,6 +41,9 @@ chrono = { version = "0.4", features = ["serde"] }
 # UUID
 uuid = { version = "1.6", features = ["v4", "serde"] }
 
+# Concurrent collections
+dashmap = "6"
+
 # 错误处理
 anyhow = "1.0"
 thiserror = "1.0"
