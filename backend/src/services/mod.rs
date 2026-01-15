@@ -9,6 +9,7 @@ pub mod history;
 pub mod log;
 pub mod metrics;
 pub mod nfo;
+pub mod plugin;
 pub mod poster;
 pub mod quality;
 pub mod renamer;

@@ -85,6 +85,7 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 # OpenAPI 文档
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
+extism = "1.13.0"
 
 [dev-dependencies]
 # 测试框架

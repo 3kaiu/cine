@@ -88,6 +88,17 @@ async fn main() -> anyhow::Result<()> {
         task_queue.clone(),
     ));
 
+    // 初始化插件管理器
+    let plugin_manager = Arc::new(crate::services::plugin::PluginManager::new("plugins"));
+
+    // 异步加载插件 (后台运行，不阻塞启动)
+    let pm = plugin_manager.clone();
+    tokio::spawn(async move {
+        if let Err(e) = pm.load_plugins().await {
+            tracing::error!("Failed to load plugins: {}", e);
+        }
+    });
+
     task_queue.register_executor(
         crate::services::task_queue::TaskType::Scan,
         Arc::new(crate::services::task_executors::ScanExecutor { db: db.clone() }),
@@ -123,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
                 http_client: reqwest::Client::new(),
                 task_queue,
                 distributed,
+                plugin_manager: plugin_manager.clone(),
             };
             let app_state = Arc::new(app_state);
 
@@ -192,6 +204,7 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/watch-folders/:id", delete(delete_watch_folder))
                 .route("/api/files/:id/nfo", get(get_nfo).put(update_nfo))
                 .route("/api/settings", get(get_settings).post(update_settings))
+                .route("/api/plugins", get(list_plugins))
                 .nest("/api/tasks", crate::handlers::tasks::task_routes())
                 .merge(
                     utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")

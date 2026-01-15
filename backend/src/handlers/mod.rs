@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::services::cache::FileHashCache;
 use crate::services::distributed::DistributedService;
+use crate::services::plugin::PluginManager;
 use crate::services::task_queue::TaskQueue;
 use crate::websocket::ProgressBroadcaster;
 
@@ -27,6 +28,7 @@ pub struct AppState {
     pub http_client: reqwest::Client, // 复用 HTTP 客户端连接池
     pub task_queue: Arc<TaskQueue>,   // 任务队列
     pub distributed: Arc<DistributedService>, // 分布式服务
+    pub plugin_manager: Arc<PluginManager>, // 插件管理器
 }
 
 #[derive(Serialize)]
@@ -70,6 +72,9 @@ pub use log::{list_operation_logs, undo_operation};
 
 pub mod history;
 pub use history::list_scan_history;
+
+pub mod plugins;
+pub use plugins::list_plugins;
 
 pub mod settings;
 pub use settings::{get_settings, update_settings};

@@ -63,7 +63,9 @@ use utoipa::OpenApi;
         crate::handlers::file_ops::BatchMoveRequest,
         crate::handlers::file_ops::BatchCopyRequest,
         crate::handlers::file_ops::FileOperationResponse,
+        crate::handlers::file_ops::FileOperationResponse,
         crate::handlers::file_ops::BatchFileOperationResponse,
+        crate::services::plugin::PluginInfo,
     )),
     paths(
         crate::handlers::tasks::list_tasks,
@@ -86,7 +88,9 @@ use utoipa::OpenApi;
         crate::handlers::file_ops::move_file,
         crate::handlers::file_ops::copy_file,
         crate::handlers::file_ops::batch_move_files,
+        crate::handlers::file_ops::batch_move_files,
         crate::handlers::file_ops::batch_copy_files,
+        crate::handlers::plugins::list_plugins,
     ),
     tags(
         (name = "scan", description = "文件扫描 - 扫描目录并索引媒体文件"),
@@ -100,7 +104,9 @@ use utoipa::OpenApi;
         (name = "trash", description = "回收站 - 安全删除和恢复文件"),
         (name = "log", description = "操作日志 - 查看和撤销操作"),
         (name = "tasks", description = "任务队列 - 管理后台任务的暂停/恢复/取消"),
+        (name = "tasks", description = "任务队列 - 管理后台任务的暂停/恢复/取消"),
         (name = "settings", description = "系统设置 - 配置应用参数"),
+        (name = "system", description = "系统管理 - 插件与状态"),
     )
 )]
 pub struct ApiDoc;
