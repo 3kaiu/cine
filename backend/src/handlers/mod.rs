@@ -47,6 +47,7 @@ pub async fn health_check() -> Json<HealthResponse> {
 // 重新导出各个 handler
 pub use dedupe::{
     delete_empty_dirs, find_duplicate_movies, find_duplicates, find_empty_dirs, find_large_files,
+    find_similar_files,
 };
 pub use hash::*;
 pub use nfo::*;

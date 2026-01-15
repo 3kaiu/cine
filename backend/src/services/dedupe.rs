@@ -124,7 +124,7 @@ pub async fn find_duplicate_movies_by_tmdb(
 }
 
 /// 相似文件组
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct SimilarFileGroup {
     pub representative_name: String,
     pub similarity: f64,

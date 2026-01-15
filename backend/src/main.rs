@@ -122,6 +122,10 @@ async fn main() -> anyhow::Result<()> {
         crate::services::task_queue::TaskType::Rename,
         Arc::new(crate::services::task_executors::RenameExecutor { db: db.clone() }),
     );
+    task_queue.register_executor(
+        crate::services::task_queue::TaskType::Custom("batch_hash".to_string()),
+        Arc::new(crate::services::task_executors::BatchHashExecutor { db: db.clone() }),
+    );
 
     match cli.mode {
         RunMode::Master => {
@@ -182,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/rename", post(batch_rename))
                 .route("/api/dedupe", post(find_duplicates))
                 .route("/api/dedupe/movies", get(find_duplicate_movies))
+                .route("/api/dedupe/similar", get(find_similar_files))
                 .route("/api/empty-dirs", get(find_empty_dirs))
                 .route("/api/empty-dirs/delete", post(delete_empty_dirs))
                 .route("/api/large-files", get(find_large_files))

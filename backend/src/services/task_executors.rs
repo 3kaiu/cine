@@ -149,3 +149,70 @@ impl TaskExecutor for RenameExecutor {
         })
     }
 }
+
+/// 批量哈希执行器（并行处理）
+pub struct BatchHashExecutor {
+    pub db: SqlitePool,
+}
+
+impl TaskExecutor for BatchHashExecutor {
+    fn execute(
+        &self,
+        mut ctx: TaskContext,
+        payload: Value,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<Option<String>>> + Send>> {
+        let db = self.db.clone();
+        Box::pin(async move {
+            // 获取文件路径列表
+            let file_paths: Vec<String> = payload["file_paths"]
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("Missing file_paths"))?
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+
+            if file_paths.is_empty() {
+                return Ok(Some("No files to hash".to_string()));
+            }
+
+            ctx.report_progress(0.0, Some(&format!("Hashing {} files...", file_paths.len())))
+                .await;
+
+            // 使用并行哈希
+            let results = hasher::calculate_hashes_batch_async(file_paths.clone()).await;
+
+            // 统计结果
+            let mut success_count = 0;
+            let mut error_count = 0;
+
+            for result in &results {
+                match result {
+                    Ok((path, md5, xxhash)) => {
+                        // 更新数据库
+                        let _ = sqlx::query(
+                            "UPDATE media_files SET hash_md5 = ?, hash_xxhash = ?, updated_at = ? WHERE path = ?"
+                        )
+                        .bind(md5)
+                        .bind(xxhash)
+                        .bind(chrono::Utc::now().to_rfc3339())
+                        .bind(path)
+                        .execute(&db)
+                        .await;
+                        success_count += 1;
+                    }
+                    Err(_) => {
+                        error_count += 1;
+                    }
+                }
+            }
+
+            ctx.report_progress(100.0, Some("Batch hash completed"))
+                .await;
+
+            Ok(Some(format!(
+                "Batch hash completed: {} succeeded, {} failed",
+                success_count, error_count
+            )))
+        })
+    }
+}

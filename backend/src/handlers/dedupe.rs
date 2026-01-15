@@ -184,3 +184,44 @@ pub async fn find_duplicate_movies(
 
     Ok(Json(groups))
 }
+
+#[derive(Deserialize, IntoParams)]
+pub struct SimilarFilesQuery {
+    /// 相似度阈值 (0.0-1.0), 默认 0.8
+    pub threshold: Option<f64>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SimilarFilesResponse {
+    pub groups: Vec<dedupe::SimilarFileGroup>,
+    pub total_groups: usize,
+}
+
+/// 查找相似文件（基于文件名模糊匹配）
+#[utoipa::path(
+    get,
+    path = "/api/dedupe/similar",
+    tag = "dedupe",
+    params(
+        SimilarFilesQuery
+    ),
+    responses(
+        (status = 200, description = "获取相似文件成功", body = SimilarFilesResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
+pub async fn find_similar_files(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SimilarFilesQuery>,
+) -> Result<Json<SimilarFilesResponse>, (axum::http::StatusCode, String)> {
+    let threshold = query.threshold.unwrap_or(0.8).clamp(0.0, 1.0);
+
+    let groups = dedupe::find_similar_files(&state.db, threshold)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(SimilarFilesResponse {
+        total_groups: groups.len(),
+        groups,
+    }))
+}
