@@ -24,9 +24,6 @@ reqwest = { version = "0.11", features = ["json"] }
 
 # 数据库
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "migrate"] }
-
-# 文件操作
-walkdir = "2.4"
 futures-util = "0.3"
 futures = "0.3"
 urlencoding = "2.1"
@@ -86,6 +83,9 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
 extism = "1.13.0"
+jwalk = "0.8.1"
+rayon = "1.11.0"
+strsim = "0.11.1"
 
 [dev-dependencies]
 # 测试框架

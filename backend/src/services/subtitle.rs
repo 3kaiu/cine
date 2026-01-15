@@ -1,6 +1,6 @@
+use jwalk::WalkDir;
 use regex::Regex;
 use std::path::Path;
-use walkdir::WalkDir;
 
 /// 字幕文件信息
 #[derive(Debug, Clone, serde::Serialize)]
@@ -37,7 +37,11 @@ pub fn find_matching_subtitles(
     let subtitle_exts = ["srt", "ass", "ssa", "vtt", "sub"];
 
     // 遍历目录查找字幕文件
-    for entry in WalkDir::new(search_dir).max_depth(2) {
+    for entry in WalkDir::new(search_dir)
+        .skip_hidden(false)
+        .follow_links(false)
+        .max_depth(2)
+    {
         let entry = entry?;
         let path = entry.path();
 
@@ -63,7 +67,7 @@ pub fn find_matching_subtitles(
 
         // 检查文件名是否匹配（支持多种命名格式）
         if is_subtitle_match(video_name, &file_name) {
-            let metadata = std::fs::metadata(path)?;
+            let metadata = std::fs::metadata(&path)?;
             let language = detect_language(&file_name, &path.to_string_lossy());
 
             subtitles.push(SubtitleInfo {

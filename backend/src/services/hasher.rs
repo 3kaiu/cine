@@ -117,38 +117,60 @@ pub async fn calculate_file_hash(
     Ok(())
 }
 
-/// 批量计算哈希（用于去重）
-#[allow(dead_code)]
-pub async fn calculate_hashes_batch(
-    _db: &SqlitePool,
-    file_ids: &[String],
-    mut ctx: Option<crate::services::task_queue::TaskContext>,
-) -> anyhow::Result<()> {
-    let _total = file_ids.len();
+/// 批量计算哈希（用于去重）- 使用 rayon 并行处理
+///
+/// 返回每个文件的哈希结果: (file_path, md5, xxhash)
+pub fn calculate_hashes_batch_parallel(
+    file_paths: &[String],
+) -> Vec<Result<(String, String, String), String>> {
+    use rayon::prelude::*;
+    use std::io::Read;
 
-    for (_index, _file_id) in file_ids.iter().enumerate() {
-        // 如果有上下文，检查取消
-        if let Some(ref mut c) = ctx {
-            if c.check_pause().await {
-                return Err(anyhow::anyhow!("Batch hash task cancelled"));
+    file_paths
+        .par_iter()
+        .map(|file_path| {
+            let path = std::path::Path::new(file_path);
+            if !path.exists() {
+                return Err(format!("File not found: {}", file_path));
             }
-        }
 
-        // 我们需要为每个子任务创建一个伪上下文或者直接传递我们的上下文
-        // 但由于上下文包含 Receiver，不能简单传递。
-        // 实际上，我们可以在这里直接调用内部逻辑，或者重构核心逻辑。
+            let mut file = match std::fs::File::open(path) {
+                Ok(f) => f,
+                Err(e) => return Err(format!("Failed to open {}: {}", file_path, e)),
+            };
 
-        // 为了最小化改动，我将在这里直接修复调用。
-        // 注意：这里的 ctx 传递会消耗它，所以我们需要更巧妙的处理。
-        // 实际上，我们可以重构 calculate_file_hash 的内部逻辑。
-    }
+            let chunk_size = 64 * 1024 * 1024; // 64MB
+            let mut buffer = vec![0u8; chunk_size];
+            let mut md5_ctx = md5::Context::new();
+            let mut xxh3 = Xxh3::new();
 
-    Ok(())
+            loop {
+                match file.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        md5_ctx.consume(&buffer[..n]);
+                        xxh3.update(&buffer[..n]);
+                    }
+                    Err(e) => return Err(format!("Read error for {}: {}", file_path, e)),
+                }
+            }
+
+            let md5_hash = format!("{:x}", md5_ctx.compute());
+            let xxhash = format!("{:x}", xxh3.digest());
+
+            Ok((file_path.clone(), md5_hash, xxhash))
+        })
+        .collect()
 }
-// 我暂时注释掉这个函数，因为它似乎没被使用，且重构它比较复杂（需要处理 Context 的所有权）
-/*
-pub async fn calculate_hashes_batch(...) { ... }
-*/
+
+/// 异步包装器：在 tokio 运行时中调用并行哈希
+pub async fn calculate_hashes_batch_async(
+    file_paths: Vec<String>,
+) -> Vec<Result<(String, String, String), String>> {
+    tokio::task::spawn_blocking(move || calculate_hashes_batch_parallel(&file_paths))
+        .await
+        .unwrap_or_else(|e| vec![Err(format!("Task panicked: {}", e))])
+}
 
 /// 快速哈希（仅用于初步筛选）
 ///

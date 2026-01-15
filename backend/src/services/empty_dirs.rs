@@ -1,6 +1,6 @@
+use jwalk::WalkDir;
 use std::fs;
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 /// 空文件夹分类
 #[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
@@ -19,9 +19,12 @@ pub fn find_empty_directories(root: &str, recursive: bool) -> anyhow::Result<Vec
 
     let mut empty_dirs = Vec::new();
     let walker = if recursive {
-        WalkDir::new(root).into_iter()
+        WalkDir::new(root).skip_hidden(false).follow_links(false)
     } else {
-        WalkDir::new(root).max_depth(1).into_iter()
+        WalkDir::new(root)
+            .skip_hidden(false)
+            .follow_links(false)
+            .max_depth(1)
     };
 
     // 先收集所有目录

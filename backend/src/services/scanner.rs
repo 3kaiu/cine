@@ -1,8 +1,8 @@
 use chrono::Utc;
+use jwalk::WalkDir;
 use sqlx::SqlitePool;
 use std::path::Path;
 use uuid::Uuid;
-use walkdir::WalkDir;
 
 use crate::models::MediaFile;
 
@@ -36,11 +36,17 @@ pub async fn scan_directory(
     let mut total_size = 0i64;
     let mut file_type_counts = std::collections::HashMap::new();
 
-    // 遍历目录（只遍历一次）
+    // 遍历目录（jwalk 自动使用并行扫描，显著提升 SSD/HDD 性能）
+    // jwalk 默认支持 .ignore 和并行
     let walker = if recursive {
-        WalkDir::new(directory).into_iter()
+        WalkDir::new(directory)
+            .skip_hidden(false)
+            .follow_links(false)
     } else {
-        WalkDir::new(directory).max_depth(1).into_iter()
+        WalkDir::new(directory)
+            .skip_hidden(false)
+            .follow_links(false)
+            .max_depth(1)
     };
 
     for entry in walker {
@@ -57,13 +63,13 @@ pub async fn scan_directory(
         }
 
         // 检查文件类型
-        let file_type = detect_file_type(path);
+        let file_type = detect_file_type(&path);
         if !file_types.contains(&file_type) {
             continue;
         }
 
         // 获取文件元数据
-        let metadata = std::fs::metadata(path)?;
+        let metadata = std::fs::metadata(&path)?;
         let size = metadata.len() as i64;
         let modified = metadata
             .modified()?

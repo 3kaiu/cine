@@ -122,3 +122,127 @@ pub async fn find_duplicate_movies_by_tmdb(
 
     Ok(movie_groups)
 }
+
+/// 相似文件组
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SimilarFileGroup {
+    pub representative_name: String,
+    pub similarity: f64,
+    pub files: Vec<MediaFile>,
+}
+
+/// 标准化文件名（移除常见后缀和质量标识）
+fn normalize_filename(name: &str) -> String {
+    // 移除扩展名
+    let name = std::path::Path::new(name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(name);
+
+    // 移除常见质量标识
+    let re = regex::Regex::new(
+        r"(?i)\.?(1080p|720p|480p|2160p|4k|uhd|bluray|bdrip|webrip|dvdrip|hdtv|x264|x265|hevc|h\.?264|aac|ac3|dts|5\.1|10bit|hdr|remux|proper)\b"
+    ).unwrap();
+
+    let normalized = re.replace_all(name, "");
+
+    // 移除额外的分隔符和空格
+    let re_sep = regex::Regex::new(r"[\._\-\s]+").unwrap();
+    re_sep.replace_all(&normalized, " ").trim().to_lowercase()
+}
+
+/// 查找相似文件（基于文件名模糊匹配）
+pub async fn find_similar_files(
+    db: &SqlitePool,
+    threshold: f64,
+) -> anyhow::Result<Vec<SimilarFileGroup>> {
+    use strsim::jaro_winkler;
+
+    // 获取所有视频文件
+    let files: Vec<MediaFile> =
+        sqlx::query_as("SELECT * FROM media_files WHERE file_type = 'video' ORDER BY name")
+            .fetch_all(db)
+            .await?;
+
+    if files.len() < 2 {
+        return Ok(vec![]);
+    }
+
+    // 标准化所有文件名
+    let normalized: Vec<(usize, String)> = files
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (i, normalize_filename(&f.name)))
+        .collect();
+
+    // 使用 Union-Find 来分组
+    let mut parent: Vec<usize> = (0..files.len()).collect();
+
+    fn find(parent: &mut [usize], i: usize) -> usize {
+        if parent[i] != i {
+            parent[i] = find(parent, parent[i]);
+        }
+        parent[i]
+    }
+
+    fn union(parent: &mut [usize], i: usize, j: usize) {
+        let pi = find(parent, i);
+        let pj = find(parent, j);
+        if pi != pj {
+            parent[pi] = pj;
+        }
+    }
+
+    // 比较所有对（O(n^2)，对于大数据集可能需要优化）
+    for i in 0..normalized.len() {
+        for j in (i + 1)..normalized.len() {
+            let sim = jaro_winkler(&normalized[i].1, &normalized[j].1);
+            if sim >= threshold {
+                union(&mut parent, i, j);
+            }
+        }
+    }
+
+    // 收集分组
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    for i in 0..files.len() {
+        let root = find(&mut parent, i);
+        groups.entry(root).or_default().push(i);
+    }
+
+    // 过滤只保留有多个文件的组
+    let result: Vec<SimilarFileGroup> = groups
+        .into_iter()
+        .filter(|(_, indices)| indices.len() > 1)
+        .map(|(_, indices)| {
+            let group_files: Vec<MediaFile> = indices.iter().map(|&i| files[i].clone()).collect();
+            let rep_name = group_files
+                .first()
+                .map(|f| f.name.clone())
+                .unwrap_or_default();
+
+            // 计算组内平均相似度
+            let mut total_sim = 0.0;
+            let mut count = 0;
+            for i in 0..indices.len() {
+                for j in (i + 1)..indices.len() {
+                    total_sim += jaro_winkler(&normalized[indices[i]].1, &normalized[indices[j]].1);
+                    count += 1;
+                }
+            }
+            let avg_sim = if count > 0 {
+                total_sim / count as f64
+            } else {
+                1.0
+            };
+
+            SimilarFileGroup {
+                representative_name: rep_name,
+                similarity: avg_sim,
+                files: group_files,
+            }
+        })
+        .collect();
+
+    Ok(result)
+}
