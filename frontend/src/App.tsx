@@ -16,6 +16,7 @@ const Trash = lazy(() => import('./pages/Trash'))
 const OperationLogs = lazy(() => import('./pages/OperationLogs'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
                     <Route path="/logs" element={<OperationLogs />} />
                     <Route path="/tasks" element={<Tasks />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
                   </Routes>
                 </Suspense>
               </div>

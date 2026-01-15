@@ -91,33 +91,38 @@ pub struct SeasonInfo {
     pub name: Option<String>,
 }
 
-/// 扫描任务状态（预留功能）
-///
-/// 用于未来的任务队列系统，追踪扫描任务的生命周期。
-/// 当前使用 WebSocket 进行实时进度推送，此结构体为后续任务持久化做准备。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanTask {
+/// 统一任务模型，支持分布式与持久化
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct DbTask {
     pub id: String,
-    pub directory: String,
-    pub status: String, // pending, running, completed, failed
-    pub total_files: Option<u64>,
-    pub processed_files: u64,
+    pub task_type: String,
+    pub status: String,
+    pub description: Option<String>,
+    pub payload: Option<String>,
+    pub result: Option<String>,
+    pub progress: f64,
+    pub node_id: Option<String>,
+    pub error: Option<String>,
+    pub duration_secs: Option<f64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
 }
 
-/// 哈希计算任务状态（预留功能）
-///
-/// 用于未来的任务队列系统，追踪哈希计算任务的进度。
-/// 当前使用 WebSocket 进行实时进度推送，此结构体为后续任务持久化做准备。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HashTask {
-    pub id: String,
-    pub file_id: String,
-    pub status: String,
-    pub progress: f64,     // 0.0 - 1.0
-    pub hash_type: String, // xxhash, md5
-    pub created_at: DateTime<Utc>,
+impl DbTask {
+    pub fn task_type_enum(&self) -> crate::services::task_queue::TaskType {
+        match self.task_type.as_str() {
+            "scan" => crate::services::task_queue::TaskType::Scan,
+            "hash" => crate::services::task_queue::TaskType::Hash,
+            "scrape" => crate::services::task_queue::TaskType::Scrape,
+            "rename" => crate::services::task_queue::TaskType::Rename,
+            "batch_move" => crate::services::task_queue::TaskType::BatchMove,
+            "batch_copy" => crate::services::task_queue::TaskType::BatchCopy,
+            "cleanup" => crate::services::task_queue::TaskType::Cleanup,
+            _ => crate::services::task_queue::TaskType::Custom(self.task_type.clone()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

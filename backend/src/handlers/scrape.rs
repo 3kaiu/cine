@@ -109,90 +109,26 @@ pub async fn batch_scrape_metadata(
     let download_poster = req.download_poster.unwrap_or(false);
     let generate_nfo = req.generate_nfo.unwrap_or(false);
 
-    // 获取要刮削的文件列表
-    let mut files = Vec::new();
-    for file_id in &req.file_ids {
-        let file =
-            sqlx::query_as::<_, crate::models::MediaFile>("SELECT * FROM media_files WHERE id = ?")
-                .bind(file_id)
-                .fetch_optional(&state.db)
-                .await
-                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-        if let Some(f) = file {
-            files.push(f);
-        }
-    }
-
-    if files.is_empty() {
-        return Err((axum::http::StatusCode::BAD_REQUEST, "No files found to scrape".to_string()));
-    }
-
-    let state_clone = state.clone();
-    let files_count = files.len();
-
     // 提交到任务队列
     let task_id = state
         .task_queue
         .submit(
             crate::services::task_queue::TaskType::Scrape,
-            Some(format!("批量刮削 {} 个文件", files_count)),
-            move |ctx| async move {
-                let scrape_results = scraper::batch_scrape_metadata(
-                    &state_clone.http_client,
-                    &files,
-                    &source,
-                    auto_match,
-                    &state_clone.config,
-                    download_poster,
-                    generate_nfo,
-                    5, // 并发数
-                    ctx,
-                )
-                .await?;
-
-                for (file_id, result) in scrape_results {
-                    if let Ok(metadata) = result {
-                        // 为每个成功的刮削保存到数据库
-                        let file = files.iter().find(|f| f.id == file_id).unwrap();
-
-                        let tmdb_id = metadata
-                            .get("tmdb_id")
-                            .and_then(|v| v.as_u64())
-                            .map(|v| v as u32);
-                        
-                        // 执行视频质量分析
-                        let video_info = video::extract_video_info(&file.path).await.ok();
-                        let quality_score = video_info
-                            .as_ref()
-                            .map(|info| quality::calculate_quality_score(info));
-
-                        let metadata_json = serde_json::to_string(&metadata).unwrap_or_default();
-                        let video_info_json = video_info
-                            .as_ref()
-                            .map(|info| serde_json::to_string(info).unwrap_or_default());
-
-                        let _ = sqlx::query(
-                            "UPDATE media_files SET metadata = ?, video_info = ?, tmdb_id = ?, quality_score = ?, updated_at = ? WHERE id = ?"
-                        )
-                        .bind(metadata_json)
-                        .bind(video_info_json)
-                        .bind(tmdb_id)
-                        .bind(quality_score)
-                        .bind(Utc::now())
-                        .bind(&file_id)
-                        .execute(&state_clone.db)
-                        .await;
-                    }
-                }
-                Ok(None)
-            },
+            Some(format!("批量刮削 {} 个文件", req.file_ids.len())),
+            serde_json::json!({
+                "file_ids": req.file_ids,
+                "source": source,
+                "auto_match": auto_match,
+                "download_images": download_poster,
+                "generate_nfo": generate_nfo
+            }),
         )
-        .await;
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(crate::handlers::tasks::TaskActionResponse {
         task_id,
         status: "submitted".to_string(),
-        message: format!("Batch scrape task submitted for {} files", files_count),
+        message: format!("Batch scrape task created for {} files", req.file_ids.len()),
     }))
 }

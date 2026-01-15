@@ -7,7 +7,6 @@ use tokio::sync::Semaphore;
 
 use crate::services::cache::FileHashCache;
 use crate::services::hasher;
-use crate::websocket::{ProgressBroadcaster, ProgressMessage};
 
 /// 批量并行计算文件哈希
 ///
@@ -27,7 +26,7 @@ pub async fn batch_calculate_hash_parallel(
     db: &SqlitePool,
     file_ids: &[String],
     max_concurrent: usize,
-    mut ctx: crate::services::task_queue::TaskContext,
+    ctx: crate::services::task_queue::TaskContext,
     hash_cache: Option<Arc<FileHashCache>>,
 ) -> anyhow::Result<()> {
     let total = file_ids.len();

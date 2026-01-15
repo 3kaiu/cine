@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Client;
 use serde_json::Value;
+use sqlx::SqlitePool;
 
 // 预编译正则表达式（避免每次调用时重新编译）
 static YEAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(19|20)\d{2}\b").unwrap());
@@ -76,6 +77,9 @@ pub async fn search_movie_tmdb(
         url.push_str(&format!("&year={}", y));
     }
 
+    crate::services::metrics::METRICS
+        .scrape_requests_total
+        .inc();
     let response = client.get(&url).send().await?;
     let json: Value = response.json().await?;
 
@@ -147,6 +151,9 @@ pub async fn search_tv_tmdb(
         url.push_str(&format!("&first_air_date_year={}", y));
     }
 
+    crate::services::metrics::METRICS
+        .scrape_requests_total
+        .inc();
     let response = client.get(&url).send().await?;
     let json: Value = response.json().await?;
 
@@ -255,9 +262,11 @@ pub async fn scrape_metadata(
 
 /// 批量刮削元数据（并行版本，使用共享 HTTP 客户端）
 #[allow(dead_code)]
+/// 批量刮削元数据（并行版本，支持数据库更新）
 pub async fn batch_scrape_metadata(
+    db: &SqlitePool,
     client: &Client,
-    files: &[MediaFile],
+    file_ids: &[String],
     source: &str,
     auto_match: bool,
     config: &AppConfig,
@@ -268,13 +277,27 @@ pub async fn batch_scrape_metadata(
 ) -> anyhow::Result<Vec<(String, Result<Value, String>)>> {
     use futures::stream::{self, StreamExt};
 
+    // 1. 获取文件列表
+    let mut files = Vec::new();
+    for id in file_ids {
+        if let Ok(Some(file)) =
+            sqlx::query_as::<_, MediaFile>("SELECT * FROM media_files WHERE id = ?")
+                .bind(id)
+                .fetch_optional(db)
+                .await
+        {
+            files.push(file);
+        }
+    }
+
     let total = files.len();
-    let results: Vec<_> = stream::iter(files.to_vec().into_iter().enumerate())
+    let results: Vec<_> = stream::iter(files.into_iter().enumerate())
         .map(|(index, file)| {
             let client = client.clone();
             let source = source.to_string();
             let config = config.clone();
             let sub_ctx = ctx.duplicate();
+            let db = db.clone();
 
             async move {
                 let mut sub_ctx = sub_ctx;
@@ -287,30 +310,21 @@ pub async fn batch_scrape_metadata(
                     .await
                 {
                     Ok(metadata) => {
-                        // 如果成功，下载图片和生成 NFO
+                        // 1. 下载图片和生成 NFO
                         if download_images || generate_nfo {
                             let poster_url = metadata.get("poster_url").and_then(|u| u.as_str());
                             let backdrop_url =
                                 metadata.get("backdrop_url").and_then(|u| u.as_str());
 
-                            // 下载图片
                             if download_images {
-                                if let Err(e) = crate::services::poster::download_media_images(
+                                let _ = crate::services::poster::download_media_images(
                                     &file.path,
                                     poster_url,
                                     backdrop_url,
                                 )
-                                .await
-                                {
-                                    tracing::warn!(
-                                        "Failed to download images for {}: {}",
-                                        file.path,
-                                        e
-                                    );
-                                }
+                                .await;
                             }
 
-                            // 生成 NFO
                             if generate_nfo {
                                 let media_type =
                                     if file.name.contains("S") || file.name.contains("E") {
@@ -318,19 +332,33 @@ pub async fn batch_scrape_metadata(
                                     } else {
                                         "movie"
                                     };
-                                if let Err(e) = crate::services::nfo::generate_nfo_file(
+                                let _ = crate::services::nfo::generate_nfo_file(
                                     &file.path, &metadata, media_type,
                                 )
-                                .await
-                                {
-                                    tracing::warn!(
-                                        "Failed to generate NFO for {}: {}",
-                                        file.path,
-                                        e
-                                    );
-                                }
+                                .await;
                             }
                         }
+
+                        // 2. 执行视频质量分析
+                        let video_info = crate::services::video::extract_video_info(&file.path).await.ok();
+                        let quality_score = video_info.as_ref().map(|info| crate::services::quality::calculate_quality_score(info));
+
+                        // 3. 更新数据库
+                        let tmdb_id = metadata.get("tmdb_id").and_then(|v| v.as_u64()).map(|v| v as u32);
+                        let metadata_json = serde_json::to_string(&metadata).unwrap_or_default();
+                        let video_info_json = video_info.as_ref().map(|info| serde_json::to_string(info).unwrap_or_default());
+
+                        let _ = sqlx::query(
+                            "UPDATE media_files SET metadata = ?, video_info = ?, tmdb_id = ?, quality_score = ?, updated_at = ? WHERE id = ?"
+                        )
+                        .bind(metadata_json)
+                        .bind(video_info_json)
+                        .bind(tmdb_id)
+                        .bind(quality_score)
+                        .bind(chrono::Utc::now())
+                        .bind(&file.id)
+                        .execute(&db)
+                        .await;
 
                         Ok(metadata)
                     }

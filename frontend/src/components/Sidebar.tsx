@@ -9,6 +9,11 @@ import ThemeToggle from './ThemeToggle'
 
 const menuItems = [
   {
+    path: '/dashboard',
+    icon: <Icon icon="lucide:layout-dashboard" />,
+    label: '性能仪表盘',
+  },
+  {
     path: '/',
     icon: <Icon icon="lucide:play-circle" />,
     label: '自动化工作流',

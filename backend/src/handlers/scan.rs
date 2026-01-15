@@ -1,6 +1,5 @@
 use crate::handlers::AppState;
 use crate::models::*;
-use crate::services::scanner;
 use axum::{
     extract::{Query, State},
     response::Json,
@@ -32,33 +31,24 @@ pub async fn scan_directory(
         .clone()
         .unwrap_or_else(|| vec!["video".to_string(), "audio".to_string()]);
 
-    let state_clone = state.clone();
-    let directory_clone = directory.clone();
-    let file_types_clone = file_types.clone();
-
     // 提交到任务队列
     let task_id = state
         .task_queue
         .submit(
             crate::services::task_queue::TaskType::Scan,
-            Some(format!("扫描目录: {}", directory)),
-            move |ctx| async move {
-                scanner::scan_directory(
-                    &state_clone.db,
-                    &directory_clone,
-                    recursive,
-                    &file_types_clone,
-                    ctx,
-                )
-                .await?;
-                Ok(None)
-            },
+            Some(format!("手动扫描: {}", directory)),
+            serde_json::json!({
+                "directory": directory,
+                "recursive": recursive,
+                "file_types": file_types
+            }),
         )
-        .await;
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(ScanResponse {
         task_id,
-        message: "Scan task submitted to queue".to_string(),
+        message: format!("Scan task created for {}", directory),
     }))
 }
 

@@ -1,12 +1,10 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
 use std::path::Path;
-use std::sync::Arc;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::models::MediaFile;
-use crate::websocket::{ProgressBroadcaster, ProgressMessage};
 
 // 批量插入的批次大小
 const BATCH_SIZE: usize = 100;
@@ -18,6 +16,9 @@ pub async fn scan_directory(
     file_types: &[String],
     mut ctx: crate::services::task_queue::TaskContext,
 ) -> anyhow::Result<()> {
+    let _timer = crate::services::metrics::METRICS
+        .scan_duration_seconds
+        .start_timer();
     let dir_path = Path::new(directory);
     if !dir_path.exists() {
         return Err(anyhow::anyhow!("Directory does not exist: {}", directory));
@@ -92,7 +93,6 @@ pub async fn scan_directory(
         };
 
         // 保存文件名用于进度显示
-        let file_name = file.name.clone();
 
         // 收集文件信息到批量缓冲区
         file_batch.push(file);

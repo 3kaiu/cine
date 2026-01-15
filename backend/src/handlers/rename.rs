@@ -73,7 +73,6 @@ pub async fn batch_rename(
     }
 
     // 执行重命名任务
-    let state_clone = state.clone();
     let rename_items: Vec<(String, String)> = preview_list
         .iter()
         .map(|p| (p.file_id.clone(), p.new_name.clone()))
@@ -85,12 +84,12 @@ pub async fn batch_rename(
         .submit(
             crate::services::task_queue::TaskType::Rename,
             Some(format!("批量重命名 {} 个文件", count)),
-            move |ctx| async move {
-                renamer::batch_rename(&state_clone.db, rename_items, ctx).await?;
-                Ok(None)
-            },
+            serde_json::json!({
+                "rename_items": rename_items
+            }),
         )
-        .await;
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(RenameActionResponse::Task(
         crate::handlers::tasks::TaskActionResponse {

@@ -1,14 +1,11 @@
-use md5;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader};
-use tokio::sync::mpsc;
 use xxhash_rust::xxh3::Xxh3;
 
 use crate::models::MediaFile;
 use crate::services::cache::FileHashCache;
-use crate::websocket::{ProgressBroadcaster, ProgressMessage};
 
 /// 流式计算文件哈希（支持100GB+大文件）
 pub async fn calculate_file_hash(
@@ -76,6 +73,9 @@ pub async fn calculate_file_hash(
         xxhash_hasher.update(chunk);
 
         total_read += n as u64;
+        crate::services::metrics::METRICS
+            .hash_throughput_bytes
+            .inc_by(n as f64);
 
         // 计算进度并报告
         let progress = (total_read as f64 / file_size as f64) * 100.0;
@@ -119,13 +119,13 @@ pub async fn calculate_file_hash(
 
 /// 批量计算哈希（用于去重）
 pub async fn calculate_hashes_batch(
-    db: &SqlitePool,
+    _db: &SqlitePool,
     file_ids: &[String],
     mut ctx: Option<crate::services::task_queue::TaskContext>,
 ) -> anyhow::Result<()> {
-    let total = file_ids.len();
+    let _total = file_ids.len();
 
-    for (index, file_id) in file_ids.iter().enumerate() {
+    for (_index, _file_id) in file_ids.iter().enumerate() {
         // 如果有上下文，检查取消
         if let Some(ref mut c) = ctx {
             if c.check_pause().await {

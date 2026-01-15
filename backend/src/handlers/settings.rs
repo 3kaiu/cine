@@ -1,5 +1,4 @@
 use crate::handlers::AppState;
-use crate::models::Setting;
 use axum::{
     extract::{Query, State},
     response::Json,

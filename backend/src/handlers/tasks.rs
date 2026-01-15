@@ -7,7 +7,7 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 
 use crate::services::task_queue::TaskInfo;
