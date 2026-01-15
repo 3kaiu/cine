@@ -73,6 +73,10 @@ notify = "6.1"
 # XML 处理 (NFO 编辑)
 quick-xml = { version = "0.31", features = ["serialize"] }
 
+# OpenAPI 文档
+utoipa = { version = "4", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "7", features = ["axum"] }
+
 [dev-dependencies]
 # 测试框架
 tokio-test = "0.4"

@@ -196,7 +196,14 @@ pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
 }
 
 /// 生成视频缩略图（用于预览）
-#[allow(dead_code)]
+///
+/// # 参数
+/// - `file_path`: 视频文件路径
+/// - `output_path`: 缩略图输出路径
+/// - `time_offset`: 截取时间点（秒，默认第10秒）
+///
+/// # 用途
+/// 用于生成视频预览图，增强用户界面体验
 pub async fn generate_thumbnail(
     file_path: &str,
     output_path: &str,

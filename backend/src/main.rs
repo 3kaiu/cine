@@ -7,11 +7,13 @@ use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber;
+use utoipa::OpenApi;
 
 mod config;
 mod error;
 mod handlers;
 mod models;
+mod openapi;
 mod services;
 mod utils;
 mod websocket;
@@ -22,17 +24,20 @@ use websocket::ws_handler;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 初始化日志
+    // 先加载配置（在日志初始化前）
+    let config = AppConfig::load()?;
+    let config = Arc::new(config);
+
+    // 使用配置中的日志级别初始化日志
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "cine=debug,axum=info".into()),
+                .or_else(|_| tracing_subscriber::EnvFilter::try_new(&config.log_level))
+                .unwrap_or_else(|_| "cine=info,axum=info".into()),
         )
         .init();
 
-    // 加载配置
-    let config = AppConfig::load()?;
-    let config = Arc::new(config);
+    tracing::info!("Configuration loaded successfully");
 
     // 初始化数据库连接选项
     use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous};
@@ -114,6 +119,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/files/:id/nfo", get(get_nfo).put(update_nfo))
         .route("/api/settings", get(get_settings).post(update_settings))
         .route("/ws", get(ws_handler))
+        // OpenAPI 文档
+        .merge(
+            utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
+                .url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),
+        )
         .layer(ServiceBuilder::new().layer(cors))
         .with_state(app_state);
 

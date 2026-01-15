@@ -6,6 +6,7 @@ import { mediaApi, OperationLog } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
+import VirtualizedTable from '@/components/VirtualizedTable'
 import { Icon } from '@iconify/react'
 import dayjs from 'dayjs'
 
@@ -49,7 +50,7 @@ export default function OperationLogs() {
     let result = [...logs]
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
-      result = result.filter(log => 
+      result = result.filter(log =>
         log.old_path.toLowerCase().includes(term) ||
         (log.new_path && log.new_path.toLowerCase().includes(term))
       )
@@ -99,6 +100,82 @@ export default function OperationLogs() {
       </div>
     )
   }
+
+  // 表格列定义
+  const columns = useMemo(() => [
+    {
+      title: '动作',
+      dataIndex: 'action',
+      width: 160,
+      render: (action: string) => (
+        <div className="flex gap-2.5 items-center">
+          <div className="p-1 px-1.5 bg-default-100/50 rounded-md border border-divider/10">
+            {getActionIcon(action)}
+          </div>
+          {getActionLabel(action)}
+        </div>
+      )
+    },
+    {
+      title: '路径变更',
+      dataIndex: 'old_path',
+      render: (_: any, record: OperationLog) => (
+        <div className="flex flex-col gap-1 max-w-[400px]">
+          <div className="flex gap-2 items-center text-[10px] text-default-400/80 font-mono">
+            <span className="w-6 shrink-0 font-black opacity-50 text-[8px] tracking-tighter uppercase">FROM</span>
+            <span className="truncate" title={record.old_path}>{record.old_path}</span>
+          </div>
+          {record.new_path && (
+            <div className="flex gap-2 items-center text-[10px] font-mono">
+              <span className="w-6 shrink-0 font-black text-primary/60 text-[8px] tracking-tighter uppercase">TO</span>
+              <span className="font-bold text-foreground/80 truncate" title={record.new_path}>{record.new_path}</span>
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      title: '执行时间',
+      dataIndex: 'created_at',
+      width: 180,
+      render: (created_at: string) => (
+        <span className="text-[11px] text-default-400 font-mono font-medium">{dayjs(created_at).format('YYYY-MM-DD HH:mm:ss')}</span>
+      )
+    },
+    {
+      title: '操作',
+      dataIndex: 'id',
+      width: 80,
+      render: (_: any, record: OperationLog) => (
+        <div className="flex gap-1">
+          <Button
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            onPress={() => setDetailModal({ isOpen: true, log: record })}
+          >
+            <Icon icon="mdi:eye" className="w-[13px] h-[13px] text-default-400" />
+          </Button>
+          {record.action === 'rename' && (
+            <Tooltip closeDelay={0}>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                onPress={() => setConfirmUndo({ isOpen: true, logId: record.id })}
+                className="bg-warning/5 hover:bg-warning/10 border border-warning/10 text-warning"
+              >
+                <ArrowRotateLeft className="w-[13px] h-[13px] text-warning/80" />
+              </Button>
+              <Tooltip.Content>
+                撤销重命名
+              </Tooltip.Content>
+            </Tooltip>
+          )}
+        </div>
+      )
+    }
+  ], [])
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
@@ -182,7 +259,7 @@ export default function OperationLogs() {
               selectedKey={actionFilter}
               onSelectionChange={(keys) => {
                 if (!keys) return
-                const selected = Array.isArray(Array.from(keys as any)) 
+                const selected = Array.isArray(Array.from(keys as any))
                   ? Array.from(keys as any)[0] as string
                   : keys as string
                 if (selected) {
@@ -208,83 +285,17 @@ export default function OperationLogs() {
           </div>
         </div>
         <div className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
-          <div className="w-full overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-default-50/50 text-default-400 font-semibold uppercase text-[9px] tracking-[.15em] h-10 border-b border-divider/5">
-                  <th className="px-2 font-normal w-[160px]">动作</th>
-                  <th className="px-2 font-normal">路径变更</th>
-                  <th className="px-2 font-normal w-[180px]">执行时间</th>
-                  <th className="px-2 font-normal w-[80px]">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(logs || []).length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-8 text-center text-[11px] text-default-400">暂无操作记录。</td>
-                  </tr>
-                ) : (
-                  filteredLogs.map((log: OperationLog) => (
-                    <tr key={log.id} className="hover:bg-default-100/40 transition-colors border-b border-divider/5 last:border-0">
-                      <td className="py-3 px-2">
-                        <div className="flex gap-2.5 items-center">
-                          <div className="p-1 px-1.5 bg-default-100/50 rounded-md border border-divider/10">
-                            {getActionIcon(log.action)}
-                          </div>
-                          {getActionLabel(log.action)}
-                        </div>
-                      </td>
-                      <td className="py-3 px-2">
-                        <div className="flex flex-col gap-1 max-w-[400px]">
-                          <div className="flex gap-2 items-center text-[10px] text-default-400/80 font-mono">
-                            <span className="w-6 shrink-0 font-black opacity-50 text-[8px] tracking-tighter uppercase">FROM</span>
-                            <span className="truncate" title={log.old_path}>{log.old_path}</span>
-                          </div>
-                          {log.new_path && (
-                            <div className="flex gap-2 items-center text-[10px] font-mono">
-                              <span className="w-6 shrink-0 font-black text-primary/60 text-[8px] tracking-tighter uppercase">TO</span>
-                              <span className="font-bold text-foreground/80 truncate" title={log.new_path}>{log.new_path}</span>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-2">
-                        <span className="text-[11px] text-default-400 font-mono font-medium">{dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss')}</span>
-                      </td>
-                      <td className="py-3 px-2">
-                        <div className="flex gap-1">
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            variant="ghost"
-                            onPress={() => setDetailModal({ isOpen: true, log })}
-                          >
-                            <Icon icon="mdi:eye" className="w-[13px] h-[13px] text-default-400" />
-                          </Button>
-                          {log.action === 'rename' && (
-                            <Tooltip closeDelay={0}>
-                              <Button
-                                isIconOnly
-                                size="sm"
-                                variant="ghost"
-                                onPress={() => setConfirmUndo({ isOpen: true, logId: log.id })}
-                                className="bg-warning/5 hover:bg-warning/10 border border-warning/10 text-warning"
-                              >
-                                <ArrowRotateLeft className="w-[13px] h-[13px] text-warning/80" />
-                              </Button>
-                              <Tooltip.Content>
-                                撤销重命名
-                              </Tooltip.Content>
-                            </Tooltip>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {filteredLogs.length === 0 ? (
+            <div className="py-8 text-center text-[11px] text-default-400">暂无操作记录。</div>
+          ) : (
+            <VirtualizedTable<OperationLog>
+              dataSource={filteredLogs}
+              columns={columns}
+              height={400}
+              rowHeight={60}
+              loading={isPending}
+            />
+          )}
         </div>
       </div>
 

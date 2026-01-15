@@ -4,7 +4,13 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 /// 下载海报或背景图
-#[allow(dead_code)]
+///
+/// # 参数
+/// - `url`: 图片 URL
+/// - `output_path`: 输出文件路径
+///
+/// # 用途
+/// 用于从 TMDB 等数据源下载媒体海报和背景图
 pub async fn download_image(url: &str, output_path: &Path) -> anyhow::Result<()> {
     let client = Client::new();
     let response = client.get(url).send().await?;
@@ -33,7 +39,17 @@ pub async fn download_image(url: &str, output_path: &Path) -> anyhow::Result<()>
 }
 
 /// 为媒体文件下载海报和背景图
-#[allow(dead_code)]
+///
+/// # 参数
+/// - `file_path`: 媒体文件路径
+/// - `poster_url`: 海报 URL（可选）
+/// - `backdrop_url`: 背景图 URL（可选）
+///
+/// # 返回值
+/// 返回下载后的海报和背景图路径
+///
+/// # 用途
+/// 在元数据刮削流程中自动下载并保存图片到媒体文件同目录
 pub async fn download_media_images(
     file_path: &str,
     poster_url: Option<&str>,

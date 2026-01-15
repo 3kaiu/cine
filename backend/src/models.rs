@@ -1,8 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct MediaFile {
     pub id: String,
     pub path: String,
@@ -20,7 +21,7 @@ pub struct MediaFile {
     pub last_modified: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct VideoInfo {
     pub duration: Option<f64>, // 秒
     pub width: Option<u32>,
@@ -39,7 +40,7 @@ pub struct VideoInfo {
     pub subtitle_streams: Vec<SubtitleStreamInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AudioStreamInfo {
     pub codec: String,
     pub channels: u32,
@@ -47,7 +48,7 @@ pub struct AudioStreamInfo {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SubtitleStreamInfo {
     pub codec: String,
     pub language: Option<String>,
@@ -55,7 +56,7 @@ pub struct SubtitleStreamInfo {
     pub is_external: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MovieMetadata {
     pub tmdb_id: Option<u32>,
     pub title: String,
@@ -69,7 +70,7 @@ pub struct MovieMetadata {
     pub release_date: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TVShowMetadata {
     pub tmdb_id: Option<u32>,
     pub name: String,
@@ -83,14 +84,17 @@ pub struct TVShowMetadata {
     pub seasons: Vec<SeasonInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SeasonInfo {
     pub season_number: u32,
     pub episode_count: u32,
     pub name: Option<String>,
 }
 
-#[allow(dead_code)]
+/// 扫描任务状态（预留功能）
+///
+/// 用于未来的任务队列系统，追踪扫描任务的生命周期。
+/// 当前使用 WebSocket 进行实时进度推送，此结构体为后续任务持久化做准备。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanTask {
     pub id: String,
@@ -102,7 +106,10 @@ pub struct ScanTask {
     pub updated_at: DateTime<Utc>,
 }
 
-#[allow(dead_code)]
+/// 哈希计算任务状态（预留功能）
+///
+/// 用于未来的任务队列系统，追踪哈希计算任务的进度。
+/// 当前使用 WebSocket 进行实时进度推送，此结构体为后续任务持久化做准备。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HashTask {
     pub id: String,
@@ -113,21 +120,21 @@ pub struct HashTask {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DuplicateGroup {
     pub hash: String,
     pub files: Vec<MediaFile>,
     pub total_size: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DuplicateMovieGroup {
     pub tmdb_id: u32,
     pub title: String,
     pub files: Vec<MediaFile>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct OperationLog {
     pub id: String,
     pub action: String,
@@ -137,7 +144,7 @@ pub struct OperationLog {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct ScanHistory {
     pub directory: String,
     pub total_files: i64,
@@ -146,7 +153,7 @@ pub struct ScanHistory {
     pub last_scanned_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct WatchFolder {
     pub id: String,
     pub path: String,
@@ -157,7 +164,7 @@ pub struct WatchFolder {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Setting {
     pub id: String,
     pub category: String,

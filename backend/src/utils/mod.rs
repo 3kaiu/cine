@@ -1,6 +1,12 @@
-// 工具函数模块
+//! 工具函数模块
 
-#[allow(dead_code)]
+/// 格式化文件大小为人类可读格式
+///
+/// # 示例
+/// ```
+/// let size = format_size(1536);
+/// assert_eq!(size, "1.50 KB");
+/// ```
 pub fn format_size(bytes: i64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
@@ -14,7 +20,13 @@ pub fn format_size(bytes: i64) -> String {
     format!("{:.2} {}", size, UNITS[unit_index])
 }
 
-#[allow(dead_code)]
+/// 格式化时长为人类可读格式
+///
+/// # 示例
+/// ```
+/// let duration = format_duration(3665.0);
+/// assert_eq!(duration, "1:01:05");
+/// ```
 pub fn format_duration(seconds: f64) -> String {
     let hours = (seconds / 3600.0) as u32;
     let minutes = ((seconds % 3600.0) / 60.0) as u32;

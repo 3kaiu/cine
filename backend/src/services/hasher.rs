@@ -121,7 +121,14 @@ pub async fn calculate_file_hash(
 }
 
 /// 批量计算哈希（用于去重）
-#[allow(dead_code)]
+///
+/// # 参数
+/// - `db`: 数据库连接池
+/// - `file_ids`: 要计算哈希的文件 ID 列表
+/// - `progress_tx`: 进度发送器（可选）
+///
+/// # 用途
+/// 在文件去重流程中顺序计算多个文件的哈希值
 pub async fn calculate_hashes_batch(
     db: &SqlitePool,
     file_ids: &[String],
@@ -146,7 +153,18 @@ pub async fn calculate_hashes_batch(
 }
 
 /// 快速哈希（仅用于初步筛选）
-#[allow(dead_code)]
+///
+/// 只读取文件的前 64MB 和最后 64MB 来计算快速哈希，
+/// 适用于大文件的快速预筛选。
+///
+/// # 参数
+/// - `file_path`: 文件路径
+///
+/// # 返回值
+/// 返回 XXHash3 快速哈希值
+///
+/// # 用途
+/// 用于大文件去重的初步筛选，减少完整哈希计算的数量
 pub async fn calculate_quick_hash(file_path: &std::path::Path) -> anyhow::Result<String> {
     // 只读取文件的前64MB和最后64MB来计算快速哈希
     let mut file = File::open(file_path).await?;

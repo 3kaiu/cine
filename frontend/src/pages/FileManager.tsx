@@ -1,14 +1,14 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Chip, Modal, Checkbox, SearchField, Select, ListBox } from "@heroui/react";
+import { Button, Chip, Modal, SearchField, Select, ListBox } from "@heroui/react";
 import { Copy, TrashBin, ArrowRight, File, HardDrive, TriangleExclamation, Video, Picture, ArrowDownToLine } from '@gravity-ui/icons'
-import { mediaApi } from '@/api/media'
+import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import LoadingWrapper from '@/components/LoadingWrapper'
 import SkeletonCard from '@/components/SkeletonCard'
 import ContextMenu from '@/components/ContextMenu'
 import StorageChart from '@/components/StorageChart'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
+import VirtualizedTable from '@/components/VirtualizedTable'
 import { handleError } from '@/utils/errorHandler'
 import { showSuccess } from '@/utils/toast'
 import { exportTableData } from '@/utils/export'
@@ -41,16 +41,16 @@ export default function FileManager() {
   const filteredFiles = useMemo(() => {
     if (!filesData?.files) return []
     let result = [...filesData.files]
-    
+
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
       result = result.filter(f => f.name.toLowerCase().includes(term))
     }
-    
+
     if (fileTypeFilter !== 'all') {
       result = result.filter(f => f.file_type === fileTypeFilter)
     }
-    
+
     return result
   }, [filesData, searchTerm, fileTypeFilter])
 
@@ -74,6 +74,53 @@ export default function FileManager() {
       other: files.filter(f => !['video', 'subtitle', 'image'].includes(f.file_type)).length
     }
   }, [filesData])
+
+  // 表格列定义
+  const columns = useMemo(() => [
+    {
+      title: '名称',
+      dataIndex: 'name',
+      width: 300,
+      render: (name: string) => (
+        <div className="flex items-center gap-3">
+          <div className="p-1 px-1.5 bg-default-100 rounded-lg shrink-0">
+            <File className="w-[14px] h-[14px] text-default-400" />
+          </div>
+          <span className="font-bold text-sm text-foreground/90 line-clamp-1">{name}</span>
+        </div>
+      )
+    },
+    {
+      title: '大小',
+      dataIndex: 'size',
+      width: 100,
+      render: (size: number) => (
+        <span className="font-mono text-[11px] text-default-500 font-medium">{formatSize(size)}</span>
+      )
+    },
+    {
+      title: '类型',
+      dataIndex: 'file_type',
+      width: 100,
+      render: (type: string) => (
+        <Chip size="sm" variant="soft" className="h-5 text-[10px] font-bold px-2">
+          {type === 'video' ? '视频' :
+            type === 'subtitle' ? '字幕' :
+              type === 'image' ? '图片' :
+                type === 'nfo' ? '信息' : type}
+        </Chip>
+      )
+    },
+    {
+      title: '路径',
+      dataIndex: 'path',
+      render: (path: string) => (
+        <div className="truncate max-w-xs text-[11px] text-default-400 font-mono opacity-60" title={path}>
+          {path}
+        </div>
+      )
+    }
+  ], [])
 
   // Mutations
   const moveMutation = useMutation({
@@ -154,7 +201,7 @@ export default function FileManager() {
     setSelectedRowKeys([])
     refetch()
     setTrashModalVisible(false)
-    
+
     if (failed === 0) {
       showSuccess(`成功将 ${success} 个文件移入回收站`)
     } else {
@@ -338,7 +385,7 @@ export default function FileManager() {
               selectedKey={fileTypeFilter}
               onSelectionChange={(keys) => {
                 if (!keys) return
-                const selected = Array.isArray(Array.from(keys as any)) 
+                const selected = Array.isArray(Array.from(keys as any))
                   ? Array.from(keys as any)[0] as string
                   : keys as string
                 if (selected) {
@@ -365,102 +412,25 @@ export default function FileManager() {
         </div>
 
         <div className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
-          <LoadingWrapper loading={isPending}>
-            <div className="w-full overflow-x-auto">
-              <table className="w-full text-left min-w-[600px]">
-                <thead>
-                  <tr className="bg-default-100/50 text-default-500 font-semibold uppercase text-[10px] tracking-widest h-12 border-b border-divider/5">
-                    <th className="px-4 w-[50px]">
-                      <Checkbox
-                        id="select-all-files"
-                        isSelected={filteredFiles.length ? selectedRowKeys.length === filteredFiles.length : false}
-                        isIndeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < filteredFiles.length}
-                        onChange={(selected: boolean) => {
-                          if (selected) {
-                            setSelectedRowKeys(filteredFiles.map(f => f.id))
-                          } else {
-                            setSelectedRowKeys([])
-                          }
-                        }}
-                      >
-                        <Checkbox.Control>
-                          <Checkbox.Indicator />
-                        </Checkbox.Control>
-                      </Checkbox>
-                    </th>
-                    <th className="px-4">名称</th>
-                    <th className="px-4 w-[100px]">大小</th>
-                    <th className="px-4 w-[100px]">类型</th>
-                    <th className="px-4">路径</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredFiles.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-sm text-default-500">未找到文件。</td>
-                    </tr>
-                  ) : (
-                    filteredFiles.map((file) => (
-                      <tr 
-                        key={file.id} 
-                        className="hover:bg-default-100/40 transition-colors border-b border-divider/5 last:border-0"
-                        onContextMenu={(e) => {
-                          e.preventDefault()
-                          setContextMenu({
-                            isOpen: true,
-                            position: { x: e.clientX, y: e.clientY },
-                            fileId: file.id
-                          })
-                        }}
-                      >
-                        <td className="px-4 py-4">
-                          <Checkbox
-                            id={`file-${file.id}`}
-                            isSelected={selectedRowKeys.includes(file.id)}
-                            onChange={() => {
-                              setSelectedRowKeys(prev =>
-                                prev.includes(file.id)
-                                  ? prev.filter(id => id !== file.id)
-                                  : [...prev, file.id]
-                              )
-                            }}
-                          >
-                            <Checkbox.Control>
-                              <Checkbox.Indicator />
-                            </Checkbox.Control>
-                          </Checkbox>
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="p-1 px-1.5 bg-default-100 rounded-lg shrink-0">
-                              <File className="w-[14px] h-[14px] text-default-400" />
-                            </div>
-                            <span className="font-bold text-sm text-foreground/90 line-clamp-1">{file.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className="font-mono text-[11px] text-default-500 font-medium">{formatSize(file.size)}</span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <Chip size="sm" variant="soft" className="h-5 text-[10px] font-bold px-2">
-                            {file.file_type === 'video' ? '视频' :
-                              file.file_type === 'subtitle' ? '字幕' :
-                                file.file_type === 'image' ? '图片' :
-                                  file.file_type === 'nfo' ? '信息' : file.file_type}
-                          </Chip>
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="truncate max-w-xs text-[11px] text-default-400 font-mono opacity-60" title={file.path}>
-                            {file.path}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </LoadingWrapper>
+          {filteredFiles.length === 0 ? (
+            <div className="py-8 text-center text-sm text-default-500">未找到文件。</div>
+          ) : (
+            <VirtualizedTable<MediaFile>
+              dataSource={filteredFiles}
+              columns={columns}
+              height={500}
+              loading={isPending}
+              selectionMode="multiple"
+              selectedKeys={new Set(selectedRowKeys)}
+              onSelectionChange={(keys) => {
+                if (keys === 'all') {
+                  setSelectedRowKeys(filteredFiles.map(f => f.id))
+                } else {
+                  setSelectedRowKeys(Array.from(keys as Set<string>))
+                }
+              }}
+            />
+          )}
         </div>
       </div>
 

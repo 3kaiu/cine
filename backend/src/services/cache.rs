@@ -56,22 +56,31 @@ impl<T: Clone> MemoryCache<T> {
         data.put(key, item);
     }
 
-    /// 删除缓存
-    #[allow(dead_code)]
+    /// 删除指定键的缓存项
+    ///
+    /// # 用途
+    /// 用于主动失效特定缓存，例如文件被删除时清理对应缓存
     pub async fn remove(&self, key: &str) {
         let mut data = self.data.write().await;
         data.pop(key);
     }
 
-    /// 清空缓存
-    #[allow(dead_code)]
+    /// 清空所有缓存项
+    ///
+    /// # 用途
+    /// 用于重置缓存状态，例如配置变更后需要刷新缓存
     pub async fn clear(&self) {
         let mut data = self.data.write().await;
         data.clear();
     }
 
-    /// 清理过期项
-    #[allow(dead_code)]
+    /// 清理过期缓存项
+    ///
+    /// # 返回值
+    /// 返回被清理的过期项数量
+    ///
+    /// # 用途
+    /// 可由定时任务调用，定期清理过期缓存以释放内存
     pub async fn cleanup_expired(&self) -> usize {
         let now = Utc::now();
         let mut data = self.data.write().await;
@@ -98,8 +107,13 @@ impl<T: Clone> MemoryCache<T> {
         removed
     }
 
-    /// 获取缓存统计
-    #[allow(dead_code)]
+    /// 获取缓存统计信息
+    ///
+    /// # 返回值
+    /// 包含缓存总数、容量和使用率的统计信息
+    ///
+    /// # 用途
+    /// 用于监控和诊断缓存使用情况
     pub async fn stats(&self) -> CacheStats {
         let data = self.data.read().await;
         let total = data.len();
@@ -137,7 +151,12 @@ impl FileHashCache {
     }
 
     /// 使用指定容量创建缓存
-    #[allow(dead_code)]
+    ///
+    /// # 参数
+    /// - `max_size`: 最大缓存条目数
+    ///
+    /// # 用途
+    /// 在需要调整缓存大小时使用，例如根据系统内存动态调整
     pub fn with_capacity(max_size: usize) -> Self {
         Self {
             cache: MemoryCache::new(max_size),
@@ -162,8 +181,10 @@ impl FileHashCache {
         self.cache.set(key, hash, None).await;
     }
 
-    /// 清理缓存统计
-    #[allow(dead_code)]
+    /// 获取文件哈希缓存统计信息
+    ///
+    /// # 用途
+    /// 用于监控哈希缓存命中率和容量使用情况
     pub async fn stats(&self) -> CacheStats {
         self.cache.stats().await
     }

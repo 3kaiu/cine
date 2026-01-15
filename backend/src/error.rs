@@ -9,7 +9,9 @@ use serde_json::json;
 use thiserror::Error;
 
 /// 应用错误类型
-#[allow(dead_code)]
+///
+/// 统一的错误类型，自动转换为 HTTP 响应。
+/// 所有变量均为公开 API 的一部分，用于不同场景的错误处理。
 #[derive(Debug, Error)]
 pub enum AppError {
     /// 数据库错误

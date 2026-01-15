@@ -6,7 +6,17 @@ use std::path::Path;
 use tokio::fs;
 
 /// 生成 NFO 文件（Kodi/Jellyfin 格式）
-#[allow(dead_code)]
+///
+/// # 参数
+/// - `file_path`: 媒体文件路径
+/// - `metadata`: 元数据（JSON 格式）
+/// - `media_type`: 媒体类型（\"movie\" 或 \"tvshow\"）
+///
+/// # 返回值
+/// 返回生成的 NFO 文件路径
+///
+/// # 用途
+/// 在元数据刮削流程中自动生成与媒体播放器兼容的 NFO 文件
 pub async fn generate_nfo_file(
     file_path: &str,
     metadata: &Value,

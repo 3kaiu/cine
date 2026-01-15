@@ -11,6 +11,8 @@ use crate::websocket::{ProgressBroadcaster, ProgressMessage};
 
 /// 批量并行计算文件哈希
 ///
+/// 使用信号量控制并发，高效处理大量文件的哈希计算。
+///
 /// # 参数
 /// - `db`: 数据库连接池
 /// - `file_ids`: 要计算哈希的文件ID列表
@@ -18,7 +20,9 @@ use crate::websocket::{ProgressBroadcaster, ProgressMessage};
 /// - `task_id`: 任务ID（用于进度推送）
 /// - `progress_broadcaster`: 进度广播器（可选）
 /// - `hash_cache`: 哈希缓存（可选）
-#[allow(dead_code)]
+///
+/// # 用途
+/// 用于大规模文件去重时的高性能并行哈希计算
 pub async fn batch_calculate_hash_parallel(
     db: &SqlitePool,
     file_ids: &[String],
