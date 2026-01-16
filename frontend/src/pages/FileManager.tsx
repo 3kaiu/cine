@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Chip, Modal, SearchField, Select, ListBox } from "@heroui/react";
+import { Button, Modal, SearchField, Select, ListBox, Chip, Surface } from "@heroui/react";
 import { Copy, TrashBin, ArrowRight, File, HardDrive, TriangleExclamation, Video, Picture, ArrowDownToLine } from '@gravity-ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
@@ -103,7 +103,17 @@ export default function FileManager() {
       dataIndex: 'file_type',
       width: 100,
       render: (type: string) => (
-        <Chip size="sm" variant="soft" className="h-5 text-[10px] font-bold px-2">
+        <Chip
+          size="sm"
+          variant="soft"
+          color={
+            type === 'video' ? 'accent' :
+              type === 'subtitle' ? 'success' :
+                type === 'image' ? 'warning' :
+                  type === 'nfo' ? 'default' : 'default'
+          }
+          className="h-5 text-[10px] font-bold px-2 uppercase tracking-tight"
+        >
           {type === 'video' ? '视频' :
             type === 'subtitle' ? '字幕' :
               type === 'image' ? '图片' :
@@ -274,13 +284,13 @@ export default function FileManager() {
         title="文件管理器"
         description="浏览并管理您的媒体库文件"
         actions={
-          <>
+          <div className="flex items-center gap-2">
             <Button
               onPress={() => setMoveModalVisible(true)}
               isDisabled={selectedRowKeys.length === 0}
               variant="primary"
               size="md"
-              className="font-medium flex items-center gap-2"
+              className="font-bold flex items-center gap-2 px-4 shadow-none"
             >
               <ArrowRight className="w-4 h-4" />
               移动
@@ -290,7 +300,7 @@ export default function FileManager() {
               isDisabled={selectedRowKeys.length === 0}
               variant="secondary"
               size="md"
-              className="font-medium flex items-center gap-2"
+              className="font-bold flex items-center gap-2 px-4 shadow-none"
             >
               <Copy className="w-4 h-4" />
               复制
@@ -300,22 +310,23 @@ export default function FileManager() {
               isDisabled={selectedRowKeys.length === 0}
               variant="danger"
               size="md"
-              className="font-medium flex items-center gap-2"
+              className="font-bold flex items-center gap-2 px-4 shadow-none"
             >
               <TrashBin className="w-4 h-4" />
               删除
             </Button>
+            <div className="w-px h-4 bg-divider/20 mx-1" />
             <Button
               onPress={() => handleExport('csv')}
               isDisabled={filteredFiles.length === 0}
               variant="ghost"
               size="md"
-              className="font-medium flex items-center gap-2"
+              className="font-bold flex items-center gap-2 px-4"
             >
               <ArrowDownToLine className="w-4 h-4" />
               导出
             </Button>
-          </>
+          </div>
         }
       />
 
@@ -368,52 +379,62 @@ export default function FileManager() {
       ) : null}
 
       <div className="flex flex-col gap-4 border-t border-divider/10 pt-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
+        <Surface variant="default" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-divider/50 shadow-sm">
+          <div className="flex flex-wrap gap-4 items-center w-full sm:w-auto">
             <SearchField
-              className="w-full sm:w-[240px]"
+              className="w-full sm:w-[320px]"
               value={searchTerm}
               onChange={setSearchTerm}
             >
-              <SearchField.Group>
-                <SearchField.SearchIcon />
-                <SearchField.Input placeholder="搜索文件名..." />
+              <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
+                <SearchField.SearchIcon className="text-default-400" />
+                <SearchField.Input placeholder="搜索文件名..." className="text-sm" />
                 <SearchField.ClearButton />
               </SearchField.Group>
             </SearchField>
-            <Select
-              selectedKey={fileTypeFilter}
-              onSelectionChange={(keys) => {
-                if (!keys) return
-                const selected = Array.isArray(Array.from(keys as any))
-                  ? Array.from(keys as any)[0] as string
-                  : keys as string
-                if (selected) {
-                  setFileTypeFilter(selected)
-                }
-              }}
-              className="w-full sm:w-[140px]"
-            >
-              <Select.Trigger>
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  <ListBox.Item key="all">全部</ListBox.Item>
-                  <ListBox.Item key="video">视频</ListBox.Item>
-                  <ListBox.Item key="subtitle">字幕</ListBox.Item>
-                  <ListBox.Item key="image">图片</ListBox.Item>
-                  <ListBox.Item key="nfo">信息</ListBox.Item>
-                </ListBox>
-              </Select.Popover>
-            </Select>
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
+            <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
+              <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">类型</span>
+              <Select
+                selectedKey={fileTypeFilter}
+                onSelectionChange={(keys) => {
+                  if (!keys) return
+                  const selected = Array.from(keys as any)[0] as string
+                  if (selected) {
+                    setFileTypeFilter(selected)
+                  }
+                }}
+                className="w-[120px]"
+              >
+                <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox className="text-xs">
+                    <ListBox.Item key="all">全部文件</ListBox.Item>
+                    <ListBox.Item key="video">视频文件</ListBox.Item>
+                    <ListBox.Item key="subtitle">字幕文件</ListBox.Item>
+                    <ListBox.Item key="image">图片文件</ListBox.Item>
+                    <ListBox.Item key="nfo">信息文件</ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            </div>
+          </div>
+        </Surface>
+
+        <Surface variant="secondary" className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
           {filteredFiles.length === 0 ? (
-            <div className="py-8 text-center text-sm text-default-500">未找到文件。</div>
+            <div className="py-20 text-center flex flex-col items-center gap-3">
+              <div className="p-4 bg-default-100 rounded-full">
+                <File className="w-8 h-8 text-default-400" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold text-foreground">未找到文件</p>
+                <p className="text-xs text-default-400">请尝试更改搜索词或筛选条件</p>
+              </div>
+            </div>
           ) : (
             <VirtualizedTable<MediaFile>
               dataSource={filteredFiles}
@@ -431,7 +452,7 @@ export default function FileManager() {
               }}
             />
           )}
-        </div>
+        </Surface>
       </div>
 
       {/* Move/Copy Modal */}

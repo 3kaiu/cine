@@ -36,17 +36,17 @@ export default function Scraper() {
   // 过滤和搜索
   const filteredFiles = useMemo(() => {
     if (!files?.files) return []
-    
+
     let result = [...files.files]
-    
+
     // 搜索过滤
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
-      result = result.filter((file: MediaFile) => 
+      result = result.filter((file: MediaFile) =>
         file.name.toLowerCase().includes(term)
       )
     }
-    
+
     // 状态过滤
     if (filterStatus !== 'all') {
       result = result.filter((file: MediaFile) => {
@@ -56,17 +56,17 @@ export default function Scraper() {
         return true
       })
     }
-    
+
     return result
   }, [files, searchTerm, filterStatus])
 
   // 统计数据
   const stats = useMemo(() => {
     if (!files?.files) return { total: 0, scraped: 0, unscraped: 0, avgRating: 0 }
-    
+
     const scraped = files.files.filter((f: MediaFile) => f.metadata).length
     const unscraped = files.files.length - scraped
-    
+
     let totalRating = 0
     let ratingCount = 0
     files.files.forEach((file: MediaFile) => {
@@ -77,10 +77,10 @@ export default function Scraper() {
             totalRating += data.rating
             ratingCount++
           }
-        } catch {}
+        } catch { }
       }
     })
-    
+
     return {
       total: files.files.length,
       scraped,
@@ -104,7 +104,7 @@ export default function Scraper() {
   // 刮削元数据（支持手动选择）
   const handleScrape = async (fileId: string, autoMatch: boolean = true) => {
     setSelectedFile(fileId)
-    
+
     if (!autoMatch) {
       // 手动模式：先获取搜索结果供用户选择
       try {
@@ -152,9 +152,9 @@ export default function Scraper() {
 
   const handleBatchScrape = async () => {
     if (selectedFiles.length === 0) return
-    
+
     const toastId = showBatchProgress(0, selectedFiles.length, '正在刮削...')
-    
+
     for (let i = 0; i < selectedFiles.length; i++) {
       try {
         await mediaApi.scrapeMetadata({
@@ -169,7 +169,7 @@ export default function Scraper() {
         handleError(e, `刮削失败: ${selectedFiles[i]}`)
       }
     }
-    
+
     refetch()
     setSelectedFiles([])
     dismissLoading(toastId, `成功刮削 ${selectedFiles.length} 个文件`, 'success')
@@ -235,15 +235,15 @@ export default function Scraper() {
       key: 'metadata',
       width: 300,
       render: (metadata: any) => {
-        if (!metadata) return <Chip size="sm" variant="soft">未刮削</Chip>
+        if (!metadata) return <Chip size="sm" variant="soft" className="h-5 px-1.5 text-[10px] font-bold">未刮削</Chip>
         try {
           const data = typeof metadata === 'string' ? JSON.parse(metadata) : metadata
           return (
             <div className="flex items-center gap-2">
-              <Chip size="sm" color="success" variant="soft">{data.title || data.name}</Chip>
-              {data.poster_url && <Filmstrip className="w-4 h-4 text-muted" />}
+              <Chip size="sm" color="success" variant="soft" className="h-5 px-1.5 text-[10px] font-bold">{data.title || data.name}</Chip>
+              {data.poster_url && <Filmstrip className="w-3.5 h-3.5 text-default-400" />}
               {data.rating && (
-                <span className="text-xs text-warning font-medium flex items-center gap-0.5">
+                <span className="text-[10px] text-warning font-bold flex items-center gap-0.5">
                   <Icon icon="mdi:star" className="w-3 h-3" />
                   {data.rating}
                 </span>
@@ -251,7 +251,7 @@ export default function Scraper() {
             </div>
           )
         } catch {
-          return <Chip size="sm" color="accent" variant="soft">已刮削</Chip>
+          return <Chip size="sm" color="accent" variant="soft" className="h-5 px-1.5 text-[10px] font-bold">已刮削</Chip>
         }
       },
     },
@@ -298,17 +298,17 @@ export default function Scraper() {
         title="元数据刮削"
         description="从 TMDB 获取元数据并生成 NFO 文件"
         actions={
-          <>
+          <div className="flex items-center gap-2">
             <Button
               variant="primary"
               onPress={handleBatchScrape}
               isDisabled={selectedFiles.length === 0}
-              className="font-medium flex items-center gap-2"
+              className="font-bold flex items-center gap-2 px-4 shadow-none"
             >
               <MagicWand className="w-4 h-4" />
-              批量刮削
+              批量刮削 ({selectedFiles.length})
             </Button>
-          </>
+          </div>
         }
       />
 
@@ -347,41 +347,46 @@ export default function Scraper() {
       )}
 
       {/* 操作栏 */}
-      <Surface variant="secondary" className="rounded-xl p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
+      <Surface variant="default" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-divider/50 shadow-sm">
+        <div className="flex flex-wrap items-center gap-8">
+          <div className="flex items-center gap-4">
             <Checkbox
               id="download-images"
               isSelected={downloadImages}
               onChange={setDownloadImages}
+              className="group"
             >
-              <Checkbox.Control>
-                <Checkbox.Indicator />
+              <Checkbox.Control className="w-4 h-4 rounded border-divider/50 group-data-[selected=true]:bg-primary group-data-[selected=true]:border-primary transition-colors">
+                <Checkbox.Indicator className="w-2.5 h-2.5" />
               </Checkbox.Control>
               <Checkbox.Content>
-                <Label htmlFor="download-images">下载图片</Label>
+                <Label htmlFor="download-images" className="text-sm font-bold text-default-600 select-none cursor-pointer">下载图片</Label>
               </Checkbox.Content>
             </Checkbox>
             <Checkbox
               id="generate-nfo"
               isSelected={generateNfo}
               onChange={setGenerateNfo}
+              className="group"
             >
-              <Checkbox.Control>
-                <Checkbox.Indicator />
+              <Checkbox.Control className="w-4 h-4 rounded border-divider/50 group-data-[selected=true]:bg-primary group-data-[selected=true]:border-primary transition-colors">
+                <Checkbox.Indicator className="w-2.5 h-2.5" />
               </Checkbox.Control>
               <Checkbox.Content>
-                <Label htmlFor="generate-nfo">生成 NFO</Label>
+                <Label htmlFor="generate-nfo" className="text-sm font-bold text-default-600 select-none cursor-pointer">生成 NFO</Label>
               </Checkbox.Content>
             </Checkbox>
           </div>
 
-          <div className="flex gap-1 ml-auto">
+          <div className="w-px h-4 bg-divider/20" />
+
+          <div className="flex bg-default-100/50 p-1 rounded-lg border border-divider/20">
             <Button
               isIconOnly
               size="sm"
               variant={viewMode === 'list' ? 'primary' : 'ghost'}
               onPress={() => setViewMode('list')}
+              className="w-8 h-7 rounded-md"
             >
               <Icon icon="mdi:view-list" className="w-4 h-4" />
             </Button>
@@ -390,53 +395,54 @@ export default function Scraper() {
               size="sm"
               variant={viewMode === 'grid' ? 'primary' : 'ghost'}
               onPress={() => setViewMode('grid')}
+              className="w-8 h-7 rounded-md"
             >
               <Icon icon="mdi:view-grid" className="w-4 h-4" />
             </Button>
           </div>
         </div>
+
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <SearchField
+            className="flex-1 sm:w-[240px]"
+            value={searchTerm}
+            onChange={setSearchTerm}
+          >
+            <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
+              <SearchField.SearchIcon className="text-default-400" />
+              <SearchField.Input placeholder="搜索文件名..." className="text-sm" />
+              <SearchField.ClearButton />
+            </SearchField.Group>
+          </SearchField>
+
+          <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
+            <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">状态</span>
+            <Select
+              selectedKey={filterStatus}
+              onSelectionChange={(keys) => {
+                if (!keys) return
+                const selected = Array.from(keys as any)[0] as string
+                if (selected) {
+                  setFilterStatus(selected)
+                }
+              }}
+              className="w-[120px]"
+            >
+              <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox className="text-xs">
+                  <ListBox.Item key="all">全部文件</ListBox.Item>
+                  <ListBox.Item key="scraped">已刮削</ListBox.Item>
+                  <ListBox.Item key="unscraped">未刮削</ListBox.Item>
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          </div>
+        </div>
       </Surface>
-
-      {/* 搜索和筛选栏 */}
-      <div className="flex flex-wrap items-center gap-3">
-        <SearchField
-          className="flex-1 min-w-[200px]"
-          value={searchTerm}
-          onChange={setSearchTerm}
-        >
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder="搜索文件名..." />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
-
-        <Select
-          selectedKey={filterStatus}
-          onSelectionChange={(keys) => {
-            if (!keys) return
-            const selected = Array.isArray(Array.from(keys as any)) 
-              ? Array.from(keys as any)[0] as string
-              : keys as string
-            if (selected) {
-              setFilterStatus(selected)
-            }
-          }}
-          className="w-[140px]"
-        >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item key="all">全部</ListBox.Item>
-              <ListBox.Item key="scraped">已刮削</ListBox.Item>
-              <ListBox.Item key="unscraped">未刮削</ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
-      </div>
 
       {/* 文件列表 */}
       <div className="flex-1 min-h-0">
@@ -517,48 +523,53 @@ export default function Scraper() {
                 <p className="text-sm text-muted mt-1">{currentFile.name}</p>
               )}
             </Modal.Header>
-            <Modal.Body>
-              <div className="space-y-2">
+            <Modal.Body className="p-0">
+              <div className="flex flex-col">
                 {previewMetadata && Array.isArray(previewMetadata) && previewMetadata.length > 0 ? (
                   previewMetadata.map((item: any, idx: number) => (
                     <button
                       key={item.tmdb_id || idx}
                       onClick={() => handleSelectMetadata(item)}
-                      className="w-full text-left p-4 rounded-lg hover:bg-default-100 transition-colors border border-divider"
+                      className="w-full text-left p-4 hover:bg-default-100 transition-colors border-b border-divider/50 last:border-b-0 flex items-start gap-4 group"
                     >
-                      <div className="flex items-start gap-4">
-                        {item.poster_url && (
+                      {item.poster_url && (
+                        <div className="relative w-16 h-24 shrink-0 rounded-md overflow-hidden shadow-sm border border-divider/20 group-hover:border-primary/50 transition-colors">
                           <img
                             src={item.poster_url}
                             alt={item.title || item.name}
-                            className="w-16 h-24 object-cover rounded-lg shrink-0"
+                            className="w-full h-full object-cover"
                           />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0 py-1">
+                        <h3 className="text-sm font-bold mb-1.5 group-hover:text-primary transition-colors">{item.title || item.name}</h3>
+                        {item.overview && (
+                          <p className="text-[11px] text-default-400 line-clamp-2 mb-2 font-medium leading-relaxed">{item.overview}</p>
                         )}
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-lg font-semibold mb-1">{item.title || item.name}</h3>
-                          {item.overview && (
-                            <p className="text-sm text-muted line-clamp-2 mb-2">{item.overview}</p>
+                        <div className="flex items-center gap-4">
+                          {item.year && (
+                            <span className="text-[10px] font-black text-default-400 uppercase tracking-widest">
+                              年份 <span className="text-foreground ml-1">{item.year}</span>
+                            </span>
                           )}
-                          <div className="flex items-center gap-4 text-sm">
-                            {item.year && (
-                              <span className="text-muted">年份: <span className="font-medium text-foreground">{item.year}</span></span>
-                            )}
-                            {item.rating && (
-                              <span className="text-muted flex items-center gap-1">
-                                评分: <span className="font-medium text-warning flex items-center gap-0.5">
-                                  <Icon icon="mdi:star" className="w-3 h-3" />
-                                  {item.rating}
-                                </span>
+                          {item.rating && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] font-black text-default-400 uppercase tracking-widest">评分</span>
+                              <span className="text-[10px] font-bold text-warning flex items-center gap-0.5 ml-1">
+                                <Icon icon="mdi:star" className="w-3 h-3" />
+                                {item.rating}
                               </span>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       </div>
+                      <Icon icon="mdi:chevron-right" className="w-5 h-5 text-default-300 self-center group-hover:text-primary transition-colors" />
                     </button>
                   ))
                 ) : (
-                  <div className="text-center py-12 text-muted">
-                    未找到搜索结果
+                  <div className="text-center py-20 text-default-400">
+                    <Icon icon="mdi:movie-search" className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p className="text-sm font-medium">未找到匹配的媒体信息</p>
                   </div>
                 )}
               </div>

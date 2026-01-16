@@ -285,14 +285,6 @@ export default function Dedupe() {
     setFilterOptions(prev => ({ ...prev, [type]: updated }))
   }
 
-  const handleToggleSubtitle = () => {
-    setFilterOptions(prev => ({
-      ...prev,
-      hasChineseSubtitle: prev.hasChineseSubtitle === null ? true :
-        prev.hasChineseSubtitle === true ? false : null
-    }))
-  }
-
   const clearFilters = () => {
     setFilterOptions({
       resolution: [],
@@ -367,22 +359,14 @@ export default function Dedupe() {
         title="去重管理"
         description="智能分析并清理影片的冗余副本"
         actions={
-          <>
-            <Button
-              variant="primary"
-              onPress={handleScan}
-              isPending={isPending}
-              className="font-medium flex items-center gap-2"
-            >
-              <ArrowRotateLeft className="w-4 h-4" />
-              扫描重复文件
-            </Button>
-            <div className="flex items-center gap-1 bg-default-100 rounded-lg p-1">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-default-100 rounded-lg p-1 mr-2">
               <Button
                 isIconOnly
                 size="sm"
                 variant={viewMode === 'list' ? 'primary' : 'ghost'}
                 onPress={() => setViewMode('list')}
+                className="w-8 h-8"
               >
                 <Icon icon="mdi:view-list" className="w-4 h-4" />
               </Button>
@@ -391,6 +375,7 @@ export default function Dedupe() {
                 size="sm"
                 variant={viewMode === 'grid' ? 'primary' : 'ghost'}
                 onPress={() => setViewMode('grid')}
+                className="w-8 h-8"
               >
                 <Icon icon="mdi:view-grid" className="w-4 h-4" />
               </Button>
@@ -399,69 +384,198 @@ export default function Dedupe() {
                 size="sm"
                 variant={viewMode === 'compact' ? 'primary' : 'ghost'}
                 onPress={() => setViewMode('compact')}
+                className="w-8 h-8"
               >
                 <Icon icon="mdi:view-compact" className="w-4 h-4" />
               </Button>
             </div>
-          </>
+            <Button
+              variant="primary"
+              onPress={handleScan}
+              isPending={isPending}
+              className="font-bold flex items-center gap-2 px-4 shadow-none"
+            >
+              <ArrowRotateLeft className="w-4 h-4" />
+              重新扫描
+            </Button>
+          </div>
         }
       />
 
-      <div className="flex items-center justify-between gap-4">
-        <Tabs
-          aria-label="去重模式"
-          selectedKey={dedupeMode}
-          onSelectionChange={(key) => setDedupeMode(key as DedupeMode)}
-          className="w-full sm:w-auto"
-        >
-          <Tabs.ListContainer>
-            <Tabs.List>
-              <Tabs.Tab id="hash">
-                <Tabs.Indicator />
-                <div className="flex items-center gap-2">
-                  <Icon icon="mdi:file-certificate" className="w-4 h-4" />
-                  <span>精确匹配 (Hash/TMDB)</span>
-                </div>
-              </Tabs.Tab>
-              <Tabs.Tab id="fuzzy">
-                <Tabs.Indicator />
-                <div className="flex items-center gap-2">
-                  <Icon icon="mdi:text-search" className="w-4 h-4" />
-                  <span>模糊匹配 (文件名)</span>
-                </div>
-              </Tabs.Tab>
-            </Tabs.List>
-          </Tabs.ListContainer>
-        </Tabs>
+      {/* 顶部控制栏 */}
+      <div className="flex flex-col gap-4 bg-surface p-4 rounded-xl border border-divider/50 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <Tabs
+            aria-label="去重模式"
+            selectedKey={dedupeMode}
+            onSelectionChange={(key) => setDedupeMode(key as DedupeMode)}
+            className="w-full sm:w-auto"
+          >
+            <Tabs.ListContainer>
+              <Tabs.List>
+                <Tabs.Tab id="hash">
+                  <div className="flex items-center gap-2 px-1">
+                    <Icon icon="mdi:file-certificate-outline" className="w-[14px] h-[14px]" />
+                    <span>精确匹配</span>
+                  </div>
+                </Tabs.Tab>
+                <Tabs.Tab id="fuzzy">
+                  <div className="flex items-center gap-2 px-1">
+                    <Icon icon="mdi:text-search" className="w-[14px] h-[14px]" />
+                    <span>文件名匹配</span>
+                  </div>
+                </Tabs.Tab>
+              </Tabs.List>
+            </Tabs.ListContainer>
+          </Tabs>
 
-        {dedupeMode === 'fuzzy' && (
-          <div className="flex items-center gap-2 bg-surface p-1 px-3 rounded-lg border border-divider/50">
-            <span className="text-xs font-medium text-default-500">相似度阈值</span>
-            <Select
-              selectedKey={String(similarityThreshold)}
-              onSelectionChange={(keys) => {
-                if (!keys) return
-                const selected = Array.from(keys as any)[0] as string
-                setSimilarityThreshold(parseFloat(selected))
-              }}
-              className="w-[100px]"
-            >
-              <Select.Trigger className="h-7 min-h-0 py-0">
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  <ListBox.Item key="0.95">0.95 (极高)</ListBox.Item>
-                  <ListBox.Item key="0.9">0.90 (高)</ListBox.Item>
-                  <ListBox.Item key="0.8">0.80 (标准)</ListBox.Item>
-                  <ListBox.Item key="0.7">0.70 (宽松)</ListBox.Item>
-                  <ListBox.Item key="0.6">0.60 (非常宽松)</ListBox.Item>
-                </ListBox>
-              </Select.Popover>
-            </Select>
+          <div className="flex items-center gap-3">
+            {dedupeMode === 'fuzzy' && (
+              <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
+                <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">相似度阈值</span>
+                <Select
+                  selectedKey={String(similarityThreshold)}
+                  onSelectionChange={(keys) => {
+                    if (!keys) return
+                    const selected = Array.from(keys as any)[0] as string
+                    setSimilarityThreshold(parseFloat(selected))
+                  }}
+                  className="w-[120px]"
+                >
+                  <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox className="text-xs">
+                      <ListBox.Item key="0.95">0.95 (极高)</ListBox.Item>
+                      <ListBox.Item key="0.9">0.90 (高)</ListBox.Item>
+                      <ListBox.Item key="0.8">0.80 (标准)</ListBox.Item>
+                      <ListBox.Item key="0.7">0.70 (宽松)</ListBox.Item>
+                      <ListBox.Item key="0.6">0.60 (非常宽松)</ListBox.Item>
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        <div className="h-px bg-divider/10 w-full" />
+
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <SearchField
+              className="w-full sm:w-[320px]"
+              value={searchTerm}
+              onChange={setSearchTerm}
+            >
+              <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
+                <SearchField.SearchIcon className="text-default-400" />
+                <SearchField.Input placeholder="搜索影片名称..." className="text-sm" />
+                <SearchField.ClearButton />
+              </SearchField.Group>
+            </SearchField>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-default-100/50 p-1 rounded-lg border border-divider/20">
+              <Select
+                selectedKey={sortBy}
+                onSelectionChange={(keys) => {
+                  if (!keys) return
+                  const selected = Array.isArray(Array.from(keys as any))
+                    ? Array.from(keys as any)[0] as SortBy
+                    : keys as SortBy
+                  if (selected) {
+                    setSortBy(selected)
+                  }
+                }}
+                className="w-[120px]"
+              >
+                <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox className="text-xs">
+                    <ListBox.Item key="space">可释放空间</ListBox.Item>
+                    <ListBox.Item key="count">冗余数量</ListBox.Item>
+                    <ListBox.Item key="quality">质量分数</ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="w-7 h-7"
+              >
+                <Icon
+                  icon={sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'}
+                  className="w-4 h-4 text-default-500"
+                />
+              </Button>
+            </div>
+
+            <Popover
+              isOpen={showFilterPopover}
+              onOpenChange={setShowFilterPopover}
+            >
+              <Popover.Trigger>
+                <Button
+                  size="sm"
+                  variant={hasActiveFilters ? 'primary' : 'ghost'}
+                  className="h-9 gap-2 font-bold px-3"
+                >
+                  <Icon icon="mdi:filter-outline" className="w-[14px] h-[14px]" />
+                  筛选
+                  {hasActiveFilters && (
+                    <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] ml-1">
+                      活跃
+                    </span>
+                  )}
+                </Button>
+              </Popover.Trigger>
+              <Popover.Content className="p-4 w-[280px] shadow-2xl border border-divider/50">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-widest text-default-400">高级筛选</span>
+                    {hasActiveFilters && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onPress={clearFilters}
+                        className="text-[10px] h-6 px-2"
+                      >
+                        重置所有
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* 分辨率筛选 */}
+                  <div>
+                    <p className="text-[10px] font-bold text-default-500 uppercase mb-3 tracking-wider">分辨率</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['4K', '1080p', '720p'].map(res => (
+                        <Button
+                          key={res}
+                          size="sm"
+                          variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
+                          onPress={() => handleToggleFilter('resolution', res)}
+                          className="text-xs h-8"
+                        >
+                          {res}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Popover.Content>
+            </Popover>
+          </div>
+        </div>
       </div>
 
       {/* 统计卡片 */}
@@ -491,183 +605,35 @@ export default function Dedupe() {
         </div>
       )}
 
-      {/* 搜索和筛选栏 */}
+
+
+      {/* 批量操作工具栏 (仅当有数据时显示) */}
       {sortedData && sortedData.length > 0 && (
-        <div className="mt-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <SearchField
-                className="w-full sm:w-[300px]"
-                value={searchTerm}
-                onChange={setSearchTerm}
-              >
-                <SearchField.Group>
-                  <SearchField.SearchIcon />
-                  <SearchField.Input placeholder="搜索影片名称..." />
-                  <SearchField.ClearButton />
-                </SearchField.Group>
-              </SearchField>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* 排序 */}
-              <Select
-                selectedKey={sortBy}
-                onSelectionChange={(keys) => {
-                  if (!keys) return
-                  const selected = Array.isArray(Array.from(keys as any))
-                    ? Array.from(keys as any)[0] as SortBy
-                    : keys as SortBy
-                  if (selected) {
-                    setSortBy(selected)
-                  }
-                }}
-                className="w-[120px]"
-                placeholder="排序"
-              >
-                <Select.Trigger>
-                  <Select.Value />
-                  <Select.Indicator />
-                </Select.Trigger>
-                <Select.Popover>
-                  <ListBox>
-                    <ListBox.Item key="space">可释放空间</ListBox.Item>
-                    <ListBox.Item key="count">冗余数量</ListBox.Item>
-                    <ListBox.Item key="quality">质量分数</ListBox.Item>
-                  </ListBox>
-                </Select.Popover>
-              </Select>
-
-              <Button
-                isIconOnly
-                size="sm"
-                variant="ghost"
-                onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              >
-                <Icon
-                  icon={sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'}
-                  className="w-4 h-4"
-                />
-              </Button>
-
-              {/* 筛选按钮 */}
-              <Popover
-                isOpen={showFilterPopover}
-                onOpenChange={setShowFilterPopover}
-              >
-                <Popover.Trigger>
-                  <Button
-                    isIconOnly
-                    size="sm"
-                    variant={hasActiveFilters ? 'primary' : 'ghost'}
-                  >
-                    <Icon icon="mdi:filter" className="w-4 h-4" />
-                  </Button>
-                </Popover.Trigger>
-                <Popover.Content className="p-4 w-[280px]">
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">筛选条件</span>
-                      {hasActiveFilters && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onPress={clearFilters}
-                        >
-                          清除
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* 分辨率筛选 */}
-                    <div>
-                      <p className="text-xs text-default-500 mb-2">分辨率</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['4K', '1080p', '720p'].map(res => (
-                          <Button
-                            key={res}
-                            size="sm"
-                            variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
-                            onPress={() => handleToggleFilter('resolution', res)}
-                          >
-                            {res}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* HDR类型筛选 */}
-                    <div>
-                      <p className="text-xs text-default-500 mb-2">HDR 类型</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['DV', 'HDR10+', 'HDR'].map(hdr => (
-                          <Button
-                            key={hdr}
-                            size="sm"
-                            variant={filterOptions.hdrType.includes(hdr) ? 'primary' : 'ghost'}
-                            onPress={() => handleToggleFilter('hdrType', hdr)}
-                          >
-                            {hdr}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 中文字幕筛选 */}
-                    <div>
-                      <p className="text-xs text-default-500 mb-2">中文字幕</p>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant={filterOptions.hasChineseSubtitle === true ? 'primary' : 'ghost'}
-                          onPress={handleToggleSubtitle}
-                        >
-                          有
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={filterOptions.hasChineseSubtitle === false ? 'primary' : 'ghost'}
-                          onPress={handleToggleSubtitle}
-                        >
-                          无
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </Popover.Content>
-              </Popover>
-
-              {/* 展开/折叠 */}
-              <Button
-                isIconOnly
-                size="sm"
-                variant="ghost"
-                onPress={handleExpandAll}
-              >
-                <Icon
-                  icon={expandedKeys.size === sortedData?.length ? 'mdi:chevron-up' : 'mdi:chevron-down'}
-                  className="w-4 h-4"
-                />
-              </Button>
-
-              {/* 智能选择 */}
-              <Button
-                size="sm"
-                variant="ghost"
-                onPress={handleSmartSelect}
-              >
-                <Check className="w-4 h-4" />
-                智能选择
-              </Button>
-
-              <Button
-                size="sm"
-                variant="ghost"
-                onPress={handleSelectAll}
-              >
-                {selectedGroups.size === sortedData.length ? '取消全选' : '全选组'}
-              </Button>
-            </div>
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-default-400">检测到的重复组 ({sortedData.length})</h2>
+          <div className="flex items-center gap-2 shadow-none">
+            <Button
+              size="sm"
+              variant="ghost"
+              onPress={handleSmartSelect}
+              className="text-xs font-bold h-8 px-3"
+            >
+              <Check className="w-3 h-3 text-primary mr-1" />
+              智能选择
+            </Button>
+            <div className="w-px h-4 bg-divider/20 mx-1" />
+            <Button
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              onPress={handleExpandAll}
+              className="w-8 h-8 rounded-full"
+            >
+              <Icon
+                icon={expandedKeys.size === sortedData?.length ? 'mdi:unfold-less-horizontal' : 'mdi:unfold-more-horizontal'}
+                className="w-4 h-4 text-default-500"
+              />
+            </Button>
           </div>
         </div>
       )}
@@ -704,12 +670,12 @@ export default function Dedupe() {
                     const wastedSpace = redundantFiles.reduce((sum, f) => sum + f.size, 0);
 
                     return (
-                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '4px', zIndex: 10 }} className="px-1 pt-1">
+                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '2px', zIndex: 10 }} className="px-2 pt-2">
                         <Surface
                           variant="default"
                           className={clsx(
                             "w-full rounded-lg border transition-all cursor-pointer h-full flex flex-col justify-center",
-                            isExpanded ? "border-primary/50 bg-default-50" : "border-divider/50 bg-surface hover:bg-default-50"
+                            isExpanded ? "border-primary/40 bg-default-100/50" : "border-divider/50 bg-surface hover:bg-default-50 hover:border-divider"
                           )}
                           onClick={() => {
                             const newExpanded = new Set(expandedKeys);
@@ -718,46 +684,46 @@ export default function Dedupe() {
                             setExpandedKeys(newExpanded);
                           }}
                         >
-                          <div className="flex items-center justify-between w-full px-4 py-2">
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="flex items-center justify-between w-full px-5 py-2.5">
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
                               <div
                                 className="shrink-0 z-20"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const newSelected = new Set(selectedGroups)
-                                  if (isSelected) {
-                                    newSelected.delete(group.id)
-                                  } else {
-                                    newSelected.add(group.id)
-                                  }
+                                  if (isSelected) newSelected.delete(group.id)
+                                  else newSelected.add(group.id)
                                   setSelectedGroups(newSelected)
                                 }}
                               >
-                                <div className="p-1 cursor-pointer hover:bg-default-200 rounded-full transition-colors">
-                                  {isSelected ? (
-                                    <Check className="w-4 h-4 text-primary" />
-                                  ) : (
-                                    <div className="w-4 h-4 border-2 border-default-300 rounded" />
-                                  )}
+                                <div className={clsx(
+                                  "w-5 h-5 flex items-center justify-center rounded transition-all border-2",
+                                  isSelected ? "bg-primary border-primary text-white" : "border-default-300 hover:border-default-500"
+                                )}>
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                                 </div>
                               </div>
-                              <Filmstrip className="w-5 h-5 text-primary shrink-0" />
-                              <div className="flex flex-col gap-1 text-left min-w-0 flex-1">
-                                <span className="text-base font-semibold truncate">{group.title}</span>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-muted">
-                                    {dedupeMode === 'hash' ? `TMDB ID: ${group.id}` : `相似度: ${((group.similarity || 0) * 100).toFixed(1)}%`}
+                              <div className="flex flex-col gap-0.5 text-left min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <Filmstrip className="w-[14px] h-[14px] text-default-400" />
+                                  <span className="text-sm font-bold truncate tracking-tight">{group.title}</span>
+                                </div>
+                                <div className="flex items-center gap-3 flex-wrap mt-0.5">
+                                  <span className="text-[10px] font-bold text-default-400 font-mono">
+                                    {dedupeMode === 'hash' ? `#${group.id}` : `MATCH: ${((group.similarity || 0) * 100).toFixed(0)}%`}
                                   </span>
-                                  <Chip variant="soft" size="sm" color="warning">
-                                    {redundantCount} 个冗余
-                                  </Chip>
-                                  <Chip variant="soft" size="sm" color="accent">
-                                    {formatSize(wastedSpace)} 可释放
-                                  </Chip>
+                                  <div className="flex items-center gap-1.5 ml-1">
+                                    <Chip color="warning" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-bold">
+                                      {redundantCount} DUPLICATES
+                                    </Chip>
+                                    <Chip color="accent" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-bold">
+                                      {formatSize(wastedSpace)} WASTED
+                                    </Chip>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                            <div className="text-default-400">
+                            <div className="text-default-300">
                               <Icon icon={isExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} className="w-5 h-5" />
                             </div>
                           </div>
@@ -767,24 +733,26 @@ export default function Dedupe() {
                   }
                   else if (item.type === 'best') {
                     return (
-                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '8px' }} className="pl-6 pr-1">
+                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '6px' }} className="pl-10 pr-2 pt-1">
                         <Surface
                           variant="secondary"
-                          className="rounded-lg p-4 border-2 border-success/50 h-full flex flex-col justify-center shadow-sm"
+                          className="rounded-lg p-4 border border-divider/40 border-l-4 border-l-success h-full flex flex-col justify-center bg-success/[0.02]"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Chip color="success" variant="soft" size="sm">
-                                  <Check className="w-3 h-3 mr-1" />
-                                  推荐保留
+                              <div className="flex items-center gap-2 mb-3">
+                                <Chip color="success" variant="primary" size="sm" className="h-5 px-1.5 text-[10px] font-black tracking-widest uppercase rounded">
+                                  BEST VERSION
                                 </Chip>
-                                <span className="text-sm font-semibold text-foreground truncate">{item.file.name}</span>
+                                <span className="text-xs font-bold text-foreground/80 truncate opacity-60 font-mono tracking-tight">{item.file.name}</span>
                               </div>
                               <FileInfo file={item.file} />
                             </div>
-                            <div className="flex flex-col gap-2 shrink-0">
-                              <Chip color="success" variant="soft" size="sm">质量: {item.file.quality_score || 0}</Chip>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <div className="flex items-center gap-1 bg-success/10 px-2 py-0.5 rounded text-success">
+                                <Icon icon="mdi:star" className="w-3 h-3" />
+                                <span className="text-[10px] font-black">{item.file.quality_score || 0}</span>
+                              </div>
                             </div>
                           </div>
                         </Surface>
@@ -793,19 +761,17 @@ export default function Dedupe() {
                   }
                   else if (item.type === 'redundant') {
                     return (
-                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '8px' }} className="pl-6 pr-1">
+                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '6px' }} className="pl-10 pr-2 pt-1">
                         <Surface
                           variant="default"
-                          className="rounded-lg p-4 border border-divider/50 h-full flex flex-col justify-center shadow-sm hover:border-danger/30 transition-colors"
+                          className="rounded-lg p-4 border border-divider/40 border-l-4 border-l-danger/30 h-full flex flex-col justify-center hover:bg-danger/[0.01] transition-colors"
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-sm font-medium text-foreground truncate">
-                                  {item.file.name}
-                                </span>
-                                <Chip variant="soft" size="sm" color="danger">
-                                  冗余版本
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="text-xs font-bold text-foreground/80 truncate font-mono tracking-tight">{item.file.name}</span>
+                                <Chip color="danger" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-black tracking-widest uppercase rounded">
+                                  REDUNDANT
                                 </Chip>
                               </div>
                               <FileInfo file={item.file} compareWith={item.bestFile} />
@@ -813,11 +779,12 @@ export default function Dedupe() {
                             <div className="flex flex-col gap-2 shrink-0">
                               <Button
                                 size="sm"
-                                variant="danger"
+                                variant="ghost"
                                 onPress={() => trashMutation.mutate(item.file.id)}
                                 isPending={trashMutation.isPending}
+                                className="text-[11px] font-bold h-7 px-2 border border-danger/20 text-danger hover:bg-danger hover:text-white transition-all shadow-none"
                               >
-                                <TrashBin className="w-4 h-4" />
+                                <TrashBin className="w-3 h-3 mr-1" />
                                 移入回收站
                               </Button>
                             </div>
@@ -826,7 +793,6 @@ export default function Dedupe() {
                       </div>
                     )
                   }
-                  return null;
                 })}
               </div>
             </div>
@@ -920,74 +886,79 @@ function FileInfo({ file, compareWith }: { file: MediaFile; compareWith?: MediaF
   const hdrType = getHDRType()
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="font-mono text-default-600">{formatSize(file.size)}</span>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Chip size="sm" variant="soft" className="h-7 gap-1 font-mono text-[11px] font-bold">
+          <Icon icon="mdi:harddisk" className="w-3.5 h-3.5 text-default-400" />
+          {formatSize(file.size)}
+        </Chip>
+
         {resolution && (
-          <>
-            <span className="text-default-400">·</span>
-            <Chip size="sm" variant="soft" color="accent">
-              {resolution}
-            </Chip>
-          </>
+          <Chip color="accent" size="sm" variant="soft" className="h-7 gap-1 uppercase tracking-wider text-[11px] font-black">
+            <Icon icon="mdi:monitor" className="w-3.5 h-3.5" />
+            {resolution}
+          </Chip>
         )}
+
         {hdrType && (
-          <Chip size="sm" variant="soft" color="warning">
+          <Chip color="warning" size="sm" variant="soft" className="h-7 gap-1 uppercase tracking-wider text-[11px] font-black">
+            <Icon icon="mdi:high-definition" className="w-3.5 h-3.5" />
             {hdrType}
           </Chip>
         )}
+
         {vInfo?.source && (
-          <Chip size="sm" variant="soft" color="default">
+          <Chip size="sm" variant="soft" className="h-7 font-bold uppercase text-[10px]">
             {vInfo.source}
           </Chip>
         )}
+
         {vInfo?.has_chinese_subtitle && (
-          <Chip size="sm" variant="soft" color="accent">
-            中字
+          <Chip color="accent" size="sm" variant="soft" className="h-7 font-black uppercase text-[10px]">
+            ZH-CN
           </Chip>
-        )}
-        {vInfo?.codec && (
-          <>
-            <span className="text-default-400">·</span>
-            <span className="text-default-500 font-mono">{vInfo.codec}</span>
-          </>
         )}
       </div>
 
-      {file.quality_score !== undefined && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-default-500">质量评分</span>
-          <div className="flex-1 h-2 bg-default-100 rounded-full overflow-hidden max-w-[200px]">
-            <div
-              className={clsx(
-                "h-full rounded-full transition-all",
-                file.quality_score >= 70 ? "bg-success" :
-                  file.quality_score >= 50 ? "bg-warning" : "bg-danger"
-              )}
-              style={{ width: `${file.quality_score}%` }}
-            />
-          </div>
-          <span className={clsx(
-            "text-xs font-semibold min-w-[30px] text-right",
-            file.quality_score >= 70 ? "text-success" :
-              file.quality_score >= 50 ? "text-warning" : "text-danger"
-          )}>
-            {file.quality_score}
-          </span>
-          {compareWith && compareWith.quality_score !== undefined && (
+      <div className="flex flex-col gap-2">
+        {file.quality_score !== undefined && (
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-black text-default-400 uppercase tracking-widest min-w-[60px]">Quality</span>
+            <div className="flex-1 h-1 bg-default-100 rounded-full overflow-hidden max-w-[240px]">
+              <div
+                className={clsx(
+                  "h-full rounded-full transition-all duration-500",
+                  file.quality_score >= 70 ? "bg-success" :
+                    file.quality_score >= 50 ? "bg-warning" : "bg-danger"
+                )}
+                style={{ width: `${file.quality_score}%` }}
+              />
+            </div>
             <span className={clsx(
-              "text-xs",
-              file.quality_score < compareWith.quality_score ? "text-danger" : "text-default-400"
+              "text-[11px] font-black min-w-[30px] text-right font-mono",
+              file.quality_score >= 70 ? "text-success" :
+                file.quality_score >= 50 ? "text-warning" : "text-danger"
             )}>
-              ({file.quality_score < compareWith.quality_score ? '-' : '+'}
-              {Math.abs(file.quality_score - compareWith.quality_score)})
+              {file.quality_score}
             </span>
-          )}
-        </div>
-      )}
+            {compareWith && compareWith.quality_score !== undefined && (
+              <span className={clsx(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                file.quality_score < compareWith.quality_score ? "bg-danger/10 text-danger" : "bg-success/10 text-success"
+              )}>
+                {file.quality_score < compareWith.quality_score ? '-' : '+'}
+                {Math.abs(file.quality_score - compareWith.quality_score)}
+              </span>
+            )}
+          </div>
+        )}
 
-      <div className="text-xs text-default-400 font-mono truncate" title={file.path}>
-        {file.path}
+        <div className="flex items-center gap-2 group/path overflow-hidden">
+          <Icon icon="mdi:folder-outline" className="w-[14px] h-[14px] text-default-300 shrink-0" />
+          <span className="text-[10px] text-default-400 font-mono truncate select-all hover:text-default-600 transition-colors" title={file.path}>
+            {file.path}
+          </span>
+        </div>
       </div>
     </div>
   )

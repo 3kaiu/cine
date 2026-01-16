@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
+import clsx from 'clsx'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { Button, Chip, Card, SearchField, Surface, Select, ListBox, Popover } from "@heroui/react";
 import { Icon } from '@iconify/react'
@@ -64,7 +65,7 @@ export default function Scanner() {
       if (!selectedDirectory) return true
       return file.path.startsWith(selectedDirectory)
     }) || []
-    
+
     // 高级筛选
     if (filterOptions.resolution.length > 0) {
       result = result.filter(file => {
@@ -76,7 +77,7 @@ export default function Scanner() {
         return false
       })
     }
-    
+
     if (filterOptions.hdrType.length > 0) {
       result = result.filter(file => {
         const vInfo = file.video_info
@@ -87,7 +88,7 @@ export default function Scanner() {
         return true
       })
     }
-    
+
     if (filterOptions.hasChineseSubtitle !== null) {
       result = result.filter(file => {
         const vInfo = file.video_info
@@ -95,7 +96,7 @@ export default function Scanner() {
         return vInfo.has_chinese_subtitle === filterOptions.hasChineseSubtitle
       })
     }
-    
+
     return result
   }, [allFiles, selectedDirectory, filterOptions])
 
@@ -104,12 +105,12 @@ export default function Scanner() {
     if (!filteredFiles || filteredFiles.length === 0) {
       return { total: 0, video: 0, audio: 0, image: 0, totalSize: 0, avgQuality: 0 }
     }
-    
+
     const video = filteredFiles.filter(f => f.file_type === 'video').length
     const audio = filteredFiles.filter(f => f.file_type === 'audio').length
     const image = filteredFiles.filter(f => f.file_type === 'image').length
     const totalSize = filteredFiles.reduce((sum, f) => sum + f.size, 0)
-    
+
     let totalQuality = 0
     let qualityCount = 0
     filteredFiles.forEach(file => {
@@ -118,7 +119,7 @@ export default function Scanner() {
         qualityCount++
       }
     })
-    
+
     return {
       total: filteredFiles.length,
       video,
@@ -170,7 +171,7 @@ export default function Scanner() {
     if (taskId && scanning) {
       const taskMessages = messages.filter(m => m.task_id === taskId)
       const latestMessage = taskMessages[taskMessages.length - 1]
-      
+
       if (latestMessage && latestMessage.progress >= 100) {
         setScanning(false)
         refetch()
@@ -193,8 +194,13 @@ export default function Scanner() {
       key: 'file_type',
       width: 100,
       render: (type: string) => (
-        <Chip size="sm" variant="soft" color={type === 'video' ? 'accent' : type === 'audio' ? 'warning' : 'default'}>
-          {type.toUpperCase()}
+        <Chip
+          size="sm"
+          variant="soft"
+          color={type === 'video' ? 'accent' : type === 'audio' ? 'warning' : 'default'}
+          className="h-5 text-[10px] font-bold px-2 uppercase tracking-tight"
+        >
+          {type === 'video' ? '视频' : type === 'audio' ? '音频' : type.toUpperCase()}
         </Chip>
       )
     },
@@ -299,71 +305,70 @@ export default function Scanner() {
             {history.map((item: ScanHistory) => {
               const fileTypes = parseFileTypes(item.file_types_json)
               const isSelected = selectedDirectory === item.directory
-              
+
               return (
-                <Card key={item.directory} className={isSelected ? 'ring-2 ring-primary' : ''}>
-                  <Card.Header>
-                    <div className="flex flex-col gap-2 w-full">
+                <Surface key={item.directory} variant="default" className={clsx("rounded-xl border border-divider/50 shadow-sm transition-all overflow-hidden bg-background/50", isSelected && "ring-1 ring-primary border-primary/20")}>
+                  <div className="p-4 flex flex-col gap-4">
+                    <div className="flex flex-col gap-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <Card.Title className="text-sm truncate" title={item.directory}>
+                          <h3 className="text-sm font-bold truncate leading-tight" title={item.directory}>
                             {item.directory === "/" ? "根目录" : item.directory.split("/").pop() || "根目录"}
-                          </Card.Title>
-                          <Card.Description className="text-xs truncate mt-1" title={item.directory}>
+                          </h3>
+                          <p className="text-[11px] text-default-400 truncate mt-0.5 font-medium" title={item.directory}>
                             {item.directory}
-                          </Card.Description>
+                          </p>
                         </div>
                         <Button
                           isIconOnly
                           size="sm"
                           variant={isSelected ? 'primary' : 'ghost'}
                           onPress={() => setSelectedDirectory(isSelected ? null : item.directory)}
+                          className="rounded-full w-8 h-8"
                         >
                           <Icon icon={isSelected ? "mdi:check-circle" : "mdi:circle-outline"} className="w-4 h-4" />
                         </Button>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted">
-                        <Clock className="w-3 h-3" />
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-default-400 uppercase tracking-wider">
+                        <Clock className="w-3 h-3 text-primary/70" />
                         <span>{dayjs(item.last_scanned_at).fromNow()}</span>
                       </div>
                     </div>
-                  </Card.Header>
-                  <Card.Content>
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs text-muted">文件数量</span>
-                          <span className="text-sm font-semibold">{item.total_files.toLocaleString()}</span>
-                        </div>
-                        <div className="flex flex-col gap-1 items-end">
-                          <span className="text-xs text-muted">总大小</span>
-                          <span className="text-sm font-semibold">{formatFileSize(item.total_size)}</span>
-                        </div>
-                      </div>
-                      
-                      {Object.keys(fileTypes).length > 0 && (
-                        <div className="flex gap-1.5 flex-wrap">
-                          {Object.entries(fileTypes).map(([type, count]: [string, any]) => (
-                            <Chip key={type} size="sm" variant="soft" color={type === 'video' ? 'accent' : type === 'audio' ? 'warning' : 'default'}>
-                              {type}: {count}
-                            </Chip>
-                          ))}
-                        </div>
-                      )}
 
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        fullWidth
-                        onPress={() => handleRescan(item.directory)}
-                        isPending={scanning && taskId !== undefined}
-                      >
-                        <ArrowRotateLeft className="w-4 h-4" />
-                        重新扫描
-                      </Button>
+                    <div className="flex items-center justify-between py-2 border-y border-divider/10">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-black text-default-400 uppercase tracking-widest">文件</span>
+                        <span className="text-sm font-bold text-foreground">{item.total_files.toLocaleString()}</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5 items-end">
+                        <span className="text-[10px] font-black text-default-400 uppercase tracking-widest">存储</span>
+                        <span className="text-sm font-bold text-foreground">{formatFileSize(item.total_size)}</span>
+                      </div>
                     </div>
-                  </Card.Content>
-                </Card>
+
+                    {Object.keys(fileTypes).length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {Object.entries(fileTypes).map(([type, count]: [string, any]) => (
+                          <Chip key={type} size="sm" variant="soft" color={type === 'video' ? 'accent' : type === 'audio' ? 'warning' : 'default'} className="h-5 px-1.5 text-[10px] font-bold uppercase">
+                            {type}: {count}
+                          </Chip>
+                        ))}
+                      </div>
+                    )}
+
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      fullWidth
+                      onPress={() => handleRescan(item.directory)}
+                      isPending={scanning && taskId !== undefined}
+                      className="font-bold h-8 shadow-none"
+                    >
+                      <ArrowRotateLeft className="w-3.5 h-3.5" />
+                      立即更新
+                    </Button>
+                  </div>
+                </Surface>
               )
             })}
           </div>
@@ -430,9 +435,9 @@ export default function Scanner() {
                 {(data?.total || 0).toLocaleString()} 文件
               </Chip>
               {selectedDirectory && (
-                <Chip 
-                  color="accent" 
-                  variant="soft" 
+                <Chip
+                  color="accent"
+                  variant="soft"
                   size="sm"
                 >
                   {selectedDirectory.split("/").pop() || selectedDirectory}
@@ -449,164 +454,182 @@ export default function Scanner() {
               )}
             </div>
             <div className="flex gap-2 w-full sm:w-auto items-center">
-              <Select
-                selectedKey={fileTypeFilter}
-                onSelectionChange={(keys) => {
-                  if (!keys) return
-                  const selected = Array.isArray(Array.from(keys as any)) 
-                    ? Array.from(keys as any)[0] as string
-                    : keys as string
-                  if (selected) {
-                    setFileTypeFilter(selected)
-                  }
-                }}
-                className="min-w-[140px]"
-                placeholder="文件类型"
-              >
-                <Select.Trigger>
-                  <Select.Value />
-                  <Select.Indicator />
-                </Select.Trigger>
-                <Select.Popover>
-                  <ListBox>
-                    <ListBox.Item key="all">全部类型</ListBox.Item>
-                    <ListBox.Item key="video">视频</ListBox.Item>
-                    <ListBox.Item key="audio">音频</ListBox.Item>
-                    <ListBox.Item key="image">图片</ListBox.Item>
-                  </ListBox>
-                </Select.Popover>
-              </Select>
-              
-              <Popover isOpen={filterPopover} onOpenChange={setFilterPopover}>
-                <Popover.Trigger>
+              <Surface variant="default" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-divider/50 shadow-sm">
+                <div className="flex flex-wrap gap-4 items-center w-full sm:w-auto">
+                  <SearchField
+                    className="w-full sm:w-[320px]"
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                  >
+                    <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
+                      <SearchField.SearchIcon className="text-default-400" />
+                      <SearchField.Input placeholder="搜索文件名..." className="text-sm" />
+                      <SearchField.ClearButton />
+                    </SearchField.Group>
+                  </SearchField>
+
+                  <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
+                    <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">类型</span>
+                    <Select
+                      selectedKey={fileTypeFilter}
+                      onSelectionChange={(keys) => {
+                        if (!keys) return
+                        const selected = Array.from(keys as any)[0] as string
+                        if (selected) {
+                          setFileTypeFilter(selected)
+                        }
+                      }}
+                      className="w-[120px]"
+                    >
+                      <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                        <Select.Value />
+                        <Select.Indicator />
+                      </Select.Trigger>
+                      <Select.Popover>
+                        <ListBox className="text-xs">
+                          <ListBox.Item key="all">全部类型</ListBox.Item>
+                          <ListBox.Item key="video">视频文件</ListBox.Item>
+                          <ListBox.Item key="audio">音频文件</ListBox.Item>
+                          <ListBox.Item key="image">图片文件</ListBox.Item>
+                        </ListBox>
+                      </Select.Popover>
+                    </Select>
+                  </div>
+
+                  <Popover isOpen={filterPopover} onOpenChange={setFilterPopover}>
+                    <Popover.Trigger>
+                      <Button
+                        variant={filterOptions.resolution.length > 0 || filterOptions.hdrType.length > 0 || filterOptions.hasChineseSubtitle !== null ? 'primary' : 'ghost'}
+                        size="md"
+                        className="font-bold flex items-center gap-2 border border-divider/10 shadow-none px-4"
+                      >
+                        <Icon icon="mdi:filter-variant" className="w-4 h-4" />
+                        高级筛选
+                        {(filterOptions.resolution.length > 0 || filterOptions.hdrType.length > 0 || filterOptions.hasChineseSubtitle !== null) && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                        )}
+                      </Button>
+                    </Popover.Trigger>
+                    <Popover.Content className="p-4 w-[280px] bg-background border border-divider/50 shadow-xl rounded-xl">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-default-400">过滤条件</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onPress={() => setFilterOptions({ resolution: [], hdrType: [], hasChineseSubtitle: null })}
+                            className="h-6 text-[10px] font-bold px-2"
+                          >
+                            重置
+                          </Button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold text-default-400 uppercase tracking-wider">分辨率</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {['4K', '1080p', '720p'].map(res => (
+                              <Button
+                                key={res}
+                                size="sm"
+                                variant={filterOptions.resolution.includes(res) ? 'primary' : 'secondary'}
+                                onPress={() => {
+                                  setFilterOptions(prev => ({
+                                    ...prev,
+                                    resolution: prev.resolution.includes(res)
+                                      ? prev.resolution.filter(r => r !== res)
+                                      : [...prev.resolution, res]
+                                  }))
+                                }}
+                                className="h-7 px-2.5 text-xs font-bold shadow-none"
+                              >
+                                {res}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold text-default-400 uppercase tracking-wider">动态范围</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {['DV', 'HDR10+', 'HDR'].map(hdr => (
+                              <Button
+                                key={hdr}
+                                size="sm"
+                                variant={filterOptions.hdrType.includes(hdr) ? 'primary' : 'secondary'}
+                                onPress={() => {
+                                  setFilterOptions(prev => ({
+                                    ...prev,
+                                    hdrType: prev.hdrType.includes(hdr)
+                                      ? prev.hdrType.filter(h => h !== hdr)
+                                      : [...prev.hdrType, hdr]
+                                  }))
+                                }}
+                                className="h-7 px-2.5 text-xs font-bold shadow-none"
+                              >
+                                {hdr}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold text-default-400 uppercase tracking-wider">中文字幕</p>
+                          <div className="flex gap-1.5">
+                            <Button
+                              size="sm"
+                              variant={filterOptions.hasChineseSubtitle === true ? 'primary' : 'secondary'}
+                              onPress={() => setFilterOptions(prev => ({ ...prev, hasChineseSubtitle: prev.hasChineseSubtitle === true ? null : true }))}
+                              className="h-7 px-3 text-xs font-bold shadow-none flex-1"
+                            >
+                              有中字
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={filterOptions.hasChineseSubtitle === false ? 'primary' : 'secondary'}
+                              onPress={() => setFilterOptions(prev => ({ ...prev, hasChineseSubtitle: prev.hasChineseSubtitle === false ? null : false }))}
+                              className="h-7 px-3 text-xs font-bold shadow-none flex-1"
+                            >
+                              无中字
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </Popover.Content>
+                  </Popover>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex bg-default-100/50 p-1 rounded-lg border border-divider/20 h-9">
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant={viewMode === 'list' ? 'primary' : 'ghost'}
+                      onPress={() => setViewMode('list')}
+                      className="w-8 h-7 rounded-md"
+                    >
+                      <Icon icon="mdi:view-list" className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant={viewMode === 'grid' ? 'primary' : 'ghost'}
+                      onPress={() => setViewMode('grid')}
+                      className="w-8 h-7 rounded-md"
+                    >
+                      <Icon icon="mdi:view-grid" className="w-4 h-4" />
+                    </Button>
+                  </div>
+
                   <Button
                     isIconOnly
-                    size="sm"
-                    variant={filterOptions.resolution.length > 0 || filterOptions.hdrType.length > 0 || filterOptions.hasChineseSubtitle !== null ? 'primary' : 'ghost'}
+                    variant="ghost"
+                    onPress={() => refetch()}
+                    className="h-9 w-9 border border-divider/20 bg-default-100/50"
                   >
-                    <Icon icon="mdi:filter" className="w-4 h-4" />
+                    <Icon icon="mdi:refresh" className="w-4 h-4" />
                   </Button>
-                </Popover.Trigger>
-                <Popover.Content className="p-4 w-[280px]">
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">高级筛选</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onPress={() => setFilterOptions({ resolution: [], hdrType: [], hasChineseSubtitle: null })}
-                      >
-                        清除
-                      </Button>
-                    </div>
-                    
-                    <div>
-                      <p className="text-xs text-default-500 mb-2">分辨率</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['4K', '1080p', '720p'].map(res => (
-                          <Button
-                            key={res}
-                            size="sm"
-                            variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
-                            onPress={() => {
-                              setFilterOptions(prev => ({
-                                ...prev,
-                                resolution: prev.resolution.includes(res)
-                                  ? prev.resolution.filter(r => r !== res)
-                                  : [...prev.resolution, res]
-                              }))
-                            }}
-                          >
-                            {res}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <p className="text-xs text-default-500 mb-2">HDR 类型</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['DV', 'HDR10+', 'HDR'].map(hdr => (
-                          <Button
-                            key={hdr}
-                            size="sm"
-                            variant={filterOptions.hdrType.includes(hdr) ? 'primary' : 'ghost'}
-                            onPress={() => {
-                              setFilterOptions(prev => ({
-                                ...prev,
-                                hdrType: prev.hdrType.includes(hdr)
-                                  ? prev.hdrType.filter(h => h !== hdr)
-                                  : [...prev.hdrType, hdr]
-                              }))
-                            }}
-                          >
-                            {hdr}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <p className="text-xs text-default-500 mb-2">中文字幕</p>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant={filterOptions.hasChineseSubtitle === true ? 'primary' : 'ghost'}
-                          onPress={() => setFilterOptions(prev => ({ ...prev, hasChineseSubtitle: prev.hasChineseSubtitle === true ? null : true }))}
-                        >
-                          有
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={filterOptions.hasChineseSubtitle === false ? 'primary' : 'ghost'}
-                          onPress={() => setFilterOptions(prev => ({ ...prev, hasChineseSubtitle: prev.hasChineseSubtitle === false ? null : false }))}
-                        >
-                          无
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </Popover.Content>
-              </Popover>
-              
-              <SearchField
-                className="flex-1 sm:w-[300px]"
-                value={searchTerm}
-                onChange={handleSearchChange}
-              >
-                <SearchField.Group>
-                  <SearchField.SearchIcon />
-                  <SearchField.Input placeholder="搜索文件名..." />
-                  <SearchField.ClearButton />
-                </SearchField.Group>
-              </SearchField>
-              
-              <div className="flex gap-1">
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant={viewMode === 'list' ? 'primary' : 'ghost'}
-                  onPress={() => setViewMode('list')}
-                >
-                  <Icon icon="mdi:view-list" className="w-4 h-4" />
-                </Button>
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant={viewMode === 'grid' ? 'primary' : 'ghost'}
-                  onPress={() => setViewMode('grid')}
-                >
-                  <Icon icon="mdi:view-grid" className="w-4 h-4" />
-                </Button>
-              </div>
-              
-              <Button
-                isIconOnly
-                variant="ghost"
-                onPress={() => refetch()}
-              >
-                <Icon icon="mdi:refresh" className="w-4 h-4" />
-              </Button>
+                </div>
+              </Surface>
             </div>
           </div>
 

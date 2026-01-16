@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import clsx from 'clsx'
 import { Button, Chip, Modal, Surface } from "@heroui/react"
 import { Icon } from '@iconify/react'
 import { ArrowsRotateRight, Pause, Play, Xmark, TrashBin } from '@gravity-ui/icons'
@@ -201,25 +202,22 @@ export default function Tasks() {
       width: 150,
       render: (status: TaskStatus) => {
         const info = getStatusInfo(status)
-        const colorClass = {
-          pending: 'bg-default-100 text-default-600',
-          running: 'bg-primary/10 text-primary',
-          paused: 'bg-warning/10 text-warning',
-          completed: 'bg-success/10 text-success',
-          failed: 'bg-danger/10 text-danger',
-          cancelled: 'bg-default-100 text-default-500',
-        }[status.status] || ''
         return (
-          <div className="flex flex-col gap-1">
-            <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${colorClass}`}>
+          <div className="flex flex-col gap-1.5">
+            <Chip
+              size="sm"
+              variant="soft"
+              color={info.color as any}
+              className="h-5 text-[10px] font-black uppercase tracking-tighter px-1.5 border-none"
+            >
               {info.label}
               {info.progress !== undefined && ` ${info.progress.toFixed(0)}%`}
-            </span>
+            </Chip>
             {info.message && (
-              <span className="text-[10px] text-default-400 line-clamp-1">{info.message}</span>
+              <p className="text-[10px] text-default-400 font-medium line-clamp-1 leading-tight">{info.message}</p>
             )}
             {info.error && (
-              <span className="text-[10px] text-danger line-clamp-1">{info.error}</span>
+              <p className="text-[10px] text-danger font-medium line-clamp-1 leading-tight">{info.error}</p>
             )}
           </div>
         )
@@ -231,18 +229,21 @@ export default function Tasks() {
       width: 120,
       render: (status: TaskStatus) => {
         if (status.status !== 'running' && status.status !== 'paused') {
-          return <span className="text-default-400">-</span>
+          return <span className="text-default-300 text-[10px] font-bold uppercase tracking-widest pl-1">-</span>
         }
         const progress = 'progress' in status ? status.progress : 0
         return (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 bg-default-200 rounded-full overflow-hidden">
+          <div className="flex flex-col gap-1.5 px-1 pr-4">
+            <div className="w-full bg-default-100/50 rounded-full h-1.5 overflow-hidden border border-divider/5">
               <div
-                className="h-full bg-primary rounded-full transition-all duration-300"
+                className={clsx(
+                  "h-full transition-all duration-500",
+                  status.status === 'paused' ? "bg-warning shadow-[0_0_8px_rgba(var(--warning-rgb),0.3)]" : "bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.3)]"
+                )}
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <span className="text-xs font-mono text-default-500 w-10 text-right">
+            <span className="text-[10px] font-black text-default-400 uppercase tracking-widest">
               {progress.toFixed(0)}%
             </span>
           </div>
@@ -270,38 +271,38 @@ export default function Tasks() {
         const canCancel = status === 'running' || status === 'paused' || status === 'pending'
 
         return (
-          <div className="flex gap-1">
+          <div className="flex gap-2">
             {canPause && (
               <Button
                 isIconOnly
                 size="sm"
-                variant="ghost"
+                variant="secondary"
                 onPress={() => pauseMutation.mutate(task.id)}
-                className="hover:bg-warning/10"
+                className="h-7 w-7 min-w-0 bg-warning/10 text-warning hover:bg-warning/20 border-none shadow-none"
               >
-                <Pause className="w-3.5 h-3.5 text-warning" />
+                <Pause className="w-3.5 h-3.5" />
               </Button>
             )}
             {canResume && (
               <Button
                 isIconOnly
                 size="sm"
-                variant="ghost"
+                variant="secondary"
                 onPress={() => resumeMutation.mutate(task.id)}
-                className="hover:bg-success/10"
+                className="h-7 w-7 min-w-0 bg-success/10 text-success hover:bg-success/20 border-none shadow-none"
               >
-                <Play className="w-3.5 h-3.5 text-success" />
+                <Play className="w-3.5 h-3.5" />
               </Button>
             )}
             {canCancel && (
               <Button
                 isIconOnly
                 size="sm"
-                variant="ghost"
+                variant="secondary"
                 onPress={() => setConfirmModal({ isOpen: true, taskId: task.id, action: 'cancel' })}
-                className="hover:bg-danger/10"
+                className="h-7 w-7 min-w-0 bg-danger/10 text-danger hover:bg-danger/20 border-none shadow-none"
               >
-                <Xmark className="w-3.5 h-3.5 text-danger" />
+                <Xmark className="w-3.5 h-3.5" />
               </Button>
             )}
           </div>
@@ -316,27 +317,28 @@ export default function Tasks() {
         title="任务队列"
         description="管理后台运行的任务，支持暂停、恢复和取消操作"
         actions={
-          <>
+          <div className="flex items-center gap-2">
             <Button
-              variant="ghost"
+              variant="danger"
               size="md"
               onPress={() => setConfirmModal({ isOpen: true, taskId: null, action: 'cleanup' })}
               isDisabled={stats.completed + stats.failed === 0}
-              className="font-medium"
+              className="font-bold flex items-center gap-2 px-4 shadow-none"
             >
               <TrashBin className="w-4 h-4" />
-              清理已完成
+              清理历史
             </Button>
+            <div className="w-px h-4 bg-divider/20 mx-1" />
             <Button
               variant="ghost"
               size="md"
               onPress={() => refetch()}
-              className="font-medium"
+              className="font-bold border border-divider/10 bg-default-50/50 shadow-sm transition-all flex items-center gap-2 px-4 text-default-600 hover:text-foreground"
             >
               <ArrowsRotateRight className="w-4 h-4" />
-              刷新
+              刷新队列
             </Button>
-          </>
+          </div>
         }
       />
 
@@ -373,11 +375,11 @@ export default function Tasks() {
       </div>
 
       {/* 任务列表 */}
-      <Surface className="rounded-xl overflow-hidden" variant="default">
+      <Surface variant="secondary" className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
         {tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Icon icon="mdi:clipboard-list-outline" className="w-16 h-16 text-default-200 mb-4" />
-            <p className="text-default-400">暂无任务</p>
+          <div className="flex flex-col items-center justify-center py-20 bg-background/50">
+            <Icon icon="mdi:clipboard-list-outline" className="w-16 h-16 text-default-200 mb-4 opacity-50" />
+            <p className="text-sm font-bold text-default-400 uppercase tracking-widest">暂无运行中的任务</p>
           </div>
         ) : (
           <VirtualizedTable<TaskInfo>

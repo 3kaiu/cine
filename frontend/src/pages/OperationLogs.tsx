@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Button, Tooltip, Modal, SearchField, Select, ListBox } from "@heroui/react";
-import clsx from 'clsx';
+import { Button, Tooltip, Modal, SearchField, Select, ListBox, Chip, Surface } from "@heroui/react";
 import { ArrowsRotateRight, ArrowRotateLeft, TrashBin, Pencil, File } from '@gravity-ui/icons'
 import { mediaApi, OperationLog } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
@@ -83,21 +82,22 @@ export default function OperationLogs() {
   }
 
   const getActionLabel = (action: string) => {
-    const labels: Record<string, { color: "primary" | "warning" | "success" | "danger" | "default", text: string }> = {
-      rename: { color: "primary", text: "重命名" },
+    const labels: Record<string, { color: "primary" | "warning" | "success" | "danger" | "default" | "accent", text: string }> = {
+      rename: { color: "accent", text: "重命名" },
       trash: { color: "warning", text: "移入回收站" },
       restore: { color: "success", text: "还原" },
       delete: { color: "danger", text: "永久删除" },
     }
-    const config = labels[action] || { color: "default", text: action }
+    const config = labels[action] || { color: "default" as const, text: action }
     return (
-      <div className={clsx("flex items-center px-1.5 h-5 rounded border text-[9px] font-black uppercase tracking-tighter",
-        config.color === 'primary' ? 'bg-primary/5 border-primary/10 text-primary/80' :
-          config.color === 'warning' ? 'bg-warning/5 border-warning/10 text-warning/80' :
-            config.color === 'success' ? 'bg-success/5 border-success/10 text-success/80' :
-              config.color === 'danger' ? 'bg-danger/5 border-danger/10 text-danger/80' : 'bg-default-100/50 border-divider/10 text-default-400')}>
+      <Chip
+        size="sm"
+        variant="soft"
+        color={config.color as any}
+        className="h-5 rounded border-none text-[9px] font-black uppercase tracking-tighter px-1.5"
+      >
         {config.text}
-      </div>
+      </Chip>
     )
   }
 
@@ -183,13 +183,13 @@ export default function OperationLogs() {
         title="操作日志"
         description="记录文件操作和系统行为的审计轨迹"
         actions={
-          <>
+          <div className="flex items-center gap-2">
             {selectedLogs.length > 0 && (
               <Button
                 variant="danger"
                 size="md"
                 onPress={() => setConfirmDelete({ isOpen: true, logIds: selectedLogs })}
-                className="font-medium"
+                className="font-bold flex items-center gap-2 px-4 shadow-none"
               >
                 <TrashBin className="w-[14px] h-[14px]" />
                 删除 ({selectedLogs.length})
@@ -200,12 +200,12 @@ export default function OperationLogs() {
               size="md"
               onPress={() => refetch()}
               isPending={isPending}
-              className="font-medium border border-divider/10 bg-default-50/50 shadow-sm transition-all flex items-center gap-2"
+              className="font-bold border border-divider/10 bg-default-50/50 shadow-sm transition-all flex items-center gap-2 px-4"
             >
               {!isPending && <ArrowsRotateRight className="w-[14px] h-[14px]" />}
               刷新日志
             </Button>
-          </>
+          </div>
         }
       />
 
@@ -241,52 +241,62 @@ export default function OperationLogs() {
       </div>
 
       <div className="flex flex-col gap-4 border-t border-divider/5 pt-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-[10px] font-semibold text-default-400/70 uppercase tracking-widest px-1">审计轨迹</h3>
-          <div className="flex gap-2 items-center">
+        <Surface variant="default" className="flex items-center justify-between p-4 rounded-xl border border-divider/50 shadow-sm">
+          <h3 className="text-[10px] font-black text-default-400 uppercase tracking-widest px-1">审计轨迹</h3>
+          <div className="flex gap-4 items-center">
             <SearchField
-              className="w-[240px]"
+              className="w-[320px]"
               value={searchTerm}
               onChange={setSearchTerm}
             >
-              <SearchField.Group>
-                <SearchField.SearchIcon />
-                <SearchField.Input placeholder="搜索路径..." />
+              <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
+                <SearchField.SearchIcon className="text-default-400" />
+                <SearchField.Input placeholder="搜索路径..." className="text-sm" />
                 <SearchField.ClearButton />
               </SearchField.Group>
             </SearchField>
-            <Select
-              selectedKey={actionFilter}
-              onSelectionChange={(keys) => {
-                if (!keys) return
-                const selected = Array.isArray(Array.from(keys as any))
-                  ? Array.from(keys as any)[0] as string
-                  : keys as string
-                if (selected) {
-                  setActionFilter(selected)
-                }
-              }}
-              className="w-[140px]"
-            >
-              <Select.Trigger>
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  <ListBox.Item key="all">全部</ListBox.Item>
-                  <ListBox.Item key="rename">重命名</ListBox.Item>
-                  <ListBox.Item key="trash">移入回收站</ListBox.Item>
-                  <ListBox.Item key="restore">还原</ListBox.Item>
-                  <ListBox.Item key="delete">永久删除</ListBox.Item>
-                </ListBox>
-              </Select.Popover>
-            </Select>
+
+            <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
+              <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">动作</span>
+              <Select
+                selectedKey={actionFilter}
+                onSelectionChange={(keys) => {
+                  if (!keys) return
+                  const selected = Array.from(keys as any)[0] as string
+                  if (selected) {
+                    setActionFilter(selected)
+                  }
+                }}
+                className="w-[140px]"
+              >
+                <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox className="text-xs">
+                    <ListBox.Item key="all">全部动作</ListBox.Item>
+                    <ListBox.Item key="rename">重命名</ListBox.Item>
+                    <ListBox.Item key="trash">移入回收站</ListBox.Item>
+                    <ListBox.Item key="restore">还原操作</ListBox.Item>
+                    <ListBox.Item key="delete">永久删除</ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            </div>
           </div>
-        </div>
-        <div className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
+        </Surface>
+        <Surface variant="secondary" className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
           {filteredLogs.length === 0 ? (
-            <div className="py-8 text-center text-[11px] text-default-400">暂无操作记录。</div>
+            <div className="py-20 text-center flex flex-col items-center gap-3">
+              <div className="p-4 bg-default-100 rounded-full">
+                <Icon icon="mdi:history" className="w-8 h-8 text-default-400" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-semibold text-foreground">暂无操作记录</p>
+                <p className="text-xs text-default-400">目前没有任何审计轨迹可供查看</p>
+              </div>
+            </div>
           ) : (
             <VirtualizedTable<OperationLog>
               dataSource={filteredLogs}
@@ -296,7 +306,7 @@ export default function OperationLogs() {
               loading={isPending}
             />
           )}
-        </div>
+        </Surface>
       </div>
 
       <Modal isOpen={confirmUndo.isOpen} onOpenChange={(open) => setConfirmUndo({ ...confirmUndo, isOpen: open })}>

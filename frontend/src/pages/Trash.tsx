@@ -1,14 +1,27 @@
 import { useState, useMemo } from 'react'
-import { Button, Chip, Modal, Tooltip, Card, SearchField, Select, ListBox } from "@heroui/react";
-import { TrashBin, ArrowRotateLeft } from '@gravity-ui/icons'
+import clsx from 'clsx'
+import {
+  Button,
+  Chip,
+  Modal,
+  SearchField,
+  Select,
+  ListBox,
+  Surface,
+  Tooltip
+} from "@heroui/react";
 import { Icon } from '@iconify/react'
+import { ArrowRotateLeft, TrashBin } from '@gravity-ui/icons'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { mediaApi } from '@/api/media'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import LoadingWrapper from '@/components/LoadingWrapper'
-import { handleError } from '@/utils/errorHandler'
 import VirtualizedTable from '@/components/VirtualizedTable'
+import { handleError } from '@/utils/errorHandler'
+import { showSuccess } from '@/utils/toast'
 import PageHeader from '@/components/PageHeader'
-import StatCard from '@/components/StatCard'
+import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+
+dayjs.extend(relativeTime)
 
 interface TrashItem {
   id: string
@@ -20,492 +33,367 @@ interface TrashItem {
   file_type: string
 }
 
-interface TrashData {
-  items: TrashItem[]
-  total: number
-}
-
 export default function Trash() {
-  const [selectedKeys, setSelectedKeys] = useState<any>(new Set([]));
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    type: 'restore' | 'delete' | 'cleanup' | null;
-    count: number;
-    targetId?: string;
-  }>({ isOpen: false, type: null, count: 0 });
+  const queryClient = useQueryClient()
+  const [selectedKeys, setSelectedKeys] = useState<any>(new Set([]))
   const [searchTerm, setSearchTerm] = useState('')
-  const [fileTypeFilter, setFileTypeFilter] = useState<string>('all')
-  const [sortBy, setSortBy] = useState<'date' | 'size' | 'name'>('date')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+  const [fileTypeFilter, setFileTypeFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('deleted_at_desc')
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'restore' | 'delete' | 'clear' | null>(null)
 
-  const { data, refetch, isPending } = useQuery<TrashData>({
-    queryKey: ['trash'],
-    queryFn: mediaApi.listTrash
+  const { data, isLoading } = useQuery({
+    queryKey: ['trash', searchTerm, fileTypeFilter, sortBy],
+    queryFn: () => mediaApi.listTrash()
   })
 
-  const selectedCount = useMemo(() => {
-    if (selectedKeys === "all") return data?.items?.length || 0;
-    return selectedKeys.size;
-  }, [selectedKeys, data?.items?.length]);
+  const selectedItems = useMemo(() => {
+    return selectedKeys === 'all'
+      ? new Set(data?.items.map(f => f.id) || [])
+      : (selectedKeys as Set<string>)
+  }, [selectedKeys, data])
 
-  const selectedIds = useMemo(() => {
-    if (selectedKeys === "all") return data?.items?.map(i => i.id) || [];
-    return Array.from(selectedKeys) as string[];
-  }, [selectedKeys, data?.items]);
-
-  // 过滤和搜索
-  const filteredItems = useMemo(() => {
+  const filteredFiles = useMemo(() => {
     if (!data?.items) return []
-    
-    let result = [...data.items]
-    
-    // 搜索过滤
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter(item => 
-        item.original_name.toLowerCase().includes(term)
-      )
+    let files = [...data.items]
+
+    if (searchTerm) {
+      files = files.filter(f => f.original_name.toLowerCase().includes(searchTerm.toLowerCase()))
     }
-    
-    // 文件类型过滤
+
     if (fileTypeFilter !== 'all') {
-      result = result.filter(item => item.file_type === fileTypeFilter)
+      files = files.filter(f => f.file_type === fileTypeFilter)
     }
-    
-    // 排序
-    result.sort((a, b) => {
-      let comparison = 0
-      
-      switch (sortBy) {
-        case 'date':
-          comparison = new Date(a.deleted_at).getTime() - new Date(b.deleted_at).getTime()
-          break
-        case 'size':
-          comparison = a.file_size - b.file_size
-          break
-        case 'name':
-          comparison = a.original_name.localeCompare(b.original_name)
-          break
-      }
-      
-      return sortOrder === 'asc' ? comparison : -comparison
+
+    files.sort((a, b) => {
+      if (sortBy === 'deleted_at_desc') return dayjs(b.deleted_at).unix() - dayjs(a.deleted_at).unix()
+      if (sortBy === 'deleted_at_asc') return dayjs(a.deleted_at).unix() - dayjs(b.deleted_at).unix()
+      if (sortBy === 'name_asc') return a.original_name.localeCompare(b.original_name)
+      if (sortBy === 'size_desc') return b.file_size - a.file_size
+      return 0
     })
-    
-    return result
-  }, [data, searchTerm, fileTypeFilter, sortBy, sortOrder])
+
+    return files
+  }, [data, searchTerm, fileTypeFilter, sortBy])
 
   const restoreMutation = useMutation({
-    mutationFn: mediaApi.restoreFromTrash,
-    onSuccess: () => {
-      setSelectedKeys(new Set([]));
-      refetch();
-      setConfirmModal({ ...confirmModal, isOpen: false });
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map(id => mediaApi.restoreFromTrash({ file_id: id })))
     },
-    onError: (error: any) => handleError(error, 'Restore failed'),
+    onSuccess: () => {
+      showSuccess('文件还原成功')
+      queryClient.invalidateQueries({ queryKey: ['trash'] })
+      setSelectedKeys(new Set([]))
+    },
+    onError: (err: unknown) => handleError(err)
   })
 
   const deleteMutation = useMutation({
-    mutationFn: mediaApi.permanentlyDelete,
-    onSuccess: () => {
-      setSelectedKeys(new Set([]));
-      refetch();
-      setConfirmModal({ ...confirmModal, isOpen: false });
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map(id => mediaApi.permanentlyDelete(id)))
     },
-    onError: (error: any) => handleError(error, 'Deletion failed'),
+    onSuccess: () => {
+      showSuccess('文件已彻底删除')
+      queryClient.invalidateQueries({ queryKey: ['trash'] })
+      setSelectedKeys(new Set([]))
+    },
+    onError: (err: unknown) => handleError(err)
   })
 
-  const cleanupMutation = useMutation({
-    mutationFn: mediaApi.cleanupTrash,
+  const clearMutation = useMutation({
+    mutationFn: () => mediaApi.cleanupTrash(),
     onSuccess: () => {
-      refetch();
-      setConfirmModal({ ...confirmModal, isOpen: false });
+      showSuccess('回收站已清空')
+      queryClient.invalidateQueries({ queryKey: ['trash'] })
+      setSelectedKeys(new Set([]))
     },
-    onError: (error: any) => handleError(error, 'Cleanup failed'),
+    onError: handleError
   })
 
-  const handleConfirmAction = async () => {
-    const { type, targetId } = confirmModal;
-    if (type === 'restore') {
-      if (targetId) {
-        restoreMutation.mutate({ file_id: targetId })
-      } else {
-        for (const id of selectedIds) {
-          await mediaApi.restoreFromTrash({ file_id: id }).catch(() => { })
-        }
-        refetch();
-        setSelectedKeys(new Set([]));
-        setConfirmModal({ ...confirmModal, isOpen: false })
-      }
-    } else if (type === 'delete') {
-      if (targetId) {
-        deleteMutation.mutate(targetId)
-      } else {
-        for (const id of selectedIds) {
-          await mediaApi.permanentlyDelete(id).catch(() => { })
-        }
-        refetch();
-        setSelectedKeys(new Set([]));
-        setConfirmModal({ ...confirmModal, isOpen: false })
-      }
-    } else if (type === 'cleanup') {
-      cleanupMutation.mutate()
-    }
+  const handleAction = (action: 'restore' | 'delete' | 'clear') => {
+    setConfirmAction(action)
+    setIsConfirmOpen(true)
   }
 
-  const columns = [
-    {
-      title: '原文件名',
-      dataIndex: 'original_name',
-      key: 'name',
-      width: 400,
-      render: (text: string) => <span className="font-bold text-[13px] text-foreground/90">{text}</span>
-    },
-    {
-      title: '大小',
-      dataIndex: 'file_size',
-      key: 'size',
-      width: 120,
-      render: (size: number) => <span className="font-mono text-[11px] text-default-500 font-medium">{formatSize(size)}</span>
-    },
-    {
-      title: '类型',
-      dataIndex: 'file_type',
-      key: 'type',
-      width: 120,
-      render: (type: string) => (
-        <Chip size="sm" variant="soft" className="font-bold px-2">
-          {type === 'video' ? '视频' :
-            type === 'subtitle' ? '字幕' :
-              type === 'image' ? '图片' :
-                type === 'nfo' ? '信息' : type}
-        </Chip>
-      )
-    },
-    {
-      title: '删除时间',
-      dataIndex: 'deleted_at',
-      key: 'date',
-      width: 180,
-      render: (date: string) => <span className="text-[11px] text-default-400 font-medium">{new Date(date).toLocaleString()}</span>
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 100,
-      render: (_: any, item: TrashItem) => (
-        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-          <Tooltip>
-            <Button
-              isIconOnly
-              variant="ghost"
-              size="sm"
-              className="hover:scale-110 active:scale-95 transition-all"
-              onPress={() => setConfirmModal({ isOpen: true, type: 'restore', count: 1, targetId: item.id })}
-              isPending={restoreMutation.isPending && confirmModal.targetId === item.id && confirmModal.type === 'restore'}
-            >
-              <ArrowRotateLeft className="w-[14px] h-[14px] text-primary/80" />
-            </Button>
-            <Tooltip.Content>还原</Tooltip.Content>
-          </Tooltip>
-          <Tooltip>
-            <Button
-              isIconOnly
-              variant="ghost"
-              size="sm"
-              className="hover:scale-110 active:scale-95 transition-all"
-              onPress={() => setConfirmModal({ isOpen: true, type: 'delete', count: 1, targetId: item.id })}
-              isPending={deleteMutation.isPending && confirmModal.targetId === item.id && confirmModal.type === 'delete'}
-            >
-              <TrashBin className="w-[14px] h-[14px] text-danger/80" />
-            </Button>
-            <Tooltip.Content>永久删除</Tooltip.Content>
-          </Tooltip>
-        </div>
-      )
-    }
-  ]
+  const confirmExecute = () => {
+    const ids = Array.from(selectedItems) as string[]
+    if (confirmAction === 'restore') restoreMutation.mutate(ids)
+    if (confirmAction === 'delete') deleteMutation.mutate(ids)
+    if (confirmAction === 'clear') clearMutation.mutate(undefined)
+    setIsConfirmOpen(false)
+  }
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
       <PageHeader
         title="回收站"
-        description="管理已删除的文件。文件默认将在回收站中保留 30 天"
+        description="管理已删除的文件，支持还原或彻底删除"
         actions={
-          <>
-            {selectedCount > 0 && (
-              <>
-                <Button
-                  onPress={() => setConfirmModal({ isOpen: true, type: 'restore', count: selectedCount })}
-                  variant="ghost"
-                  size="md"
-                  className="font-medium text-primary border-primary/10 hover:bg-primary/5 px-4"
-                >
-                  <ArrowRotateLeft className="w-4 h-4" />
-                  还原所选 ({selectedCount})
-                </Button>
-                <Button
-                  onPress={() => setConfirmModal({ isOpen: true, type: 'delete', count: selectedCount })}
-                  variant="ghost"
-                  size="md"
-                  className="font-medium text-danger border-danger/10 hover:bg-danger/5 px-4"
-                >
-                  <TrashBin className="w-4 h-4" />
-                  彻底删除
-                </Button>
-              </>
-            )}
+          <div className="flex items-center gap-2 p-1 bg-default-100/50 rounded-xl border border-divider/10 shadow-sm">
             <Button
-              onPress={() => setConfirmModal({ isOpen: true, type: 'cleanup', count: 0 })}
-              isDisabled={(data?.items || []).length === 0}
-              variant="ghost"
-              size="md"
-              className="font-medium text-danger border-danger/5 hover:bg-danger/5 px-4 opacity-70 hover:opacity-100"
+              variant="secondary"
+              isDisabled={selectedItems.size === 0}
+              onPress={() => handleAction('restore')}
+              className="font-bold h-9 px-4 border border-divider/10 bg-background/50 shadow-sm transition-all text-accent hover:text-accent/80"
             >
-              <TrashBin className="w-4 h-4" />
+              <ArrowRotateLeft className="w-4 h-4 mr-2" />
+              还原所选
+            </Button>
+            <Button
+              variant="danger"
+              isDisabled={selectedItems.size === 0}
+              onPress={() => handleAction('delete')}
+              className="font-bold h-9 px-4 shadow-none"
+            >
+              <TrashBin className="w-4 h-4 mr-2" />
+              彻底删除
+            </Button>
+            <div className="w-px h-4 bg-divider/20 mx-1" />
+            <Button
+              variant="ghost"
+              onPress={() => handleAction('clear')}
+              className="font-bold h-9 px-4 border border-divider/10 bg-background/50 shadow-sm transition-all text-danger/80 hover:text-danger"
+            >
+              <Icon icon="mdi:trash-can-sweep-outline" className="w-4 h-4 mr-2" />
               清空回收站
             </Button>
-          </>
+          </div>
         }
       />
 
-      {/* 统计卡片 */}
-      {data && data.items.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard
-            label="文件总数"
-            value={data.total}
-            icon={<TrashBin className="w-6 h-6" />}
-            color="danger"
-            description="回收站中的文件数量"
-          />
-          <StatCard
-            label="占用空间"
-            value={formatSize(data.items.reduce((sum, item) => sum + item.file_size, 0))}
-            icon={<Icon icon="mdi:harddisk" className="w-6 h-6" />}
-            color="warning"
-            description="回收站占用存储"
-          />
-          <StatCard
-            label="可恢复"
-            value={data.items.length}
-            icon={<ArrowRotateLeft className="w-6 h-6" />}
-            color="primary"
-            description="可恢复的文件数"
-          />
-        </div>
-      )}
+      <Surface variant="default" className="rounded-xl p-4 border border-divider/50 shadow-sm bg-background/50">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-black uppercase tracking-widest text-foreground/70 shrink-0">项目列表</h3>
+            <Chip color="accent" variant="soft" className="h-5 text-[10px] font-bold px-2 uppercase tracking-tight">
+              {selectedItems.size} / {data?.items.length || 0} 已选
+            </Chip>
+          </div>
 
-      {/* 搜索和筛选栏 */}
-      {data && data.items.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3">
-          <SearchField
-            className="flex-1 min-w-[200px]"
-            value={searchTerm}
-            onChange={setSearchTerm}
-          >
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder="搜索文件名..." />
-              <SearchField.ClearButton />
-            </SearchField.Group>
-          </SearchField>
-          
-          <Select
-            selectedKey={fileTypeFilter}
-            onSelectionChange={(keys) => {
-              if (!keys) return
-              const selected = Array.isArray(Array.from(keys as any)) 
-                ? Array.from(keys as any)[0] as string
-                : keys as string
-              if (selected) {
-                setFileTypeFilter(selected)
-              }
-            }}
-            className="w-[140px]"
-          >
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                <ListBox.Item key="all">全部类型</ListBox.Item>
-                <ListBox.Item key="video">视频</ListBox.Item>
-                <ListBox.Item key="subtitle">字幕</ListBox.Item>
-                <ListBox.Item key="image">图片</ListBox.Item>
-                <ListBox.Item key="nfo">信息</ListBox.Item>
-              </ListBox>
-            </Select.Popover>
-          </Select>
-          
-          <Select
-            selectedKey={`${sortBy}-${sortOrder}`}
-            onSelectionChange={(keys) => {
-              if (!keys) return
-              const selected = Array.isArray(Array.from(keys as any)) 
-                ? Array.from(keys as any)[0] as string
-                : keys as string
-              if (selected) {
-                const [key, order] = selected.split('-')
-                setSortBy(key as 'date' | 'size' | 'name')
-                setSortOrder(order as 'asc' | 'desc')
-              }
-            }}
-            className="w-[160px]"
-          >
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                <ListBox.Item key="date-desc">删除时间 (新→旧)</ListBox.Item>
-                <ListBox.Item key="date-asc">删除时间 (旧→新)</ListBox.Item>
-                <ListBox.Item key="size-desc">文件大小 (大→小)</ListBox.Item>
-                <ListBox.Item key="size-asc">文件大小 (小→大)</ListBox.Item>
-                <ListBox.Item key="name-asc">文件名 (A→Z)</ListBox.Item>
-                <ListBox.Item key="name-desc">文件名 (Z→A)</ListBox.Item>
-              </ListBox>
-            </Select.Popover>
-          </Select>
-          
-          <div className="flex gap-1 ml-auto">
-            <Button
-              isIconOnly
-              size="sm"
-              variant={viewMode === 'list' ? 'primary' : 'ghost'}
-              onPress={() => setViewMode('list')}
+          <div className="flex-1 flex items-center gap-4 w-full">
+            <SearchField
+              value={searchTerm}
+              onChange={setSearchTerm}
+              className="flex-1"
             >
-              <Icon icon="mdi:view-list" className="w-4 h-4" />
-            </Button>
-            <Button
-              isIconOnly
-              size="sm"
-              variant={viewMode === 'grid' ? 'primary' : 'ghost'}
-              onPress={() => setViewMode('grid')}
-            >
-              <Icon icon="mdi:view-grid" className="w-4 h-4" />
-            </Button>
+              <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-accent/50 transition-colors h-9">
+                <SearchField.Input placeholder="搜索回收站内容..." className="text-sm" />
+                <SearchField.ClearButton />
+              </SearchField.Group>
+            </SearchField>
+
+            <div className="flex items-center gap-2 px-1 py-1 rounded-lg bg-default-100/50 border border-divider/10">
+              <Select
+                selectedKey={fileTypeFilter}
+                onSelectionChange={(keys) => {
+                  if (!keys) return
+                  const selected = Array.from(keys as any)[0] as string
+                  if (selected) setFileTypeFilter(selected)
+                }}
+                className="w-24 border-none"
+              >
+                <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox className="text-xs">
+                    <ListBox.Item key="all">全部类型</ListBox.Item>
+                    <ListBox.Item key="video">视频文件</ListBox.Item>
+                    <ListBox.Item key="nfo">元数据</ListBox.Item>
+                    <ListBox.Item key="image">图片海报</ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+              <div className="w-px h-4 bg-divider/20" />
+              <Select
+                selectedKey={sortBy}
+                onSelectionChange={(keys) => {
+                  if (!keys) return
+                  const selected = Array.from(keys as any)[0] as string
+                  if (selected) setSortBy(selected)
+                }}
+                className="w-32 border-none"
+              >
+                <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox className="text-xs">
+                    <ListBox.Item key="deleted_at_desc">删除时间 ↓</ListBox.Item>
+                    <ListBox.Item key="deleted_at_asc">删除时间 ↑</ListBox.Item>
+                    <ListBox.Item key="name_asc">名称 A-Z</ListBox.Item>
+                    <ListBox.Item key="size_desc">文件大小 ↓</ListBox.Item>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
+            </div>
           </div>
         </div>
-      )}
+      </Surface>
 
-      <div className="flex flex-col gap-4">
-        {(!data || data.items.length === 0) ? (
-          <div className="flex flex-col items-center justify-center py-20 border border-divider/10 rounded-2xl bg-default-50/30">
-            <div className="p-6 bg-default-100 rounded-full mb-4">
-              <TrashBin className="w-12 h-12 text-default-300" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">回收站为空</h3>
-            <p className="text-sm text-default-400">已删除的文件将显示在这里</p>
+      <Surface variant="default" className="rounded-2xl overflow-hidden border border-divider/50 shadow-sm bg-background/50 h-[600px] flex flex-col">
+        {!isLoading && filteredFiles.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-20 px-4">
+            <Surface variant="secondary" className="p-8 rounded-full mb-6 border border-divider/10 bg-default-50/30">
+              <Icon icon="mdi:trash-can-outline" className="w-16 h-16 text-default-200 opacity-50" />
+            </Surface>
+            <h3 className="text-lg font-bold text-foreground/70 mb-2">回收站为空</h3>
+            <p className="text-sm text-default-400 font-medium max-w-xs text-center">
+              这里没有任何已删除的项目。您可以放心地继续管理您的媒体库。
+            </p>
           </div>
         ) : (
-          <LoadingWrapper loading={isPending}>
-            {viewMode === 'list' ? (
-              <div className="h-[600px]">
-                <VirtualizedTable<TrashItem>
-                  columns={columns}
-                  dataSource={filteredItems}
-                  height={600}
-                  selectionMode="multiple"
-                  selectedKeys={selectedKeys}
-                  onSelectionChange={setSelectedKeys}
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredItems.map((item: TrashItem) => (
-                  <Card key={item.id} className="overflow-hidden">
-                    <Card.Content className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate mb-2">{item.original_name}</p>
-                          <div className="flex items-center gap-2 mb-3">
-                            <Chip size="sm" variant="soft" className="font-bold px-2">
-                              {item.file_type === 'video' ? '视频' :
-                                item.file_type === 'subtitle' ? '字幕' :
-                                  item.file_type === 'image' ? '图片' :
-                                    item.file_type === 'nfo' ? '信息' : item.file_type}
-                            </Chip>
-                            <span className="text-xs text-muted">{formatSize(item.file_size)}</span>
-                          </div>
-                          <p className="text-xs text-default-400">删除于 {new Date(item.deleted_at).toLocaleString()}</p>
-                        </div>
-                        <div className="flex gap-1">
-                          <Tooltip>
-                            <Button
-                              isIconOnly
-                              variant="ghost"
-                              size="sm"
-                              onPress={() => setConfirmModal({ isOpen: true, type: 'restore', count: 1, targetId: item.id })}
-                              isPending={restoreMutation.isPending && confirmModal.targetId === item.id && confirmModal.type === 'restore'}
-                            >
-                              <ArrowRotateLeft className="w-[14px] h-[14px] text-primary/80" />
-                            </Button>
-                            <Tooltip.Content>还原</Tooltip.Content>
-                          </Tooltip>
-                          <Tooltip>
-                            <Button
-                              isIconOnly
-                              variant="ghost"
-                              size="sm"
-                              onPress={() => setConfirmModal({ isOpen: true, type: 'delete', count: 1, targetId: item.id })}
-                              isPending={deleteMutation.isPending && confirmModal.targetId === item.id && confirmModal.type === 'delete'}
-                            >
-                              <TrashBin className="w-[14px] h-[14px] text-danger/80" />
-                            </Button>
-                            <Tooltip.Content>永久删除</Tooltip.Content>
-                          </Tooltip>
-                        </div>
+          <div className="flex-1 min-h-0">
+            <VirtualizedTable
+              dataSource={filteredFiles}
+              rowHeight={72}
+              onSelectionChange={setSelectedKeys}
+              selectedKeys={selectedKeys}
+              selectionMode="multiple"
+              columns={[
+                {
+                  title: '文件名',
+                  dataIndex: 'original_name',
+                  width: 400,
+                  render: (_: any, file: TrashItem) => (
+                    <div className="flex flex-col gap-1 py-1">
+                      <div className="flex items-center gap-2">
+                        <Icon
+                          icon={file.file_type === 'video' ? 'mdi:movie-outline' : 'mdi:file-outline'}
+                          className={clsx("w-4 h-4", file.file_type === 'video' ? "text-accent" : "text-default-400")}
+                        />
+                        <span className="text-[13px] font-bold truncate text-foreground/90">{file.original_name}</span>
                       </div>
-                    </Card.Content>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </LoadingWrapper>
+                      <span className="text-[10px] text-default-400 truncate font-medium">{file.original_path}</span>
+                    </div>
+                  )
+                },
+                {
+                  title: '大小',
+                  dataIndex: 'file_size',
+                  width: 120,
+                  render: (_: any, file: TrashItem) => (
+                    <span className="text-[11px] font-bold text-default-500 tabular-nums">
+                      {formatSize(file.file_size)}
+                    </span>
+                  )
+                },
+                {
+                  title: '删除时间',
+                  dataIndex: 'deleted_at',
+                  width: 160,
+                  render: (_: any, file: TrashItem) => (
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-bold text-default-600">
+                        {dayjs(file.deleted_at).fromNow()}
+                      </span>
+                      <span className="text-[10px] text-default-400 font-medium tracking-tight">
+                        {dayjs(file.deleted_at).format('YYYY-MM-DD HH:mm')}
+                      </span>
+                    </div>
+                  )
+                },
+                {
+                  title: '',
+                  dataIndex: 'id',
+                  width: 120,
+                  render: (_: any, file: TrashItem) => (
+                    <div className="flex justify-end pr-4">
+                      <Tooltip closeDelay={0}>
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="secondary"
+                          onPress={() => restoreMutation.mutate([file.id])}
+                          className="h-8 w-8 min-w-0 bg-transparent hover:bg-default-100 text-accent"
+                        >
+                          <ArrowRotateLeft className="w-4 h-4" />
+                        </Button>
+                        <Tooltip.Content>还原文件</Tooltip.Content>
+                      </Tooltip>
+                      <Tooltip closeDelay={0}>
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="secondary"
+                          onPress={() => deleteMutation.mutate([file.id])}
+                          className="h-8 w-8 min-w-0 bg-transparent hover:bg-default-100 text-danger/70"
+                        >
+                          <TrashBin className="w-4 h-4" />
+                        </Button>
+                        <Tooltip.Content>彻底删除</Tooltip.Content>
+                      </Tooltip>
+                    </div>
+                  )
+                }
+              ]}
+            />
+          </div>
         )}
-      </div>
+      </Surface>
 
-      {/* Confirm Modal */}
-      <Modal isOpen={confirmModal.isOpen} onOpenChange={(open) => setConfirmModal({ ...confirmModal, isOpen: open })}>
-        <Modal.Backdrop variant="blur" />
-        <Modal.Container>
+      <Modal isOpen={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+        <Modal.Backdrop />
+        <Modal.Container size="sm" scroll="inside">
           <Modal.Dialog>
-            <Modal.Header className="flex flex-col gap-1 font-medium">确认操作</Modal.Header>
-            <Modal.Body>
-              <p className="text-sm text-default-500">
-                {confirmModal.type === 'cleanup'
-                  ? "确定要清空回收站吗？此操作不可恢复。"
-                  : `确定要${confirmModal.type === 'delete' ? '彻底删除' : '还原'}选中的 ${confirmModal.targetId ? 1 : selectedCount} 个文件吗？`}
+            <Modal.Header>
+              <div className={clsx(
+                "w-1.5 h-1.5 rounded-full animate-pulse",
+                confirmAction === 'restore' ? "bg-accent" : "bg-danger"
+              )} />
+              <span className="text-sm font-black uppercase tracking-widest text-foreground/90">确认操作</span>
+            </Modal.Header>
+            <Modal.Body className="px-6 pb-6">
+              <p className="text-sm font-medium text-foreground/80 leading-relaxed mb-4">
+                {confirmAction === 'restore'
+                  ? `确认要还原选中的 ${selectedItems.size} 个文件吗？`
+                  : confirmAction === 'delete'
+                    ? `将永久删除选中的 ${selectedItems.size} 个文件，此操作不可撤销！`
+                    : '确认要清空回收站中所有的文件吗？此操作不可撤销！'}
               </p>
-              {(confirmModal.type === 'restore' || confirmModal.type === 'delete') && !confirmModal.targetId && selectedCount > 0 && (
-                <div className="max-h-40 border border-divider/10 bg-default-50/50 rounded-xl p-3 mt-4 overflow-y-auto scrollbar-hide">
-                  {(data?.items || []).filter(item => selectedIds.includes(item.id)).map(f => (
-                    <div key={f.id} className="text-[11px] font-medium py-1.5 border-b border-divider/5 last:border-0 text-foreground/70">{f.original_name}</div>
-                  ))}
+              {confirmAction !== 'clear' && selectedItems.size > 0 && (
+                <div className="p-3 rounded-xl bg-default-100/30 border border-divider/10 max-h-32 overflow-y-auto">
+                  <div className="flex flex-col gap-1.5">
+                    {Array.from(selectedItems).slice(0, 3).map((id: any) => {
+                      const fileId = id as string
+                      const file = data?.items.find((f: TrashItem) => f.id === fileId)
+                      return (
+                        <div key={fileId} className="text-[11px] font-bold text-foreground/60 truncate">
+                          • {file?.original_name || fileId}
+                        </div>
+                      )
+                    })}
+                    {selectedItems.size > 3 && (
+                      <div className="text-[10px] text-default-400 font-black uppercase tracking-widest mt-1">
+                        ... 以及另外 {selectedItems.size - 3} 个项目
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </Modal.Body>
-            <Modal.Footer className="pt-4">
-              <Button variant="ghost" size="md" className="font-medium px-6" onPress={() => setConfirmModal({ ...confirmModal, isOpen: false })}>取消</Button>
+            <Modal.Footer className="px-6 pb-6 pt-0 flex gap-3">
               <Button
-                variant={confirmModal.type === 'restore' ? 'primary' : 'danger'}
-                size="md"
-                className="font-medium px-10 shadow-lg"
-                onPress={() => {
-                  handleConfirmAction();
-                }}
-                isPending={restoreMutation.isPending || deleteMutation.isPending || cleanupMutation.isPending}
+                variant="secondary"
+                onPress={() => setIsConfirmOpen(false)}
+                className="flex-1 font-bold h-10 min-h-0 border border-divider/10"
               >
-                确认
+                取消
+              </Button>
+              <Button
+                variant={confirmAction === 'restore' ? 'primary' : 'danger'}
+                onPress={confirmExecute}
+                className="flex-1 font-bold h-10 min-h-0 shadow-none px-8"
+              >
+                确认操作
               </Button>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
       </Modal>
-    </div >
+    </div>
   )
 }
 

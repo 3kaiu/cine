@@ -1,10 +1,11 @@
 import { ReactNode } from 'react'
+import { Surface } from "@heroui/react"
 
 interface StatCardProps {
   label: string
   value: string | number
   icon: ReactNode
-  color?: 'primary' | 'secondary' | 'accent' | 'warning' | 'danger' | 'success'
+  color?: 'primary' | 'secondary' | 'accent' | 'warning' | 'danger' | 'success' | 'default'
   trend?: {
     value: number
     isPositive: boolean
@@ -15,84 +16,85 @@ interface StatCardProps {
 
 const colorClasses = {
   primary: {
-    bg: 'bg-gradient-to-t from-primary/5 to-card',
-    border: 'border-primary/10',
-    iconBg: 'bg-primary/10',
-    iconText: 'text-primary',
-    trendBg: 'bg-primary/5',
-    trendText: 'text-primary'
+    iconBg: 'bg-primary/5 text-primary',
+    trendBg: 'bg-primary/5 text-primary',
+    dot: 'bg-primary'
   },
   secondary: {
-    bg: 'bg-gradient-to-t from-secondary/5 to-card',
-    border: 'border-secondary/10',
-    iconBg: 'bg-secondary/10',
-    iconText: 'text-secondary',
-    trendBg: 'bg-secondary/5',
-    trendText: 'text-secondary'
+    iconBg: 'bg-secondary/5 text-secondary',
+    trendBg: 'bg-secondary/5 text-secondary',
+    dot: 'bg-secondary'
   },
   accent: {
-    bg: 'bg-gradient-to-t from-accent/5 to-card',
-    border: 'border-accent/10',
-    iconBg: 'bg-accent/10',
-    iconText: 'text-accent',
-    trendBg: 'bg-accent/5',
-    trendText: 'text-accent'
+    iconBg: 'bg-accent/5 text-accent',
+    trendBg: 'bg-accent/5 text-accent',
+    dot: 'bg-accent'
   },
   warning: {
-    bg: 'bg-gradient-to-t from-warning/5 to-card',
-    border: 'border-warning/10',
-    iconBg: 'bg-warning/10',
-    iconText: 'text-warning',
-    trendBg: 'bg-warning/5',
-    trendText: 'text-warning'
+    iconBg: 'bg-warning/5 text-warning',
+    trendBg: 'bg-warning/5 text-warning',
+    dot: 'bg-warning'
   },
   danger: {
-    bg: 'bg-gradient-to-t from-danger/5 to-card',
-    border: 'border-danger/10',
-    iconBg: 'bg-danger/10',
-    iconText: 'text-danger',
-    trendBg: 'bg-danger/5',
-    trendText: 'text-danger'
+    iconBg: 'bg-danger/5 text-danger',
+    trendBg: 'bg-danger/5 text-danger',
+    dot: 'bg-danger'
   },
   success: {
-    bg: 'bg-gradient-to-t from-success/5 to-card',
-    border: 'border-success/10',
-    iconBg: 'bg-success/10',
-    iconText: 'text-success',
-    trendBg: 'bg-success/5',
-    trendText: 'text-success'
+    iconBg: 'bg-success/5 text-success',
+    trendBg: 'bg-success/5 text-success',
+    dot: 'bg-success'
+  },
+  default: {
+    iconBg: 'bg-default-100 text-default-600',
+    trendBg: 'bg-default-100 text-default-600',
+    dot: 'bg-default-400'
   }
 }
 
 export default function StatCard({ label, value, icon, color = 'primary', trend, description, className = '' }: StatCardProps) {
-  const colors = colorClasses[color]
+  const colors = colorClasses[color] || colorClasses.default
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border ${colors.border} ${colors.bg} shadow-xs transition-all duration-200 hover:shadow-sm ${className}`}>
-      <div className="p-5 space-y-3">
+    <Surface
+      variant="default"
+      className={`relative overflow-hidden rounded-xl border border-divider/50 bg-background/50 transition-all duration-200 hover:border-divider ${className}`}
+    >
+      <div className="p-5 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 space-y-1.5">
-            <p className="text-[11px] font-medium text-default-500 uppercase tracking-wider">{label}</p>
-            <p className="text-[22px] font-semibold text-foreground tabular-nums tracking-tight leading-none">{value}</p>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-1">
+              <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+              <p className="text-[10px] font-black text-default-400 uppercase tracking-widest">{label}</p>
+            </div>
+            <p className="text-2xl font-bold text-foreground tabular-nums tracking-tight">
+              {value}
+            </p>
           </div>
-          <div className={`${colors.iconText} shrink-0`}>
-            {icon}
+          <div className={`p-2 rounded-lg ${colors.iconBg} shrink-0`}>
+            <div className="w-5 h-5 flex items-center justify-center">
+              {icon}
+            </div>
           </div>
         </div>
-        
-        {trend && (
-          <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md ${colors.trendBg} ${colors.trendText} text-[11px] font-medium`}>
-            <span className="text-[10px]">{trend.isPositive ? '↑' : '↓'}</span>
-            <span>{Math.abs(trend.value)}%</span>
+
+        {(trend || description) && (
+          <div className="flex items-center gap-3 pt-3 border-t border-divider/10">
+            {trend && (
+              <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter ${colors.trendBg}`}>
+                <span>{trend.isPositive ? '↑' : '↓'}</span>
+                <span>{Math.abs(trend.value)}%</span>
+              </div>
+            )}
+
+            {description && (
+              <p className="text-[10px] font-bold text-default-400 uppercase tracking-wider truncate">
+                {description}
+              </p>
+            )}
           </div>
         )}
-        
-        {description && (
-          <p className="text-[11px] text-default-400 leading-relaxed">
-            {description}
-          </p>
-        )}
       </div>
-    </div>
+    </Surface>
   )
 }
