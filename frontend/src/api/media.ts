@@ -183,6 +183,17 @@ export const mediaApi = {
       files: MediaFile[]
     }>>('/dedupe/movies'),
 
+  // 查找相似文件 (模糊匹配)
+  findSimilarFiles: (params?: { threshold?: number }) =>
+    api.get<{
+      groups: Array<{
+        representative_name: string
+        similarity: number
+        files: MediaFile[]
+      }>
+      total_groups: number
+    }>('/dedupe/similar', { params }),
+
   // 查找大文件
   findLargeFiles: () =>
     api.get<MediaFile[]>('/large-files'),

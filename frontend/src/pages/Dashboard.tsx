@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, Chip } from '@heroui/react'
 import { Icon } from '@iconify/react'
 import axios from 'axios'
@@ -34,8 +34,8 @@ export default function Dashboard() {
 
   const fetchMetrics = async () => {
     try {
-      const response = await axios.get<DashboardMetrics>('/api/metrics')
-      setMetrics(response.data)
+      const response = await axios.get('/api/metrics')
+      setMetrics(response.data as DashboardMetrics)
       setLoading(false)
     } catch (error) {
       console.error('Failed to fetch metrics:', error)
@@ -65,8 +65,11 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">性能仪表盘</h1>
           <p className="text-default-500 text-sm">系统实时运行状态与性能指标</p>
         </div>
-        <Chip variant="flat" color="primary" startContent={<Icon icon="lucide:clock" />}>
-          运行时间: {formatUptime(metrics.uptime_seconds)}
+        <Chip variant="soft" color="accent">
+          <div className="flex items-center gap-2">
+            <Icon icon="lucide:clock" />
+            <span>运行时间: {formatUptime(metrics.uptime_seconds)}</span>
+          </div>
         </Chip>
       </div>
 

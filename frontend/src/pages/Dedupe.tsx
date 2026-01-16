@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { Button, Chip, Surface, SearchField, Select, Popover, ListBox, Spinner } from "@heroui/react";
+import { Button, Chip, Surface, SearchField, Select, Popover, ListBox, Tabs } from "@heroui/react";
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Icon } from '@iconify/react'
 import {
@@ -17,19 +17,21 @@ import clsx from 'clsx'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
 
-interface DuplicateMovieGroup {
-  tmdb_id: number
+interface DedupeGroup {
+  id: string
   title: string
   files: MediaFile[]
+  similarity?: number
 }
 
 type FlatItem =
-  | { type: 'header'; group: DuplicateMovieGroup; isExpanded: boolean; isSelected: boolean }
+  | { type: 'header'; group: DedupeGroup; isExpanded: boolean; isSelected: boolean }
   | { type: 'best'; file: MediaFile }
   | { type: 'redundant'; file: MediaFile; bestFile: MediaFile };
 
 
 type ViewMode = 'list' | 'grid' | 'compact'
+type DedupeMode = 'hash' | 'fuzzy'
 type SortBy = 'space' | 'count' | 'quality'
 type SortOrder = 'asc' | 'desc'
 
@@ -40,9 +42,11 @@ interface FilterOptions {
 }
 
 export default function Dedupe() {
+  const [dedupeMode, setDedupeMode] = useState<DedupeMode>('hash')
+  const [similarityThreshold, setSimilarityThreshold] = useState(0.8)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set())
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [sortBy, setSortBy] = useState<SortBy>('space')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
@@ -54,10 +58,24 @@ export default function Dedupe() {
   const [showFilterPopover, setShowFilterPopover] = useState(false)
 
   const { data, refetch, isPending } = useQuery({
-    queryKey: ['duplicate-movies'],
+    queryKey: ['duplicates', dedupeMode, similarityThreshold],
     queryFn: async () => {
-      const res = await mediaApi.findDuplicateMovies()
-      return res
+      if (dedupeMode === 'hash') {
+        const res = await mediaApi.findDuplicateMovies()
+        return res.map(g => ({
+          id: String(g.tmdb_id),
+          title: g.title,
+          files: g.files
+        })) as DedupeGroup[]
+      } else {
+        const res = await mediaApi.findSimilarFiles({ threshold: similarityThreshold })
+        return res.groups.map((g, idx) => ({
+          id: `fuzzy-${idx}`,
+          title: g.representative_name,
+          files: g.files,
+          similarity: g.similarity
+        })) as DedupeGroup[]
+      }
     },
     enabled: false,
   })
@@ -103,7 +121,7 @@ export default function Dedupe() {
     // 搜索过滤
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase()
-      result = result.filter((group: DuplicateMovieGroup) =>
+      result = result.filter((group: DedupeGroup) =>
         group.title.toLowerCase().includes(term) ||
         group.files.some(f => f.name.toLowerCase().includes(term))
       )
@@ -111,7 +129,7 @@ export default function Dedupe() {
 
     // 分辨率过滤
     if (filterOptions.resolution.length > 0) {
-      result = result.filter((group: DuplicateMovieGroup) => {
+      result = result.filter((group: DedupeGroup) => {
         return group.files.some(file => {
           const vInfo = file.video_info
           if (!vInfo?.width || !vInfo?.height) return false
@@ -129,7 +147,7 @@ export default function Dedupe() {
 
     // HDR类型过滤
     if (filterOptions.hdrType.length > 0) {
-      result = result.filter((group: DuplicateMovieGroup) => {
+      result = result.filter((group: DedupeGroup) => {
         return group.files.some(file => {
           const vInfo = file.video_info
           if (!vInfo) return false
@@ -145,7 +163,7 @@ export default function Dedupe() {
 
     // 中文字幕过滤
     if (filterOptions.hasChineseSubtitle !== null) {
-      result = result.filter((group: DuplicateMovieGroup) => {
+      result = result.filter((group: DedupeGroup) => {
         return group.files.some(file =>
           file.video_info?.has_chinese_subtitle === filterOptions.hasChineseSubtitle
         )
@@ -158,7 +176,7 @@ export default function Dedupe() {
   // 排序
   const sortedData = useMemo(() => {
     const result = [...filteredData]
-    result.sort((a: DuplicateMovieGroup, b: DuplicateMovieGroup) => {
+    result.sort((a: DedupeGroup, b: DedupeGroup) => {
       let aValue = 0
       let bValue = 0
 
@@ -185,10 +203,10 @@ export default function Dedupe() {
     if (!sortedData || sortedData.length === 0) return null
 
     const groups = sortedData.length
-    const totalDuplicates = sortedData.reduce((acc: number, group: DuplicateMovieGroup) =>
+    const totalDuplicates = sortedData.reduce((acc: number, group: DedupeGroup) =>
       acc + Math.max(0, group.files.length - 1), 0
     )
-    const totalWastedSpace = sortedData.reduce((acc: number, group: DuplicateMovieGroup) => {
+    const totalWastedSpace = sortedData.reduce((acc: number, group: DedupeGroup) => {
       if (group.files.length <= 1) return acc
       const sorted = [...group.files].sort((a, b) =>
         (b.quality_score || 0) - (a.quality_score || 0)
@@ -203,8 +221,8 @@ export default function Dedupe() {
   // 获取选中组的所有冗余文件
   const getSelectedRedundantFiles = () => {
     const files: string[] = []
-    sortedData?.forEach((group: DuplicateMovieGroup) => {
-      if (selectedGroups.has(group.tmdb_id)) {
+    sortedData?.forEach((group: DedupeGroup) => {
+      if (selectedGroups.has(group.id)) {
         const sorted = [...group.files].sort((a, b) =>
           (b.quality_score || 0) - (a.quality_score || 0)
         )
@@ -228,7 +246,7 @@ export default function Dedupe() {
     if (selectedGroups.size === sortedData?.length) {
       setSelectedGroups(new Set())
     } else {
-      setSelectedGroups(new Set(sortedData?.map((g: DuplicateMovieGroup) => g.tmdb_id) || []))
+      setSelectedGroups(new Set(sortedData?.map((g: DedupeGroup) => g.id) || []))
     }
   }
 
@@ -236,12 +254,12 @@ export default function Dedupe() {
     if (expandedKeys.size === sortedData?.length) {
       setExpandedKeys(new Set())
     } else {
-      setExpandedKeys(new Set(sortedData?.map((g: DuplicateMovieGroup) => String(g.tmdb_id)) || []))
+      setExpandedKeys(new Set(sortedData?.map((g: DedupeGroup) => g.id) || []))
     }
   }
 
   const handleSmartSelect = () => {
-    setSelectedGroups(new Set(sortedData?.map((g: DuplicateMovieGroup) => g.tmdb_id) || []))
+    setSelectedGroups(new Set(sortedData?.map((g: DedupeGroup) => g.id) || []))
   }
 
   // 快捷键支持
@@ -297,10 +315,10 @@ export default function Dedupe() {
 
     const items: FlatItem[] = [];
 
-    sortedData.forEach((group: DuplicateMovieGroup) => {
-      const groupKey = String(group.tmdb_id);
+    sortedData.forEach((group: DedupeGroup) => {
+      const groupKey = group.id;
       const isExpanded = expandedKeys.has(groupKey);
-      const isSelected = selectedGroups.has(group.tmdb_id);
+      const isSelected = selectedGroups.has(group.id);
 
       items.push({
         type: 'header',
@@ -388,6 +406,63 @@ export default function Dedupe() {
           </>
         }
       />
+
+      <div className="flex items-center justify-between gap-4">
+        <Tabs
+          aria-label="去重模式"
+          selectedKey={dedupeMode}
+          onSelectionChange={(key) => setDedupeMode(key as DedupeMode)}
+          className="w-full sm:w-auto"
+        >
+          <Tabs.ListContainer>
+            <Tabs.List>
+              <Tabs.Tab id="hash">
+                <Tabs.Indicator />
+                <div className="flex items-center gap-2">
+                  <Icon icon="mdi:file-certificate" className="w-4 h-4" />
+                  <span>精确匹配 (Hash/TMDB)</span>
+                </div>
+              </Tabs.Tab>
+              <Tabs.Tab id="fuzzy">
+                <Tabs.Indicator />
+                <div className="flex items-center gap-2">
+                  <Icon icon="mdi:text-search" className="w-4 h-4" />
+                  <span>模糊匹配 (文件名)</span>
+                </div>
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.ListContainer>
+        </Tabs>
+
+        {dedupeMode === 'fuzzy' && (
+          <div className="flex items-center gap-2 bg-surface p-1 px-3 rounded-lg border border-divider/50">
+            <span className="text-xs font-medium text-default-500">相似度阈值</span>
+            <Select
+              selectedKey={String(similarityThreshold)}
+              onSelectionChange={(keys) => {
+                if (!keys) return
+                const selected = Array.from(keys as any)[0] as string
+                setSimilarityThreshold(parseFloat(selected))
+              }}
+              className="w-[100px]"
+            >
+              <Select.Trigger className="h-7 min-h-0 py-0">
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  <ListBox.Item key="0.95">0.95 (极高)</ListBox.Item>
+                  <ListBox.Item key="0.9">0.90 (高)</ListBox.Item>
+                  <ListBox.Item key="0.8">0.80 (标准)</ListBox.Item>
+                  <ListBox.Item key="0.7">0.70 (宽松)</ListBox.Item>
+                  <ListBox.Item key="0.6">0.60 (非常宽松)</ListBox.Item>
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          </div>
+        )}
+      </div>
 
       {/* 统计卡片 */}
       {stats && (
@@ -638,8 +713,8 @@ export default function Dedupe() {
                           )}
                           onClick={() => {
                             const newExpanded = new Set(expandedKeys);
-                            if (isExpanded) newExpanded.delete(String(group.tmdb_id));
-                            else newExpanded.add(String(group.tmdb_id));
+                            if (isExpanded) newExpanded.delete(group.id);
+                            else newExpanded.add(group.id);
                             setExpandedKeys(newExpanded);
                           }}
                         >
@@ -651,9 +726,9 @@ export default function Dedupe() {
                                   e.stopPropagation();
                                   const newSelected = new Set(selectedGroups)
                                   if (isSelected) {
-                                    newSelected.delete(group.tmdb_id)
+                                    newSelected.delete(group.id)
                                   } else {
-                                    newSelected.add(group.tmdb_id)
+                                    newSelected.add(group.id)
                                   }
                                   setSelectedGroups(newSelected)
                                 }}
@@ -670,7 +745,9 @@ export default function Dedupe() {
                               <div className="flex flex-col gap-1 text-left min-w-0 flex-1">
                                 <span className="text-base font-semibold truncate">{group.title}</span>
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-muted">TMDB ID: {group.tmdb_id}</span>
+                                  <span className="text-xs text-muted">
+                                    {dedupeMode === 'hash' ? `TMDB ID: ${group.id}` : `相似度: ${((group.similarity || 0) * 100).toFixed(1)}%`}
+                                  </span>
                                   <Chip variant="soft" size="sm" color="warning">
                                     {redundantCount} 个冗余
                                   </Chip>
