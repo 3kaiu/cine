@@ -155,7 +155,16 @@ pub async fn find_large_files(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::models::MediaFile>>, (axum::http::StatusCode, String)> {
     let files = sqlx::query_as::<_, crate::models::MediaFile>(
-        "SELECT * FROM media_files WHERE size > ? ORDER BY size DESC LIMIT 100",
+        r#"
+        SELECT
+            id, path, name, size, file_type,
+            hash_xxhash, hash_md5, tmdb_id, quality_score,
+            created_at, updated_at, last_modified, video_info, metadata
+        FROM media_files
+        WHERE size > ?
+        ORDER BY size DESC
+        LIMIT 100
+        "#,
     )
     .bind(10_000_000_000i64) // 10GB
     .fetch_all(&state.db)

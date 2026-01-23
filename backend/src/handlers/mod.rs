@@ -12,6 +12,7 @@ pub mod dedupe;
 pub mod hash;
 pub mod metrics;
 pub mod nfo;
+pub mod queue_stats;
 pub mod rename;
 pub mod scan;
 pub mod scrape;

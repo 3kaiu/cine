@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use sysinfo::{System, SystemExt};
 
 /// 缓存项
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,9 +150,26 @@ pub struct FileHashCache {
 
 impl FileHashCache {
     pub fn new() -> Self {
+        // 基于可用内存动态调整缓存大小
+        let cache_size = Self::calculate_optimal_cache_size();
         Self {
-            cache: MemoryCache::new(10000), // 最多缓存10000个文件
+            cache: MemoryCache::new(cache_size),
         }
+    }
+
+    /// 根据系统可用内存计算最优缓存大小
+    fn calculate_optimal_cache_size() -> usize {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        let available_memory = sys.available_memory() as u64;
+
+        // 为哈希缓存分配可用内存的5%，每个缓存项大约200字节
+        let cache_memory_mb = (available_memory / 1024 / 1024) as usize / 20; // 5%
+        let estimated_entries = (cache_memory_mb * 1024 * 1024) / 200; // 每项约200字节
+
+        // 限制在合理范围内
+        estimated_entries.clamp(1000, 50000)
     }
 
     /// 使用指定容量创建缓存

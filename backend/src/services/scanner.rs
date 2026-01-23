@@ -142,9 +142,9 @@ pub async fn scan_directory(
             .await;
         }
 
-        // 每处理100个文件，记录一次日志
+        // 条件日志：每处理100个文件且在info级别时记录
         if file_count % 100 == 0 {
-            tracing::info!("Scanned {} files...", file_count);
+            crate::utils::logging::ConditionalLogger::debug(|| format!("Scanned {} files...", file_count));
         }
     }
 

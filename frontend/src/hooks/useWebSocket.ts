@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useOptimizedWebSocket } from '@/utils/WebSocketManager'
 
 export interface ProgressMessage {
   task_id: string
@@ -8,68 +8,19 @@ export interface ProgressMessage {
   message?: string
 }
 
+/**
+ * 优化的WebSocket Hook
+ *
+ * 特性：
+ * - 连接池复用：相同URL共享连接
+ * - 智能重连：指数退避重连策略
+ * - 消息压缩：批量消息压缩传输
+ * - 心跳检测：自动检测连接健康状态
+ * - 消息队列：离线时自动排队发送
+ * - 内存管理：限制消息历史长度
+ */
 export function useWebSocket(url: string) {
-  const [connected, setConnected] = useState(false)
-  const [messages, setMessages] = useState<ProgressMessage[]>([])
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const { connected, messages, send, sendBatch } = useOptimizedWebSocket(url)
 
-  useEffect(() => {
-    const connect = () => {
-      try {
-        const ws = new WebSocket(url)
-        wsRef.current = ws
-
-        ws.onopen = () => {
-          console.log('WebSocket connected')
-          setConnected(true)
-        }
-
-        ws.onmessage = (event) => {
-          try {
-            const message: ProgressMessage = JSON.parse(event.data)
-            setMessages((prev) => [...prev, message])
-          } catch (e) {
-            console.error('Failed to parse WebSocket message:', e)
-          }
-        }
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error)
-          setConnected(false)
-        }
-
-        ws.onclose = () => {
-          console.log('WebSocket disconnected')
-          setConnected(false)
-          // 自动重连
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect()
-          }, 3000)
-        }
-      } catch (error) {
-        console.error('Failed to create WebSocket:', error)
-        setConnected(false)
-      }
-    }
-
-    connect()
-
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-    }
-  }, [url])
-
-  const send = (message: string) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(message)
-    }
-  }
-
-  return { connected, messages, send }
+  return { connected, messages, send, sendBatch }
 }

@@ -82,6 +82,14 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 # OpenAPI 文档
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
+
+# GraphQL 支持
+async-graphql = { version = "7", features = ["dynamic-schema", "chrono", "uuid", "url", "string_number"] }
+async-graphql-axum = "7"
+
+# API 版本控制
+axum-extra = { version = "0.9", features = ["typed-header"] }
+
 extism = "1.13.0"
 jwalk = "0.8.1"
 rayon = "1.11.0"

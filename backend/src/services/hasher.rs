@@ -3,11 +3,71 @@ use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader};
 use xxhash_rust::xxh3::Xxh3;
+use sysinfo::{System, SystemExt};
 
 use crate::models::MediaFile;
 use crate::services::cache::FileHashCache;
 
+/// 智能内存管理器
+struct MemoryManager {
+    available_memory: u64,
+    optimal_chunk_size: usize,
+    max_concurrent_tasks: usize,
+}
+
+impl MemoryManager {
+    fn new() -> Self {
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
+        let total_memory = sys.total_memory() as u64;
+        let available_memory = sys.available_memory() as u64;
+
+        // 为系统保留20%的内存
+        let usable_memory = (available_memory as f64 * 0.8) as u64;
+
+        // 根据可用内存动态调整块大小
+        let optimal_chunk_size = match usable_memory {
+            m if m > 8 * 1024 * 1024 * 1024 => 128 * 1024 * 1024, // 8GB+ -> 128MB
+            m if m > 4 * 1024 * 1024 * 1024 => 64 * 1024 * 1024,  // 4GB+ -> 64MB
+            m if m > 2 * 1024 * 1024 * 1024 => 32 * 1024 * 1024,  // 2GB+ -> 32MB
+            m if m > 1 * 1024 * 1024 * 1024 => 16 * 1024 * 1024,  // 1GB+ -> 16MB
+            _ => 8 * 1024 * 1024, // <1GB -> 8MB
+        };
+
+        // 根据可用内存和CPU核心数计算并发数
+        let cpu_count = sys.cpus().len() as u64;
+        let memory_based_concurrent = (usable_memory / (optimal_chunk_size as u64 * 4)).min(32);
+        let max_concurrent_tasks = memory_based_concurrent.min(cpu_count * 2).max(1) as usize;
+
+        Self {
+            available_memory: usable_memory,
+            optimal_chunk_size,
+            max_concurrent_tasks,
+        }
+    }
+
+    fn get_chunk_size_for_file(&self, file_size: u64) -> usize {
+        // 对于小文件，使用固定的小块大小
+        if file_size < 100 * 1024 * 1024 { // 100MB
+            return 4 * 1024 * 1024; // 4MB
+        }
+
+        // 对于大文件，使用动态块大小，但不超过最优块大小
+        let file_based_chunk = (file_size / 100).min(self.optimal_chunk_size as u64) as usize;
+        file_based_chunk.max(4 * 1024 * 1024) // 最小4MB
+    }
+}
+
+impl Default for MemoryManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// 流式计算文件哈希（支持100GB+大文件）
+///
+/// 使用智能内存管理器动态调整块大小和处理策略
 pub async fn calculate_file_hash(
     db: &SqlitePool,
     file_id: &str,
@@ -20,7 +80,9 @@ pub async fn calculate_file_hash(
         .fetch_one(db)
         .await?;
 
-    let chunk_size = 64 * 1024 * 1024; // 64MB chunks
+    // 初始化智能内存管理器
+    let memory_manager = MemoryManager::new();
+    let chunk_size = memory_manager.get_chunk_size_for_file(file.size as u64);
     let file_path = std::path::Path::new(&file.path);
 
     if !file_path.exists() {
@@ -80,11 +142,19 @@ pub async fn calculate_file_hash(
         // 计算进度并报告
         let progress = (total_read as f64 / file_size as f64) * 100.0;
 
-        // 每处理 10% 或每 100MB 发送一次进度
+        // 每处理 10% 或每 100MB 发送一次进度（条件日志避免性能影响）
         if total_read % (100 * 1024 * 1024) == 0 || (progress as u64) % 10 == 0 {
             ctx.report_progress(progress, Some(&format!("Processing: {:.1}%", progress)))
                 .await;
-            tracing::debug!("Hash progress for {}: {:.2}%", file_id, progress);
+            // 使用条件日志：只有在debug级别且满足采样条件时才记录
+            if tracing::level_enabled!(tracing::Level::DEBUG) && total_read % (500 * 1024 * 1024) == 0 {
+                tracing::debug!(
+                    file_id = %file_id,
+                    progress = %format!("{:.2}%", progress),
+                    total_read_mb = %(total_read / 1024 / 1024),
+                    "Hash calculation progress"
+                );
+            }
         }
     }
 
