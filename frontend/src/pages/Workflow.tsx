@@ -14,7 +14,7 @@ import {
 import { mediaApi } from '@/api/media'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import ProgressMonitor from '@/components/ProgressMonitor'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useWebSocket, ProgressMessage } from '@/hooks/useWebSocket'
 import { handleError } from '@/utils/errorHandler'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
@@ -275,7 +275,7 @@ export default function Workflow() {
   // 监听扫描任务完成
   useEffect(() => {
     if (taskId && isRunning && currentStepIndex === 0 && !scanCompleted) {
-      const taskMessages = messages.filter(m => m.task_id === taskId)
+      const taskMessages = messages.filter((m: ProgressMessage) => m.task_id === taskId)
       const latestMessage = taskMessages[taskMessages.length - 1]
 
       if (latestMessage && latestMessage.progress >= 100) {

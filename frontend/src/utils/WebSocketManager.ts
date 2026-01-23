@@ -33,7 +33,6 @@ class WebSocketConnection {
   private reconnectAttempts = 0
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   private heartbeatTimeout: ReturnType<typeof setTimeout> | null = null
-  private lastHeartbeat = 0
   private messageQueue: string[] = []
   private isProcessingQueue = false
   private messageHandlers = new Set<MessageHandler>()
@@ -193,8 +192,7 @@ class WebSocketConnection {
         this.messageHandlers.forEach(handler => handler(message))
       }
 
-      // 更新心跳时间戳
-      this.lastHeartbeat = Date.now()
+      // 心跳确认收到（可用于未来实现心跳超时检测）
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error)
     }
@@ -331,47 +329,5 @@ export class WebSocketManager {
 }
 
 // 优化的React Hook
-export function useOptimizedWebSocket(url: string) {
-  const manager = WebSocketManager.getInstance()
-  const connection = manager.getConnection(url)
-
-  const [connected, setConnected] = useState(connection.getState() === ConnectionState.CONNECTED)
-  const [messages, setMessages] = useState<ProgressMessage[]>([])
-
-  useEffect(() => {
-    // 连接到WebSocket
-    connection.connect().catch(console.error)
-
-    // 监听连接状态变化
-    const removeConnectionHandler = connection.addConnectionHandler((state) => {
-      setConnected(state === ConnectionState.CONNECTED)
-    })
-
-    // 监听消息
-    const removeMessageHandler = connection.addMessageHandler((message) => {
-      setMessages(prev => {
-        // 限制消息历史长度，避免内存泄漏
-        const newMessages = [...prev, message]
-        if (newMessages.length > 100) {
-          return newMessages.slice(-100)
-        }
-        return newMessages
-      })
-    })
-
-    return () => {
-      removeConnectionHandler()
-      removeMessageHandler()
-    }
-  }, [connection])
-
-  const send = useCallback((message: string) => {
-    return connection.send(message)
-  }, [connection])
-
-  const sendBatch = useCallback((messages: string[]) => {
-    return connection.sendBatch(messages)
-  }, [connection])
-
-  return { connected, messages, send, sendBatch }
-}
+// WebSocketManager 是一个纯工具类，不包含React hooks
+// React hooks代码已移动到 useWebSocket hook中

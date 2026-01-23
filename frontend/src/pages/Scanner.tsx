@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import clsx from 'clsx'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useWebSocket, ProgressMessage } from '@/hooks/useWebSocket'
 import { Button, Chip, Card, SearchField, Surface, Select, ListBox, Popover } from "@heroui/react";
 import { Icon } from '@iconify/react'
 import {
@@ -169,7 +169,7 @@ export default function Scanner() {
   const { messages } = useWebSocket(`ws://${window.location.host}/ws`)
   useEffect(() => {
     if (taskId && scanning) {
-      const taskMessages = messages.filter(m => m.task_id === taskId)
+      const taskMessages = messages.filter((m: ProgressMessage) => m.task_id === taskId)
       const latestMessage = taskMessages[taskMessages.length - 1]
 
       if (latestMessage && latestMessage.progress >= 100) {

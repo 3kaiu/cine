@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/react";
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { useWebSocket, ProgressMessage } from '@/hooks/useWebSocket'
 import { Icon } from '@iconify/react'
 
 interface ProgressMonitorProps {
@@ -13,7 +13,7 @@ export default function ProgressMonitor({ taskId }: ProgressMonitorProps) {
 
   // Filter messages for specific task
   const taskMessages = taskId
-    ? messages.filter((m) => m.task_id === taskId)
+    ? messages.filter((m: ProgressMessage) => m.task_id === taskId)
     : messages
 
   const latestMessage = taskMessages[taskMessages.length - 1]
