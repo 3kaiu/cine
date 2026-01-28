@@ -6,11 +6,11 @@
 //! - 多阶段任务进度分解
 //! - 异常情况的进度修正
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
 
 /// 任务阶段定义
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -40,13 +40,13 @@ pub struct ProgressConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressState {
     pub current_stage: TaskStage,
-    pub stage_progress: f64,          // 当前阶段进度 (0.0-1.0)
-    pub overall_progress: f64,        // 整体进度 (0.0-1.0)
+    pub stage_progress: f64,   // 当前阶段进度 (0.0-1.0)
+    pub overall_progress: f64, // 整体进度 (0.0-1.0)
     pub estimated_time_remaining: Option<Duration>,
-    pub current_rate: f64,            // 当前处理速率
-    pub average_rate: f64,            // 平均处理速率
-    pub processed_items: u64,         // 已处理项目数
-    pub total_items: Option<u64>,     // 总项目数
+    pub current_rate: f64,        // 当前处理速率
+    pub average_rate: f64,        // 平均处理速率
+    pub processed_items: u64,     // 已处理项目数
+    pub total_items: Option<u64>, // 总项目数
     pub start_time: chrono::DateTime<chrono::Utc>,
     pub last_update: chrono::DateTime<chrono::Utc>,
     pub metadata: HashMap<String, serde_json::Value>,
@@ -73,12 +73,13 @@ pub struct MultiStageConfig {
 pub struct TaskStageConfig {
     pub stage: TaskStage,
     pub name: String,
-    pub weight: f64,              // 该阶段在总任务中的权重 (0.0-1.0)
+    pub weight: f64, // 该阶段在总任务中的权重 (0.0-1.0)
     pub estimated_duration: Option<Duration>,
-    pub parallelizable: bool,     // 是否可以并行处理
+    pub parallelizable: bool, // 是否可以并行处理
 }
 
 /// 智能进度估算器
+#[derive(Debug)]
 pub struct ProgressEstimator {
     config: ProgressConfig,
     performance_history: Arc<RwLock<HashMap<String, PerformanceHistory>>>,
@@ -106,7 +107,11 @@ impl ProgressEstimator {
 
         // 获取历史性能数据
         let history = if self.config.enable_prediction {
-            self.performance_history.read().await.get(&task_type).cloned()
+            self.performance_history
+                .read()
+                .await
+                .get(&task_type)
+                .cloned()
         } else {
             None
         };
@@ -124,15 +129,24 @@ impl ProgressEstimator {
             last_update: now,
             metadata: {
                 let mut meta = HashMap::new();
-                meta.insert("task_type".to_string(), serde_json::Value::String(task_type.clone()));
+                meta.insert(
+                    "task_type".to_string(),
+                    serde_json::Value::String(task_type.clone()),
+                );
                 if let Some(config) = multi_stage_config {
-                    meta.insert("stages".to_string(), serde_json::to_value(config).unwrap_or_default());
+                    meta.insert(
+                        "stages".to_string(),
+                        serde_json::to_value(config).unwrap_or_default(),
+                    );
                 }
                 meta
             },
         };
 
-        self.active_tasks.write().await.insert(task_id, initial_state.clone());
+        self.active_tasks
+            .write()
+            .await
+            .insert(task_id, initial_state.clone());
         initial_state
     }
 
@@ -173,7 +187,8 @@ impl ProgressEstimator {
 
         // 计算当前处理速率
         if elapsed.num_milliseconds() > 0 {
-            task.current_rate = processed_items as f64 / (elapsed.num_milliseconds() as f64 / 1000.0);
+            task.current_rate =
+                processed_items as f64 / (elapsed.num_milliseconds() as f64 / 1000.0);
         }
 
         // 计算平均处理速率
@@ -201,7 +216,9 @@ impl ProgressEstimator {
         };
 
         let now = chrono::Utc::now();
-        let time_since_last_update = now.signed_duration_since(task.last_update).num_milliseconds() as u64;
+        let time_since_last_update = now
+            .signed_duration_since(task.last_update)
+            .num_milliseconds() as u64;
 
         // 检查时间间隔
         if time_since_last_update < self.config.min_update_interval_ms {
@@ -244,7 +261,9 @@ impl ProgressEstimator {
 
     /// 获取所有活跃任务
     pub async fn get_all_active_tasks(&self) -> Vec<(String, ProgressState)> {
-        self.active_tasks.read().await
+        self.active_tasks
+            .read()
+            .await
             .iter()
             .map(|(id, state)| (id.clone(), state.clone()))
             .collect()
@@ -256,20 +275,28 @@ impl ProgressEstimator {
     fn calculate_overall_progress(&self, task: &ProgressState) -> f64 {
         // 检查是否有多阶段配置
         if let Some(stages_value) = task.metadata.get("stages") {
-            if let Ok(multi_stage) = serde_json::from_value::<MultiStageConfig>(stages_value.clone()) {
+            if let Ok(multi_stage) =
+                serde_json::from_value::<MultiStageConfig>(stages_value.clone())
+            {
                 return self.calculate_multi_stage_progress(task, &multi_stage);
             }
         }
 
         // 单阶段任务
         match task.total_items {
-            Some(total) if total > 0 => (task.processed_items as f64 / total as f64).clamp(0.0, 1.0),
+            Some(total) if total > 0 => {
+                (task.processed_items as f64 / total as f64).clamp(0.0, 1.0)
+            }
             _ => task.stage_progress, // 如果不知道总数，使用阶段进度
         }
     }
 
     /// 计算多阶段任务的整体进度
-    fn calculate_multi_stage_progress(&self, task: &ProgressState, config: &MultiStageConfig) -> f64 {
+    fn calculate_multi_stage_progress(
+        &self,
+        task: &ProgressState,
+        config: &MultiStageConfig,
+    ) -> f64 {
         let mut total_progress = 0.0;
 
         for stage_config in &config.stages {
@@ -300,7 +327,9 @@ impl ProgressEstimator {
             Some(Duration::from_secs_f64(remaining_seconds.max(0.0)))
         } else {
             // 如果没有平均速率，使用历史数据
-            let task_type = task.metadata.get("task_type")
+            let _task_type = task
+                .metadata
+                .get("task_type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
 
@@ -335,7 +364,8 @@ impl ProgressEstimator {
         let new_weight = old_weight + 1.0;
 
         entry.average_duration = Duration::from_secs_f64(
-            (entry.average_duration.as_secs_f64() * old_weight + duration.as_secs_f64()) / new_weight
+            (entry.average_duration.as_secs_f64() * old_weight + duration.as_secs_f64())
+                / new_weight,
         );
         entry.average_rate = (entry.average_rate * old_weight + task.average_rate) / new_weight;
         entry.success_rate = (entry.success_rate * old_weight + 1.0) / new_weight;
@@ -345,22 +375,24 @@ impl ProgressEstimator {
 
     /// 清理过期历史数据
     pub async fn cleanup_expired_history(&self) {
-        let cutoff = chrono::Utc::now() - chrono::Duration::hours(self.config.history_retention_hours as i64);
+        let cutoff = chrono::Utc::now()
+            - chrono::Duration::hours(self.config.history_retention_hours as i64);
 
-        self.performance_history.write().await.retain(|_, history| {
-            history.last_updated > cutoff
-        });
+        self.performance_history
+            .write()
+            .await
+            .retain(|_, history| history.last_updated > cutoff);
     }
 }
 
 impl Default for ProgressConfig {
     fn default() -> Self {
         Self {
-            min_update_interval_ms: 100,      // 最少100ms更新一次
-            max_update_interval_ms: 5000,     // 最多5秒更新一次
-            progress_change_threshold: 0.01,  // 进度变化1%才更新
+            min_update_interval_ms: 100,     // 最少100ms更新一次
+            max_update_interval_ms: 5000,    // 最多5秒更新一次
+            progress_change_threshold: 0.01, // 进度变化1%才更新
             enable_prediction: true,
-            history_retention_hours: 168,     // 保留7天历史
+            history_retention_hours: 168, // 保留7天历史
         }
     }
 }
@@ -375,12 +407,9 @@ mod tests {
         let estimator = ProgressEstimator::new(ProgressConfig::default());
 
         // 开始任务
-        let initial_state = estimator.start_task(
-            "test_task".to_string(),
-            "hash".to_string(),
-            Some(100),
-            None,
-        ).await;
+        let initial_state = estimator
+            .start_task("test_task".to_string(), "hash".to_string(), Some(100), None)
+            .await;
 
         assert_eq!(initial_state.processed_items, 0);
         assert_eq!(initial_state.overall_progress, 0.0);
@@ -388,13 +417,9 @@ mod tests {
         // 模拟进度更新
         sleep(Duration::from_millis(10)).await;
 
-        let updated_state = estimator.update_progress(
-            "test_task",
-            50,
-            None,
-            None,
-            None,
-        ).await;
+        let updated_state = estimator
+            .update_progress("test_task", 50, None, None, None)
+            .await;
 
         assert!(updated_state.is_some());
         let state = updated_state.unwrap();

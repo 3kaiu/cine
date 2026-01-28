@@ -386,7 +386,7 @@ async fn run_task_remote(
         .ok_or_else(|| anyhow::anyhow!("No executor found for task type: {:?}", task_type))?;
 
     // 创建任务上下文
-    let (ctx, mut status_rx) = task_queue.create_remote_context(task_id.clone());
+    let (ctx, mut status_rx) = task_queue.create_remote_context(task_id.clone(), None);
 
     // 启动状态监听器，将本地进度转发给 update_tx
     let node_id_clone = node_id.clone();

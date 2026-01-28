@@ -1,3 +1,4 @@
+pub mod business_metrics;
 pub mod cache;
 pub mod dedupe;
 pub mod distributed;
@@ -13,6 +14,7 @@ pub mod plugin;
 pub mod poster;
 pub mod progress_estimator;
 pub mod quality;
+pub mod queries;
 pub mod renamer;
 pub mod scanner;
 pub mod scheduler;

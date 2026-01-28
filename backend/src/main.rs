@@ -1,3 +1,4 @@
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     http::Method,
     routing::{delete, get, post},
@@ -11,21 +12,12 @@ use tower_http::{
     cors::{Any, CorsLayer},
 };
 use tracing_subscriber;
-use utoipa::OpenApi;
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 
-mod config;
-mod error;
-mod handlers;
-mod models;
-mod openapi;
-mod services;
-mod utils;
-mod websocket;
+use cine_backend::config::AppConfig;
 
-use config::AppConfig;
-use handlers::*;
-// use websocket::ws_handler;
+use cine_backend::handlers;
+use cine_backend::handlers::*;
+use cine_backend::openapi;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -71,7 +63,11 @@ async fn main() -> anyhow::Result<()> {
     let options = SqliteConnectOptions::from_str(&config.database_url)?
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal);
+        .synchronous(SqliteSynchronous::Normal)
+        .pragma("mmap_size", "2147483648") // 2GB mmap size
+        .pragma("cache_size", "-2000000") // ~2GB cache
+        .pragma("page_size", "4096") // Standard SSD page size
+        .pragma("temp_store", "2"); // Use MEMORY for temporary storage
 
     let db = sqlx::SqlitePool::connect_with(options).await?;
 
@@ -82,16 +78,20 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
 
     // 初始化智能缓存管理器
-    let cache_config = crate::services::smart_cache::SmartCacheConfig {
+    let cache_config = cine_backend::services::smart_cache::SmartCacheConfig {
         max_size: 10000,
         ttl: std::time::Duration::from_secs(3600), // 1小时
-        warmup_strategy: Some(crate::services::smart_cache::WarmupStrategy::MostFrequent { top_n: 1000 }),
+        warmup_strategy: Some(
+            cine_backend::services::smart_cache::WarmupStrategy::MostFrequent { top_n: 1000 },
+        ),
         sync_interval: std::time::Duration::from_secs(30),
         metrics_interval: std::time::Duration::from_secs(60),
         enable_distributed_sync: false, // 可以根据配置启用
         node_id: "master".to_string(),
     };
-    let smart_cache = Arc::new(crate::services::smart_cache::SmartCacheManager::new(cache_config.clone()));
+    let smart_cache = Arc::new(cine_backend::services::smart_cache::SmartCacheManager::new(
+        cache_config.clone(),
+    ));
 
     // 启动缓存后台任务
     let cache_for_bg = smart_cache.clone();
@@ -100,18 +100,22 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // 兼容性：创建传统的FileHashCache
-    let hash_cache = Arc::new(crate::services::cache::FileHashCache::new());
+    let hash_cache = Arc::new(cine_backend::services::cache::FileHashCache::new());
 
     // 初始化任务队列并注册执行器
-    let task_queue = Arc::new(crate::services::task_queue::TaskQueue::new(db.clone(), 4));
-
-    // 初始化分布式服务
-    let distributed = Arc::new(crate::services::distributed::DistributedService::new(
-        task_queue.clone(),
+    let task_queue = Arc::new(cine_backend::services::task_queue::TaskQueue::new(
+        db.clone(),
+        4,
     ));
 
+    // 初始化分布式服务
+    let distributed =
+        Arc::new(cine_backend::services::distributed::DistributedService::new(task_queue.clone()));
+
     // 初始化插件管理器
-    let plugin_manager = Arc::new(crate::services::plugin::PluginManager::new("plugins"));
+    let plugin_manager = Arc::new(cine_backend::services::plugin::PluginManager::new(
+        "plugins",
+    ));
 
     // 异步加载插件 (后台运行，不阻塞启动)
     let pm = plugin_manager.clone();
@@ -122,31 +126,31 @@ async fn main() -> anyhow::Result<()> {
     });
 
     task_queue.register_executor(
-        crate::services::task_queue::TaskType::Scan,
-        Arc::new(crate::services::task_executors::ScanExecutor { db: db.clone() }),
+        cine_backend::services::task_queue::TaskType::Scan,
+        Arc::new(cine_backend::services::task_executors::ScanExecutor { db: db.clone() }),
     );
     task_queue.register_executor(
-        crate::services::task_queue::TaskType::Hash,
-        Arc::new(crate::services::task_executors::HashExecutor {
+        cine_backend::services::task_queue::TaskType::Hash,
+        Arc::new(cine_backend::services::task_executors::HashExecutor {
             db: db.clone(),
             hash_cache: hash_cache.clone(),
         }),
     );
     task_queue.register_executor(
-        crate::services::task_queue::TaskType::Scrape,
-        Arc::new(crate::services::task_executors::ScrapeExecutor {
+        cine_backend::services::task_queue::TaskType::Scrape,
+        Arc::new(cine_backend::services::task_executors::ScrapeExecutor {
             db: db.clone(),
             http_client: reqwest::Client::new(),
             config: config.clone(),
         }),
     );
     task_queue.register_executor(
-        crate::services::task_queue::TaskType::Rename,
-        Arc::new(crate::services::task_executors::RenameExecutor { db: db.clone() }),
+        cine_backend::services::task_queue::TaskType::Rename,
+        Arc::new(cine_backend::services::task_executors::RenameExecutor { db: db.clone() }),
     );
     task_queue.register_executor(
-        crate::services::task_queue::TaskType::Custom("batch_hash".to_string()),
-        Arc::new(crate::services::task_executors::BatchHashExecutor { db: db.clone() }),
+        cine_backend::services::task_queue::TaskType::Custom("batch_hash".to_string()),
+        Arc::new(cine_backend::services::task_executors::BatchHashExecutor { db: db.clone() }),
     );
 
     match cli.mode {
@@ -155,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
             let app_state = handlers::AppState {
                 db: db.clone(),
                 config: config.clone(),
-                progress_broadcaster: websocket::ProgressBroadcaster::new(),
+                progress_broadcaster: cine_backend::websocket::ProgressBroadcaster::new(),
                 hash_cache,
                 http_client: reqwest::Client::new(),
                 task_queue,
@@ -164,17 +168,20 @@ async fn main() -> anyhow::Result<()> {
             };
             let app_state = Arc::new(app_state);
 
-    // 启动后台服务
-    start_background_services(db.clone(), app_state.clone()).await?;
+            // 启动后台服务
+            start_background_services(db.clone(), app_state.clone()).await?;
 
-    // 缓存预热（异步执行，不阻塞启动）
-    let db_for_warmup = db.clone();
-    let cache_for_warmup = smart_cache.clone();
-    tokio::spawn(async move {
-        if let Err(e) = cache_for_warmup.warmup_cache("file_hash", &db_for_warmup).await {
-            tracing::warn!("Cache warmup failed: {}", e);
-        }
-    });
+            // 缓存预热（异步执行，不阻塞启动）
+            let db_for_warmup = db.clone();
+            let cache_for_warmup = smart_cache.clone();
+            tokio::spawn(async move {
+                if let Err(e) = cache_for_warmup
+                    .warmup_cache("file_hash", &db_for_warmup)
+                    .await
+                {
+                    tracing::warn!("Cache warmup failed: {}", e);
+                }
+            });
 
             // CORS 配置
             let cors = CorsLayer::new()
@@ -183,11 +190,11 @@ async fn main() -> anyhow::Result<()> {
                 .allow_headers(Any);
 
             // 创建GraphQL schema
-            let graphql_schema = crate::graphql::create_schema();
+            let graphql_schema = cine_backend::graphql::create_schema();
 
             // GraphQL处理函数
             async fn graphql_handler(
-                schema: axum::extract::Extension<crate::graphql::CineSchema>,
+                schema: axum::extract::Extension<cine_backend::graphql::CineSchema>,
                 req: GraphQLRequest,
             ) -> GraphQLResponse {
                 schema.execute(req.into_inner()).await.into()
@@ -196,20 +203,20 @@ async fn main() -> anyhow::Result<()> {
             // 构建路由
             let app = Router::new()
                 .route("/api/health", get(health_check))
-                .route("/api/metrics", get(crate::handlers::metrics::get_dashboard_metrics))
-                .route("/metrics", get(crate::handlers::metrics::get_metrics))
+                .route("/api/metrics", get(cine_backend::handlers::metrics::get_dashboard_metrics))
+                .route("/metrics", get(cine_backend::handlers::metrics::get_metrics))
                 // 性能监控API
-                .route("/api/monitoring/trends", get(crate::handlers::performance_monitor::get_performance_trends))
-                .route("/api/monitoring/resources", get(crate::handlers::performance_monitor::get_resource_history))
-                .route("/api/monitoring/anomalies", get(crate::handlers::performance_monitor::get_performance_anomalies))
-                .route("/api/monitoring/health", get(crate::handlers::performance_monitor::get_system_health))
-                .route("/api/monitoring/metrics", get(crate::handlers::performance_monitor::get_detailed_metrics))
+                .route("/api/monitoring/trends", get(cine_backend::handlers::performance_monitor::get_performance_trends))
+                .route("/api/monitoring/resources", get(cine_backend::handlers::performance_monitor::get_resource_history))
+                .route("/api/monitoring/anomalies", get(cine_backend::handlers::performance_monitor::get_performance_anomalies))
+                .route("/api/monitoring/health", get(cine_backend::handlers::performance_monitor::get_system_health))
+                .route("/api/monitoring/metrics", get(cine_backend::handlers::performance_monitor::get_detailed_metrics))
                 // 业务指标监控API
-                .route("/api/business/metrics", get(crate::handlers::business_monitor::get_business_metrics))
-                .route("/api/business/usage-patterns", get(crate::handlers::business_monitor::get_usage_patterns))
-                .route("/api/business/benchmarks", post(crate::handlers::business_monitor::set_performance_benchmark))
-                .route("/api/business/kpis", post(crate::handlers::business_monitor::record_business_kpis))
-                .route("/api/business/dashboard", get(crate::handlers::business_monitor::get_business_dashboard))
+                .route("/api/business/metrics", get(cine_backend::handlers::business_monitor::get_business_metrics))
+                .route("/api/business/usage-patterns", get(cine_backend::handlers::business_monitor::get_usage_patterns))
+                .route("/api/business/benchmarks", post(cine_backend::handlers::business_monitor::set_performance_benchmark))
+                .route("/api/business/kpis", post(cine_backend::handlers::business_monitor::record_business_kpis))
+                .route("/api/business/dashboard", get(cine_backend::handlers::business_monitor::get_business_dashboard))
                 // GraphQL API
                 .route("/graphql", axum::routing::post(graphql_handler))
                 .layer(axum::extract::Extension(graphql_schema))
@@ -227,10 +234,10 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .route("/api/scan", post(scan_directory))
                 .route("/api/files", get(list_files))
-                .route("/api/files/:id/hash", post(calculate_hash))
-                .route("/api/files/batch-hash", post(batch_calculate_hash))
+                // .route("/api/files/:id/hash", post(calculate_hash))
+                // .route("/api/files/batch-hash", post(batch_calculate_hash))
                 .route("/api/files/:id/info", get(get_video_info))
-                .route("/api/files/batch-info", post(batch_get_video_info))
+                // .route("/api/files/batch-info", post(batch_get_video_info))
                 .route("/api/files/:id/subtitles", get(find_subtitles))
                 .route(
                     "/api/files/:id/subtitles/search",
@@ -255,7 +262,7 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/files/batch-copy", post(batch_copy_files))
                 .route("/api/trash", get(list_trash))
                 .route("/api/trash/:id", post(move_to_trash))
-                .route("/api/files/batch-trash", post(batch_move_to_trash))
+                // .route("/api/files/batch-trash", post(batch_move_to_trash))
                 .route("/api/trash/:id/restore", post(restore_from_trash))
                 .route("/api/trash/:id/delete", delete(permanently_delete))
                 .route("/api/trash/cleanup", post(cleanup_trash))
@@ -270,9 +277,9 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/files/:id/nfo", get(get_nfo).put(update_nfo))
                 .route("/api/settings", get(get_settings).post(update_settings))
                 .route("/api/plugins", get(list_plugins))
-                .route("/api/queue/stats", get(crate::handlers::queue_stats::get_queue_stats))
-                .route("/api/queue/history", get(crate::handlers::queue_stats::get_execution_history))
-                .nest("/api/tasks", crate::handlers::tasks::task_routes())
+                .route("/api/queue/stats", get(cine_backend::handlers::queue_stats::get_queue_stats))
+                .route("/api/queue/history", get(cine_backend::handlers::queue_stats::get_execution_history))
+                .nest("/api/tasks", cine_backend::handlers::tasks::task_routes())
                 .merge(
                     utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
                         .url("/api-docs/openapi.json", openapi::ApiDoc::openapi()),
@@ -282,7 +289,7 @@ async fn main() -> anyhow::Result<()> {
                     // 添加响应压缩：支持gzip, deflate, br
                     .layer(CompressionLayer::new())
                     // 添加API版本控制
-                    .layer(crate::api_version::api_version_layer())
+                    .layer(axum::middleware::from_fn(cine_backend::api_version::api_version_middleware))
                 )
                 .with_state(app_state);
 
@@ -294,13 +301,13 @@ async fn main() -> anyhow::Result<()> {
         }
         RunMode::Worker => {
             tracing::info!("Cine Worker starting...");
-            let worker = crate::services::distributed::WorkerService::new(
+            let worker = cine_backend::services::distributed::WorkerService::new(
                 cli.node_id,
                 cli.master_url,
                 task_queue,
                 vec![
-                    crate::services::task_queue::TaskType::Hash,
-                    crate::services::task_queue::TaskType::Scrape,
+                    cine_backend::services::task_queue::TaskType::Hash,
+                    cine_backend::services::task_queue::TaskType::Scrape,
                 ],
             );
             worker.run().await?;
@@ -315,7 +322,7 @@ async fn start_background_services(
     state: Arc<handlers::AppState>,
 ) -> anyhow::Result<()> {
     // 1. 启动定时器
-    let scheduler = crate::services::scheduler::SchedulerService::new(db.clone()).await?;
+    let scheduler = cine_backend::services::scheduler::SchedulerService::new(db.clone()).await?;
     tokio::spawn(async move {
         if let Err(e) = scheduler.start().await {
             tracing::error!("Scheduler error: {}", e);
@@ -323,7 +330,8 @@ async fn start_background_services(
     });
 
     // 2. 启动文件监控
-    let (watcher_service, mut rx) = crate::services::watcher::WatcherService::new(db.clone());
+    let (watcher_service, mut rx) =
+        cine_backend::services::watcher::WatcherService::new(db.clone());
     watcher_service.start_all().await?;
 
     // 监听监控信号并执行自动化任务
@@ -340,7 +348,7 @@ async fn start_background_services(
             let _ = state
                 .task_queue
                 .submit(
-                    crate::services::task_queue::TaskType::Scan,
+                    cine_backend::services::task_queue::TaskType::Scan,
                     Some(format!("自动扫描: {}", path)),
                     serde_json::json!({
                         "directory": path,

@@ -4,19 +4,19 @@
 //! 支持复杂的数据关联查询和条件过滤
 
 use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Object, Schema, SimpleObject,
-    InputObject, Result as GraphQLResult, ID,
+    Context, EmptyMutation, EmptySubscription, InputObject, Object, Result as GraphQLResult,
+    Schema, SimpleObject, ID,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::{
+    handlers::AppState,
     models::MediaFile,
     services::{
-        queries::{get_files_paginated_optimized, get_file_stats_optimized, QueryOptions},
+        queries::{get_file_stats_optimized, get_files_paginated_optimized, QueryOptions},
         smart_cache::SmartCacheManager,
     },
-    handlers::AppState,
 };
 
 /// GraphQL 查询根对象
@@ -125,7 +125,8 @@ impl QueryRoot {
         let file_type = params.filter.as_ref().and_then(|f| f.file_type.clone());
 
         // 执行查询
-        let files = get_files_paginated_optimized(db, file_type.as_deref(), options).await
+        let files = get_files_paginated_optimized(db, file_type.as_deref(), options)
+            .await
             .map_err(|e| async_graphql::Error::new(format!("Database query failed: {}", e)))?;
 
         // 获取总数（简化实现）
@@ -133,7 +134,8 @@ impl QueryRoot {
         let has_more = params.limit.map_or(false, |limit| total_count > limit);
 
         // 转换为GraphQL对象
-        let gql_files = files.into_iter()
+        let gql_files = files
+            .into_iter()
             .map(|file| MediaFileGQL {
                 id: ID(file.id),
                 path: file.path,
@@ -142,8 +144,8 @@ impl QueryRoot {
                 file_type: file.file_type,
                 hash_xxhash: file.hash_xxhash,
                 hash_md5: file.hash_md5,
-                tmdb_id: file.tmdb_id,
-                quality_score: file.quality_score,
+                tmdb_id: file.tmdb_id.map(|id| id as i64),
+                quality_score: file.quality_score.map(|s| s as f64),
                 created_at: file.created_at,
                 updated_at: file.updated_at,
                 last_modified: file.last_modified,
@@ -161,16 +163,13 @@ impl QueryRoot {
 
     /// 根据ID查询单个文件
     #[graphql(name = "file")]
-    async fn file(
-        &self,
-        ctx: &Context<'_>,
-        id: ID,
-    ) -> GraphQLResult<Option<MediaFileGQL>> {
+    async fn file(&self, ctx: &Context<'_>, id: ID) -> GraphQLResult<Option<MediaFileGQL>> {
         let app_state = ctx.data::<Arc<AppState>>()?;
         let db = &app_state.db;
 
         // 使用优化的查询函数
-        let file = crate::queries::get_file_by_id_optimized(db, &id, true, true).await
+        let file = crate::services::queries::get_file_by_id_optimized(db, &id, true, true)
+            .await
             .map_err(|e| async_graphql::Error::new(format!("Database query failed: {}", e)))?;
 
         let gql_file = file.map(|file| MediaFileGQL {
@@ -181,8 +180,8 @@ impl QueryRoot {
             file_type: file.file_type,
             hash_xxhash: file.hash_xxhash,
             hash_md5: file.hash_md5,
-            tmdb_id: file.tmdb_id,
-            quality_score: file.quality_score,
+            tmdb_id: file.tmdb_id.map(|id| id as i64),
+            quality_score: file.quality_score.map(|s| s as f64),
             created_at: file.created_at,
             updated_at: file.updated_at,
             last_modified: file.last_modified,
@@ -195,26 +194,51 @@ impl QueryRoot {
 
     /// 获取统计信息
     #[graphql(name = "stats")]
-    async fn stats(
-        &self,
-        ctx: &Context<'_>,
-    ) -> GraphQLResult<StatsResponse> {
+    async fn stats(&self, ctx: &Context<'_>) -> GraphQLResult<StatsResponse> {
         let app_state = ctx.data::<Arc<AppState>>()?;
         let db = &app_state.db;
 
-        let stats = get_file_stats_optimized(db).await
+        let stats = get_file_stats_optimized(db)
+            .await
             .map_err(|e| async_graphql::Error::new(format!("Stats query failed: {}", e)))?;
 
         // 解析JSON统计信息
-        let total_files = stats.get("total_files").and_then(|v| v.as_i64()).unwrap_or(0);
-        let video_files = stats.get("video_files").and_then(|v| v.as_i64()).unwrap_or(0);
-        let audio_files = stats.get("audio_files").and_then(|v| v.as_i64()).unwrap_or(0);
-        let image_files = stats.get("image_files").and_then(|v| v.as_i64()).unwrap_or(0);
-        let hashed_files = stats.get("hashed_files").and_then(|v| v.as_i64()).unwrap_or(0);
-        let scraped_files = stats.get("scraped_files").and_then(|v| v.as_i64()).unwrap_or(0);
-        let total_size_bytes = stats.get("total_size_bytes").and_then(|v| v.as_i64()).unwrap_or(0);
-        let hash_coverage = stats.get("hash_coverage").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let scrape_coverage = stats.get("scrape_coverage").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let total_files = stats
+            .get("total_files")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let video_files = stats
+            .get("video_files")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let audio_files = stats
+            .get("audio_files")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let image_files = stats
+            .get("image_files")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let hashed_files = stats
+            .get("hashed_files")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let scraped_files = stats
+            .get("scraped_files")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let total_size_bytes = stats
+            .get("total_size_bytes")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let hash_coverage = stats
+            .get("hash_coverage")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let scrape_coverage = stats
+            .get("scrape_coverage")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
 
         Ok(StatsResponse {
             total_files,
@@ -245,10 +269,15 @@ impl QueryRoot {
         let limit = limit.unwrap_or(50);
         let offset = offset.unwrap_or(0);
 
-        let files = crate::queries::get_large_files_optimized(db, min_size, limit, offset).await
-            .map_err(|e| async_graphql::Error::new(format!("Large files query failed: {}", e)))?;
+        let files =
+            crate::services::queries::get_large_files_optimized(db, min_size, limit, offset)
+                .await
+                .map_err(|e| {
+                    async_graphql::Error::new(format!("Large files query failed: {}", e))
+                })?;
 
-        let gql_files = files.into_iter()
+        let gql_files = files
+            .into_iter()
             .map(|file| MediaFileGQL {
                 id: ID(file.id),
                 path: file.path,
@@ -257,8 +286,8 @@ impl QueryRoot {
                 file_type: file.file_type,
                 hash_xxhash: file.hash_xxhash,
                 hash_md5: file.hash_md5,
-                tmdb_id: file.tmdb_id,
-                quality_score: file.quality_score,
+                tmdb_id: file.tmdb_id.map(|id| id as i64),
+                quality_score: file.quality_score.map(|s| s as f64),
                 created_at: file.created_at,
                 updated_at: file.updated_at,
                 last_modified: file.last_modified,
@@ -284,21 +313,24 @@ impl QueryRoot {
 
         let string_ids: Vec<String> = ids.into_iter().map(|id| id.to_string()).collect();
 
-        let files = crate::queries::get_files_by_ids_optimized(
+        let files = crate::services::queries::get_files_by_ids_optimized(
             db,
             &string_ids,
             include_video_info.unwrap_or(false),
-            include_metadata.unwrap_or(false)
-        ).await
+            include_metadata.unwrap_or(false),
+        )
+        .await
         .map_err(|e| async_graphql::Error::new(format!("Batch files query failed: {}", e)))?;
 
         // 创建ID到文件的映射
-        let file_map: std::collections::HashMap<String, MediaFile> = files.into_iter()
+        let file_map: std::collections::HashMap<String, MediaFile> = files
+            .into_iter()
             .map(|file| (file.id.clone(), file))
             .collect();
 
         // 按照请求的ID顺序返回结果
-        let results = string_ids.into_iter()
+        let results = string_ids
+            .into_iter()
             .map(|id| {
                 file_map.get(&id).map(|file| MediaFileGQL {
                     id: ID(file.id.clone()),
@@ -308,8 +340,8 @@ impl QueryRoot {
                     file_type: file.file_type.clone(),
                     hash_xxhash: file.hash_xxhash.clone(),
                     hash_md5: file.hash_md5.clone(),
-                    tmdb_id: file.tmdb_id,
-                    quality_score: file.quality_score,
+                    tmdb_id: file.tmdb_id.map(|id| id as i64),
+                    quality_score: file.quality_score.map(|s| s as f64),
                     created_at: file.created_at,
                     updated_at: file.updated_at,
                     last_modified: file.last_modified,

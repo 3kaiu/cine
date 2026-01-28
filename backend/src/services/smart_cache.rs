@@ -6,15 +6,16 @@
 //! - 自适应缓存策略
 //! - 缓存性能监控
 
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, broadcast};
-use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, info, warn};
 
-use crate::services::cache::{FileHashCache, MemoryCache};
 use crate::models::MediaFile;
+use crate::services::cache::{FileHashCache, MemoryCache};
 
 /// 缓存同步消息类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,9 +55,16 @@ pub enum WarmupStrategy {
     /// 按访问频率预热最热门的项目
     MostFrequent { top_n: usize },
     /// 按最近访问预热最近使用的项目
-    MostRecent { time_window: Duration, max_items: usize },
+    MostRecent {
+        time_window: Duration,
+        max_items: usize,
+    },
     /// 预热指定目录的文件
-    Directory { path: String, recursive: bool, max_files: usize },
+    Directory {
+        path: String,
+        recursive: bool,
+        max_files: usize,
+    },
     /// 基于预测的预热（机器学习）
     Predictive { confidence_threshold: f64 },
 }
@@ -104,6 +112,7 @@ pub struct SmartCacheManager {
     sync_tx: broadcast::Sender<CacheSyncMessage>,
     warmup_status: Arc<RwLock<HashMap<String, WarmupStatus>>>,
     access_patterns: Arc<RwLock<AccessPatternTracker>>,
+    access_record_tx: mpsc::Sender<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +164,8 @@ impl AccessPatternTracker {
     }
 
     fn get_most_frequent(&self, top_n: usize) -> Vec<String> {
-        let mut items: Vec<(String, u64)> = self.frequency_map
+        let mut items: Vec<(String, u64)> = self
+            .frequency_map
             .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();
@@ -166,7 +176,8 @@ impl AccessPatternTracker {
 
     fn get_most_recent(&self, time_window: Duration, max_items: usize) -> Vec<String> {
         let cutoff = Instant::now() - time_window;
-        let mut recent: Vec<String> = self.recent_accesses
+        let mut recent: Vec<String> = self
+            .recent_accesses
             .iter()
             .rev() // 从最新的开始
             .filter(|(_, time)| *time >= cutoff)
@@ -181,6 +192,17 @@ impl AccessPatternTracker {
 impl SmartCacheManager {
     pub fn new(config: SmartCacheConfig) -> Self {
         let (sync_tx, _) = broadcast::channel(1000);
+        let (access_record_tx, mut access_record_rx) = tokio::sync::mpsc::channel(10000);
+        let access_patterns = Arc::new(RwLock::new(AccessPatternTracker::new(10000)));
+
+        // 启动后台访问记录处理任务 (Phase 2 优化)
+        let ap_clone = access_patterns.clone();
+        tokio::spawn(async move {
+            while let Some(key) = access_record_rx.recv().await {
+                let mut ap = ap_clone.write().await;
+                ap.record_access(key);
+            }
+        });
 
         Self {
             config: config.clone(),
@@ -189,36 +211,56 @@ impl SmartCacheManager {
             metrics: Arc::new(RwLock::new(HashMap::new())),
             sync_tx,
             warmup_status: Arc::new(RwLock::new(HashMap::new())),
-            access_patterns: Arc::new(RwLock::new(AccessPatternTracker::new(10000))),
+            access_patterns,
+            access_record_tx,
         }
     }
 
     /// 预热缓存
-    pub async fn warmup_cache(&self, cache_type: &str, db_pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    pub async fn warmup_cache(
+        &self,
+        cache_type: &str,
+        db_pool: &sqlx::SqlitePool,
+    ) -> anyhow::Result<()> {
         let start_time = Instant::now();
 
         // 标记预热开始
         {
             let mut status = self.warmup_status.write().await;
-            status.insert(cache_type.to_string(), WarmupStatus {
-                is_warming_up: true,
-                start_time,
-                items_processed: 0,
-                total_items: None,
-            });
+            status.insert(
+                cache_type.to_string(),
+                WarmupStatus {
+                    is_warming_up: true,
+                    start_time,
+                    items_processed: 0,
+                    total_items: None,
+                },
+            );
         }
 
         match &self.config.warmup_strategy {
             Some(WarmupStrategy::MostFrequent { top_n }) => {
-                self.warmup_most_frequent(cache_type, *top_n, db_pool).await?;
+                self.warmup_most_frequent(cache_type, *top_n, db_pool)
+                    .await?;
             }
-            Some(WarmupStrategy::MostRecent { time_window, max_items }) => {
-                self.warmup_most_recent(cache_type, *time_window, *max_items, db_pool).await?;
+            Some(WarmupStrategy::MostRecent {
+                time_window,
+                max_items,
+            }) => {
+                self.warmup_most_recent(cache_type, *time_window, *max_items, db_pool)
+                    .await?;
             }
-            Some(WarmupStrategy::Directory { path, recursive, max_files }) => {
-                self.warmup_directory(cache_type, path, *recursive, *max_files, db_pool).await?;
+            Some(WarmupStrategy::Directory {
+                path,
+                recursive,
+                max_files,
+            }) => {
+                self.warmup_directory(cache_type, path, *recursive, *max_files, db_pool)
+                    .await?;
             }
-            Some(WarmupStrategy::Predictive { confidence_threshold: _ }) => {
+            Some(WarmupStrategy::Predictive {
+                confidence_threshold: _,
+            }) => {
                 // 预测性预热需要更复杂的实现
                 warn!("Predictive warmup not yet implemented, skipping");
             }
@@ -257,7 +299,7 @@ impl SmartCacheManager {
         &self,
         cache_type: &str,
         top_n: usize,
-        db_pool: &sqlx::SqlitePool
+        db_pool: &sqlx::SqlitePool,
     ) -> anyhow::Result<()> {
         let patterns = self.access_patterns.read().await;
         let most_frequent = patterns.get_most_frequent(top_n);
@@ -274,7 +316,16 @@ impl SmartCacheManager {
             placeholders
         );
 
-        let mut query_builder = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(&query);
+        let mut query_builder = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(&query);
         for id in &most_frequent {
             query_builder = query_builder.bind(id);
         }
@@ -283,7 +334,9 @@ impl SmartCacheManager {
 
         for (id, path, hash_md5, hash_xxhash, last_modified) in files {
             if let Some(hash) = hash_md5.or(hash_xxhash) {
-                self.file_hash_cache.set(&path, last_modified.timestamp(), hash).await;
+                self.file_hash_cache
+                    .set(&path, last_modified.timestamp(), hash)
+                    .await;
             }
 
             let mut status = self.warmup_status.write().await;
@@ -301,13 +354,17 @@ impl SmartCacheManager {
         cache_type: &str,
         time_window: Duration,
         max_items: usize,
-        db_pool: &sqlx::SqlitePool
+        db_pool: &sqlx::SqlitePool,
     ) -> anyhow::Result<()> {
         let patterns = self.access_patterns.read().await;
         let most_recent = patterns.get_most_recent(time_window, max_items);
 
         // 类似上面的实现...
-        debug!("Warming up {} recent items for {}", most_recent.len(), cache_type);
+        debug!(
+            "Warming up {} recent items for {}",
+            most_recent.len(),
+            cache_type
+        );
         Ok(())
     }
 
@@ -318,7 +375,7 @@ impl SmartCacheManager {
         path: &str,
         recursive: bool,
         max_files: usize,
-        db_pool: &sqlx::SqlitePool
+        db_pool: &sqlx::SqlitePool,
     ) -> anyhow::Result<()> {
         let like_pattern = if recursive {
             format!("{}%", path)
@@ -326,10 +383,19 @@ impl SmartCacheManager {
             format!("{}/%", path.trim_end_matches('/'))
         };
 
-        let files = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(
+        let files = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                chrono::DateTime<chrono::Utc>,
+            ),
+        >(
             "SELECT id, path, hash_md5, hash_xxhash, last_modified FROM media_files
              WHERE path LIKE ? AND (hash_md5 IS NOT NULL OR hash_xxhash IS NOT NULL)
-             ORDER BY last_modified DESC LIMIT ?"
+             ORDER BY last_modified DESC LIMIT ?",
         )
         .bind(like_pattern)
         .bind(max_files as i64)
@@ -338,7 +404,9 @@ impl SmartCacheManager {
 
         for (id, file_path, hash_md5, hash_xxhash, last_modified) in files {
             if let Some(hash) = hash_md5.or(hash_xxhash) {
-                self.file_hash_cache.set(&file_path, last_modified.timestamp(), hash).await;
+                self.file_hash_cache
+                    .set(&file_path, last_modified.timestamp(), hash)
+                    .await;
             }
 
             let mut status = self.warmup_status.write().await;
@@ -354,23 +422,25 @@ impl SmartCacheManager {
     pub async fn get(&self, cache_type: &str, key: &str) -> Option<serde_json::Value> {
         let start_time = Instant::now();
 
-        // 记录访问模式
-        {
-            let mut patterns = self.access_patterns.write().await;
-            patterns.record_access(key.to_string());
+        // 异步记录访问模式 (Phase 2 优化)
+        if let Err(e) = self.access_record_tx.send(key.to_string()).await {
+            debug!("Failed to send access record: {}", e);
         }
 
         let result = self.memory_cache.get(key).await;
 
         // 更新性能指标
-        self.update_metrics(cache_type, result.is_some(), start_time.elapsed()).await;
+        self.update_metrics(cache_type, result.is_some(), start_time.elapsed())
+            .await;
 
         result
     }
 
     /// 设置缓存项
     pub async fn set(&self, cache_type: &str, key: String, value: serde_json::Value) {
-        self.memory_cache.set(key.clone(), value, Some(self.config.ttl)).await;
+        self.memory_cache
+            .set(key.clone(), value.clone(), Some(self.config.ttl.as_secs()))
+            .await;
 
         // 发送同步消息
         if self.config.enable_distributed_sync {
@@ -399,7 +469,9 @@ impl SmartCacheManager {
     pub async fn handle_sync_message(&self, message: CacheSyncMessage) {
         match message {
             CacheSyncMessage::CacheUpdate { key, value, .. } => {
-                self.memory_cache.set(key, value, Some(self.config.ttl)).await;
+                self.memory_cache
+                    .set(key, value, Some(self.config.ttl.as_secs()))
+                    .await;
             }
             CacheSyncMessage::CacheInvalidate { key, .. } => {
                 self.memory_cache.remove(&key).await;
@@ -411,7 +483,11 @@ impl SmartCacheManager {
             CacheSyncMessage::NodeLeft { node_id, .. } => {
                 info!("Node {} left the cluster", node_id);
             }
-            CacheSyncMessage::WarmupComplete { cache_type, items_loaded, duration_ms } => {
+            CacheSyncMessage::WarmupComplete {
+                cache_type,
+                items_loaded,
+                duration_ms,
+            } => {
                 debug!(
                     "Remote warmup completed for {}: {} items in {}ms",
                     cache_type, items_loaded, duration_ms
@@ -479,18 +555,20 @@ impl SmartCacheManager {
     /// 更新性能指标
     async fn update_metrics(&self, cache_type: &str, is_hit: bool, response_time: Duration) {
         let mut metrics = self.metrics.write().await;
-        let entry = metrics.entry(cache_type.to_string()).or_insert(CacheMetrics {
-            cache_type: cache_type.to_string(),
-            total_requests: 0,
-            cache_hits: 0,
-            cache_misses: 0,
-            hit_rate: 0.0,
-            avg_response_time_ms: 0.0,
-            warmup_duration_ms: None,
-            memory_usage_bytes: 0,
-            items_count: 0,
-            last_updated: chrono::Utc::now(),
-        });
+        let entry = metrics
+            .entry(cache_type.to_string())
+            .or_insert(CacheMetrics {
+                cache_type: cache_type.to_string(),
+                total_requests: 0,
+                cache_hits: 0,
+                cache_misses: 0,
+                hit_rate: 0.0,
+                avg_response_time_ms: 0.0,
+                warmup_duration_ms: None,
+                memory_usage_bytes: 0,
+                items_count: 0,
+                last_updated: chrono::Utc::now(),
+            });
 
         entry.total_requests += 1;
         if is_hit {
@@ -505,7 +583,8 @@ impl SmartCacheManager {
         // 更新平均响应时间（指数移动平均）
         let alpha = 0.1;
         let current_response_time = response_time.as_millis() as f64;
-        entry.avg_response_time_ms = entry.avg_response_time_ms * (1.0 - alpha) + current_response_time * alpha;
+        entry.avg_response_time_ms =
+            entry.avg_response_time_ms * (1.0 - alpha) + current_response_time * alpha;
 
         entry.last_updated = chrono::Utc::now();
     }
@@ -527,6 +606,7 @@ impl Clone for SmartCacheManager {
             sync_tx: self.sync_tx.clone(),
             warmup_status: self.warmup_status.clone(),
             access_patterns: self.access_patterns.clone(),
+            access_record_tx: self.access_record_tx.clone(),
         }
     }
 }
@@ -568,7 +648,13 @@ mod tests {
         let manager = SmartCacheManager::new(config);
 
         // 测试基本的缓存操作
-        manager.set("test_cache", "key1".to_string(), serde_json::json!("value1")).await;
+        manager
+            .set(
+                "test_cache",
+                "key1".to_string(),
+                serde_json::json!("value1"),
+            )
+            .await;
         let value = manager.get("test_cache", "key1").await;
 
         assert_eq!(value, Some(serde_json::json!("value1")));

@@ -2,9 +2,9 @@
 
 use futures::stream::{self, StreamExt};
 use sqlx::SqlitePool;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::services::cache::FileHashCache;
 use crate::services::hasher;
@@ -77,19 +77,23 @@ pub async fn batch_calculate_hash_parallel(
             let error_count = error_count.clone();
             let last_reported = last_reported.clone();
             let progress_report_interval = progress_report_interval;
+            let mut ctx_item = ctx.clone();
 
             async move {
                 // 获取信号量许可（控制并发）
-                let _permit = semaphore.acquire().await.map_err(|e| format!("Semaphore error: {}", e))?;
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .map_err(|e| format!("Semaphore error: {}", e))?;
 
                 // 检查暂停/取消
-                let mut task_ctx = ctx.duplicate();
-                if task_ctx.check_pause().await {
+                if ctx_item.check_pause().await {
                     return Err("Task cancelled".to_string());
                 }
 
                 // 计算哈希
-                let result = hasher::calculate_file_hash(&db, &file_id, task_ctx.duplicate(), hash_cache).await;
+                let result =
+                    hasher::calculate_file_hash(&db, &file_id, ctx_item.clone(), hash_cache).await;
 
                 // 原子计数器更新
                 let current_completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
@@ -97,11 +101,19 @@ pub async fn batch_calculate_hash_parallel(
                 // 检查是否需要报告进度
                 let should_report = {
                     let last = last_reported.load(Ordering::SeqCst);
-                    let should_report_interval = current_completed - last >= progress_report_interval;
+                    let should_report_interval =
+                        current_completed - last >= progress_report_interval;
                     let should_report_percentage = (current_completed * 100 / total) % 5 == 0;
 
                     if should_report_interval || should_report_percentage {
-                        last_reported.compare_exchange(last, current_completed, Ordering::SeqCst, Ordering::SeqCst).is_ok()
+                        last_reported
+                            .compare_exchange(
+                                last,
+                                current_completed,
+                                Ordering::SeqCst,
+                                Ordering::SeqCst,
+                            )
+                            .is_ok()
                     } else {
                         false
                     }
@@ -110,10 +122,12 @@ pub async fn batch_calculate_hash_parallel(
                 // 批量进度报告
                 if should_report {
                     let progress = (current_completed as f64 / total as f64) * 100.0;
-                    let _ = ctx.report_progress(
-                        progress.min(99.0), // 保留1%给最终报告
-                        Some(&format!("Processed {}/{} files", current_completed, total)),
-                    ).await;
+                    let _ = ctx_item
+                        .report_progress(
+                            progress.min(99.0), // 保留1%给最终报告
+                            Some(&format!("Processed {}/{} files", current_completed, total)),
+                        )
+                        .await;
                 }
 
                 match result {
@@ -141,7 +155,13 @@ pub async fn batch_calculate_hash_parallel(
     let final_errors = error_count.load(Ordering::SeqCst);
 
     // 最终进度报告
-    ctx.report_progress(100.0, Some(&format!("Completed {}/{} files", final_completed, total))).await?;
+    let _ = ctx
+        .clone()
+        .report_progress(
+            100.0,
+            Some(&format!("Completed {}/{} files", final_completed, total)),
+        )
+        .await;
 
     // 错误统计和报告
     if !errors.is_empty() {
@@ -160,7 +180,11 @@ pub async fn batch_calculate_hash_parallel(
             tracing::error!("... and {} more errors", errors.len() - 10);
         }
     } else {
-        tracing::info!("Batch hash calculation completed successfully: {}/{} files", final_completed, total);
+        tracing::info!(
+            "Batch hash calculation completed successfully: {}/{} files",
+            final_completed,
+            total
+        );
     }
 
     Ok(())

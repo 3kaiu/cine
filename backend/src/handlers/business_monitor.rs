@@ -3,8 +3,8 @@ use axum::{
     response::Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::handlers::AppState;
 use crate::services::business_metrics::{BusinessMetrics, UsagePatternAnalysis};
@@ -73,17 +73,14 @@ pub async fn set_performance_benchmark(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<SetBenchmarkRequest>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+    let metric_name = req.metric_name.clone();
     crate::services::business_metrics::BUSINESS_METRICS
-        .set_performance_baseline(
-            req.metric_name,
-            req.baseline_value,
-            req.target_value,
-        )
+        .set_performance_baseline(req.metric_name, req.baseline_value, req.target_value)
         .await;
 
     Ok(Json(serde_json::json!({
         "message": "Performance benchmark set successfully",
-        "metric": req.metric_name
+        "metric": metric_name
     })))
 }
 
@@ -135,29 +132,31 @@ pub async fn get_business_dashboard(
         .await;
 
     // 获取系统健康状态
-    let system_health = crate::handlers::performance_monitor::get_system_health(State(state.clone()))
-        .await
-        .map(|Json(health)| health)
-        .unwrap_or_else(|_| crate::handlers::performance_monitor::SystemHealth {
-            status: crate::handlers::performance_monitor::HealthStatus::Unhealthy,
-            health_score: 0.0,
-            timestamp: chrono::Utc::now(),
-            resource_stats: None,
-            queue_stats: None,
-            checks: vec![],
-        });
+    let system_health =
+        crate::handlers::performance_monitor::get_system_health(State(state.clone()))
+            .await
+            .map(|Json(health)| health)
+            .unwrap_or_else(|_| crate::handlers::performance_monitor::SystemHealth {
+                status: crate::handlers::performance_monitor::HealthStatus::Unhealthy,
+                health_score: 0.0,
+                timestamp: chrono::Utc::now(),
+                resource_stats: None,
+                queue_stats: None,
+                checks: vec![],
+            });
 
     // 获取性能趋势
     let performance_trends = crate::services::metrics::ENHANCED_METRICS
         .get_all_trends(3600)
         .await;
 
+    let recommendations = generate_recommendations(&business_metrics, &usage_patterns);
     let dashboard = BusinessDashboard {
         business_metrics,
         usage_patterns,
         system_health,
         performance_trends,
-        recommendations: generate_recommendations(&business_metrics, &usage_patterns),
+        recommendations,
     };
 
     Ok(Json(dashboard))
@@ -166,7 +165,7 @@ pub async fn get_business_dashboard(
 /// 生成业务建议
 fn generate_recommendations(
     metrics: &BusinessMetrics,
-    patterns: &UsagePatternAnalysis
+    patterns: &UsagePatternAnalysis,
 ) -> Vec<BusinessRecommendation> {
     let mut recommendations = Vec::new();
 
@@ -203,7 +202,9 @@ fn generate_recommendations(
     }
 
     // 基于功能采用率生成建议
-    let low_adoption_features: Vec<_> = metrics.user_engagement.feature_adoption_rates
+    let low_adoption_features: Vec<_> = metrics
+        .user_engagement
+        .feature_adoption_rates
         .iter()
         .filter(|(_, rate)| **rate < 0.3)
         .collect();
@@ -229,7 +230,10 @@ fn generate_recommendations(
             priority: RecommendationPriority::Medium,
             category: "Workflow Optimization".to_string(),
             title: "Popular Operation Sequence Detected".to_string(),
-            description: format!("Users frequently perform: {}. Consider creating a streamlined workflow.", top_sequence.0),
+            description: format!(
+                "Users frequently perform: {}. Consider creating a streamlined workflow.",
+                top_sequence.0
+            ),
             action_items: vec![
                 "Create batch operation for common sequences".to_string(),
                 "Add workflow shortcuts".to_string(),

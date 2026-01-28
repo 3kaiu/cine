@@ -158,7 +158,7 @@ pub struct BatchHashExecutor {
 impl TaskExecutor for BatchHashExecutor {
     fn execute(
         &self,
-        mut ctx: TaskContext,
+        ctx: TaskContext,
         payload: Value,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<Option<String>>> + Send>> {
         let db = self.db.clone();

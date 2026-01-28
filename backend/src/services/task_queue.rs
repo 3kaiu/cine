@@ -2,11 +2,11 @@
 // 支持长时间运行任务的暂停/恢复/取消
 // 增强版：完整的监控和统计功能
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,9 @@ use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::services::progress_estimator::{ProgressEstimator, ProgressConfig, TaskStage, MultiStageConfig};
+use crate::services::progress_estimator::{
+    MultiStageConfig, ProgressConfig, ProgressEstimator, TaskStage,
+};
 
 /// 任务状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
@@ -41,7 +43,7 @@ pub enum TaskStatus {
 }
 
 /// 任务类型
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
     Scan,
@@ -143,20 +145,26 @@ pub struct QueuePerformance {
     pub cpu_usage_percent: f64,
 }
 
+fn instant_now() -> std::time::Instant {
+    std::time::Instant::now()
+}
+
 /// 任务执行记录
-#[derive(Debug, Clone)]
-struct TaskExecutionRecord {
-    task_id: String,
-    task_type: TaskType,
-    started_at: Instant,
-    queued_at: chrono::DateTime<chrono::Utc>,
-    completed_at: Option<chrono::DateTime<chrono::Utc>>,
-    success: Option<bool>,
-    error_message: Option<String>,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct TaskExecutionRecord {
+    pub task_id: String,
+    pub task_type: TaskType,
+    #[serde(skip, default = "instant_now")]
+    pub started_at: std::time::Instant,
+    pub queued_at: chrono::DateTime<chrono::Utc>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub success: Option<bool>,
+    pub error_message: Option<String>,
 }
 
 /// 任务上下文，传递给任务执行函数
 /// 用于报告进度和检查取消/暂停状态
+#[derive(Debug)]
 pub struct TaskContext {
     task_id: String,
     command_rx: broadcast::Receiver<TaskCommand>,
@@ -165,6 +173,20 @@ pub struct TaskContext {
     is_cancelled: Arc<RwLock<bool>>,
     progress_estimator: Option<Arc<ProgressEstimator>>,
     total_items: Option<u64>,
+}
+
+impl Clone for TaskContext {
+    fn clone(&self) -> Self {
+        Self {
+            task_id: self.task_id.clone(),
+            command_rx: self.command_rx.resubscribe(),
+            status_tx: self.status_tx.clone(),
+            is_paused: self.is_paused.clone(),
+            is_cancelled: self.is_cancelled.clone(),
+            progress_estimator: self.progress_estimator.clone(),
+            total_items: self.total_items,
+        }
+    }
 }
 
 impl TaskContext {
@@ -176,56 +198,75 @@ impl TaskContext {
                 let processed_items = (progress * total_items as f64) as u64;
 
                 // 检查是否应该更新进度
-                if estimator.should_update_progress(&self.task_id, progress / 100.0).await {
-                    if let Some(state) = estimator.update_progress(
-                        &self.task_id,
-                        processed_items,
-                        None,
-                        Some(progress / 100.0),
-                        Some({
-                            let mut meta = HashMap::new();
-                            if let Some(msg) = message {
-                                meta.insert("message".to_string(), serde_json::Value::String(msg.to_string()));
-                            }
-                            meta
-                        }),
-                    ).await {
+                if estimator
+                    .should_update_progress(&self.task_id, progress / 100.0)
+                    .await
+                {
+                    if let Some(state) = estimator
+                        .update_progress(
+                            &self.task_id,
+                            processed_items,
+                            None,
+                            Some(progress / 100.0),
+                            Some({
+                                let mut meta = HashMap::new();
+                                if let Some(msg) = message {
+                                    meta.insert(
+                                        "message".to_string(),
+                                        serde_json::Value::String(msg.to_string()),
+                                    );
+                                }
+                                meta
+                            }),
+                        )
+                        .await
+                    {
                         // 发送更精确的进度信息
-                        let _ = self.status_tx.send(TaskStatusUpdate {
-                            task_id: self.task_id.clone(),
-                            status: TaskStatus::Running {
-                                progress: state.overall_progress * 100.0,
-                                message: Some(format!(
-                                    "{} (剩余时间: {:.0}s, 速率: {:.1}/s)",
-                                    message.unwrap_or("Processing"),
-                                    state.estimated_time_remaining
-                                        .map(|d| d.as_secs() as f64)
-                                        .unwrap_or(0.0),
-                                    state.current_rate
-                                )),
-                            },
-                        }).await;
+                        let _ = self
+                            .status_tx
+                            .send(TaskStatusUpdate {
+                                task_id: self.task_id.clone(),
+                                status: TaskStatus::Running {
+                                    progress: state.overall_progress * 100.0,
+                                    message: Some(format!(
+                                        "{} (剩余时间: {:.0}s, 速率: {:.1}/s)",
+                                        message.unwrap_or("Processing"),
+                                        state
+                                            .estimated_time_remaining
+                                            .map(|d| d.as_secs() as f64)
+                                            .unwrap_or(0.0),
+                                        state.current_rate
+                                    )),
+                                },
+                            })
+                            .await;
                     }
                 }
             } else {
                 // 对于不确定总数的任务，使用传统方法
-                let _ = self.status_tx.send(TaskStatusUpdate {
+                let _ = self
+                    .status_tx
+                    .send(TaskStatusUpdate {
+                        task_id: self.task_id.clone(),
+                        status: TaskStatus::Running {
+                            progress,
+                            message: message.map(String::from),
+                        },
+                    })
+                    .await;
+            }
+        } else {
+            // 如果没有进度估算器，使用传统方法
+            let _ = self
+                .status_tx
+                .send(TaskStatusUpdate {
                     task_id: self.task_id.clone(),
                     status: TaskStatus::Running {
                         progress,
                         message: message.map(String::from),
                     },
-                }).await;
-            }
-        } else {
-            // 如果没有进度估算器，使用传统方法
-            let _ = self.status_tx.send(TaskStatusUpdate {
-                task_id: self.task_id.clone(),
-                status: TaskStatus::Running {
-                    progress,
-                    message: message.map(String::from),
-                },
-            }).await;
+                })
+                .await;
         }
     }
 
@@ -282,6 +323,8 @@ impl TaskContext {
             status_tx: self.status_tx.clone(),
             is_paused: self.is_paused.clone(),
             is_cancelled: self.is_cancelled.clone(),
+            progress_estimator: self.progress_estimator.clone(),
+            total_items: self.total_items.clone(),
         }
     }
 }
@@ -423,7 +466,7 @@ impl TaskQueue {
             None => return Ok(()), // 未注册执行器，可能由其他节点处理
         };
 
-        let (command_tx, command_rx) = broadcast::channel(16);
+        let (command_tx, _command_rx) = broadcast::channel(16);
         let (status_tx, mut status_rx) = mpsc::channel(32);
         let is_paused = Arc::new(RwLock::new(false));
         let is_cancelled = Arc::new(RwLock::new(false));
@@ -449,19 +492,25 @@ impl TaskQueue {
 
         let ctx = TaskContext {
             task_id: task_id.clone(),
-            command_rx,
-            status_tx,
+            command_rx: command_tx.subscribe(),
+            status_tx: status_tx.clone(),
             is_paused: is_paused.clone(),
             is_cancelled: is_cancelled.clone(),
+            progress_estimator: Some(self.progress_estimator.clone()),
+            total_items: None,
         };
 
         let db = self.db.clone();
         let node_id = self.node_id.clone();
-        let active_count = self.active_count.clone();
         let payload: serde_json::Value =
             serde_json::from_str(&task.payload.unwrap_or_else(|| "{}".to_string()))?;
         let task_id_clone = task_id.clone();
         tracing::info!(task_id = %task_id, task_type = %task.task_type, "Task submitted");
+        let active_count = self.active_count.clone();
+        let execution_records = self.execution_records.clone();
+        let total_tasks_processed = self.total_tasks_processed.clone();
+        let total_tasks_failed = self.total_tasks_failed.clone();
+        let progress_estimator = self.progress_estimator.clone();
 
         tokio::spawn(async move {
             crate::services::metrics::METRICS.active_tasks.inc();
@@ -489,6 +538,7 @@ impl TaskQueue {
             let task_id_for_status = task_id_clone.clone();
             let info_for_status = info_arc.clone();
             tokio::spawn(async move {
+                let mut status_rx = status_rx;
                 while let Some(update) = status_rx.recv().await {
                     // 更新内存
                     {
@@ -499,9 +549,9 @@ impl TaskQueue {
 
                     // 更新 DB
                     let (status_str, progress) = match &update.status {
-                        TaskStatus::Running { progress, .. } => ("running", *progress),
-                        TaskStatus::Paused { progress } => ("paused", *progress),
-                        _ => ("", 0.0),
+                        TaskStatus::Running { progress, .. } => ("running", progress),
+                        TaskStatus::Paused { progress } => ("paused", progress),
+                        _ => ("", &0.0),
                     };
 
                     if !status_str.is_empty() {
@@ -521,30 +571,39 @@ impl TaskQueue {
             // 记录开始执行的统计信息
             {
                 let mut records = execution_records.write().await;
-                records.insert(task_id_clone.clone(), TaskExecutionRecord {
-                    task_id: task_id_clone.clone(),
-                    task_type: task.task_type.clone(),
-                    started_at: start_time,
-                    queued_at: task.created_at,
-                    completed_at: None,
-                    success: None,
-                    error_message: None,
-                });
+                records.insert(
+                    task_id_clone.clone(),
+                    TaskExecutionRecord {
+                        task_id: task_id_clone.clone(),
+                        task_type: task_type.clone(),
+                        started_at: start_time,
+                        queued_at: task.created_at,
+                        completed_at: None,
+                        success: None,
+                        error_message: None,
+                    },
+                );
 
                 // 初始化智能进度跟踪
-                let total_items = payload.get("total_items")
-                    .and_then(|v| v.as_u64())
-                    .or_else(|| payload.get("file_ids")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| arr.len() as u64)
-                    );
+                let total_items =
+                    payload
+                        .get("total_items")
+                        .and_then(|v| v.as_u64())
+                        .or_else(|| {
+                            payload
+                                .get("file_ids")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.len() as u64)
+                        });
 
-                progress_estimator.start_task(
-                    task_id_clone.clone(),
-                    format!("{:?}", task.task_type),
-                    total_items,
-                    None, // 可以后续扩展为多阶段配置
-                ).await;
+                progress_estimator
+                    .start_task(
+                        task_id_clone.clone(),
+                        format!("{:?}", task.task_type),
+                        total_items,
+                        None, // 可以后续扩展为多阶段配置
+                    )
+                    .await;
             }
 
             // 执行
@@ -599,7 +658,9 @@ impl TaskQueue {
                 }
 
                 // 完成进度跟踪
-                progress_estimator.complete_task(&task_id_clone, success.unwrap_or(false)).await;
+                progress_estimator
+                    .complete_task(&task_id_clone, success.unwrap_or(false))
+                    .await;
             }
 
             // 更新内存
@@ -970,7 +1031,7 @@ impl TaskQueue {
                 COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled
             FROM tasks
             GROUP BY task_type
-            "#
+            "#,
         )
         .fetch_all(&self.db)
         .await?;
@@ -985,7 +1046,7 @@ impl TaskQueue {
                 COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
                 COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed
             FROM tasks
-            "#
+            "#,
         )
         .fetch_one(&self.db)
         .await?;
@@ -1006,10 +1067,12 @@ impl TaskQueue {
         .await?;
 
         let (total_tasks, pending, running, completed, failed) = queue_stats;
-        let avg_duration = performance_stats.first()
+        let avg_duration = performance_stats
+            .first()
             .and_then(|(d, _)| *d)
             .unwrap_or(0.0);
-        let avg_queue_time = performance_stats.first()
+        let avg_queue_time = performance_stats
+            .first()
             .and_then(|(_, q)| *q)
             .unwrap_or(0.0);
 
@@ -1023,7 +1086,8 @@ impl TaskQueue {
         };
 
         // 获取系统资源信息
-        let resource_utilization = *self.active_count.read().await as f64 / self.max_concurrent as f64;
+        let resource_utilization =
+            *self.active_count.read().await as f64 / self.max_concurrent as f64;
 
         // 估算内存使用（简化计算）
         let memory_usage_mb = (self.tasks.len() * 50) as f64; // 每个任务约50KB
@@ -1040,14 +1104,17 @@ impl TaskQueue {
                 0.0
             };
 
-            tasks_by_type.insert(task_type_str.clone(), TaskTypeStats {
-                total: total as usize,
-                active: active as usize,
-                successful: successful as usize,
-                failed: failed_count as usize,
-                avg_duration,
-                success_rate,
-            });
+            tasks_by_type.insert(
+                task_type_str.clone(),
+                TaskTypeStats {
+                    total: total as usize,
+                    active: active as usize,
+                    successful: successful as usize,
+                    failed: failed_count as usize,
+                    avg_duration,
+                    success_rate,
+                },
+            );
         }
 
         Ok(QueueStats {
@@ -1073,11 +1140,15 @@ impl TaskQueue {
     pub async fn get_execution_history(
         &self,
         limit: usize,
-        offset: usize
+        offset: usize,
     ) -> anyhow::Result<Vec<TaskExecutionRecord>> {
         let records = self.execution_records.read().await;
         let mut history: Vec<_> = records.values().cloned().collect();
-        history.sort_by(|a, b| b.completed_at.unwrap_or(b.queued_at).cmp(&a.completed_at.unwrap_or(a.queued_at)));
+        history.sort_by(|a, b| {
+            b.completed_at
+                .unwrap_or(b.queued_at)
+                .cmp(&a.completed_at.unwrap_or(a.queued_at))
+        });
 
         Ok(history.into_iter().skip(offset).take(limit).collect())
     }
@@ -1088,10 +1159,15 @@ impl TaskQueue {
         let cutoff = chrono::Utc::now() - chrono::Duration::from_std(max_age).unwrap_or_default();
 
         records.retain(|_, record| {
-            record.completed_at.map_or(true, |completed| completed > cutoff)
+            record
+                .completed_at
+                .map_or(true, |completed| completed > cutoff)
         });
 
-        info!("Cleaned up old execution records, remaining: {}", records.len());
+        info!(
+            "Cleaned up old execution records, remaining: {}",
+            records.len()
+        );
     }
 
     /// 创建一个用于远程任务的上下文

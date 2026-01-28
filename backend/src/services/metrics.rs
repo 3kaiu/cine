@@ -1,11 +1,11 @@
 use once_cell::sync::Lazy;
 use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use sysinfo::System;
 use tokio::sync::RwLock;
-use sysinfo::{System, SystemExt, CpuExt, ProcessExt};
-use serde::{Deserialize, Serialize};
 
 /// 性能指标数据点
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,8 +105,11 @@ impl EnhancedMetricsCollector {
             "cine_http_request_duration_seconds",
             "HTTP request duration in seconds",
             &["method", "endpoint", "status"],
-            vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
-        ).await?;
+            vec![
+                0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+            ],
+        )
+        .await?;
 
         // 数据库查询指标
         self.register_histogram(
@@ -114,7 +117,8 @@ impl EnhancedMetricsCollector {
             "Database query duration in seconds",
             &["operation", "table"],
             vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.5, 1.0],
-        ).await?;
+        )
+        .await?;
 
         // 任务执行指标
         self.register_histogram(
@@ -122,34 +126,42 @@ impl EnhancedMetricsCollector {
             "Task execution duration in seconds",
             &["task_type"],
             vec![0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0],
-        ).await?;
+        )
+        .await?;
 
         // 缓存性能指标
         self.register_counter(
             "cine_cache_requests_total",
             "Total cache requests",
             &["cache_type", "operation"],
-        ).await?;
+        )
+        .await?;
 
-        self.register_gauge(
-            "cine_cache_hit_rate",
-            "Cache hit rate",
-            &["cache_type"],
-        ).await?;
+        self.register_gauge("cine_cache_hit_rate", "Cache hit rate", &["cache_type"])
+            .await?;
 
         // 资源使用指标
-        self.register_gauge("cine_cpu_usage_percent", "CPU usage percentage", &[]).await?;
-        self.register_gauge("cine_memory_usage_bytes", "Memory usage in bytes", &[]).await?;
-        self.register_gauge("cine_disk_usage_bytes", "Disk usage in bytes", &[]).await?;
+        self.register_gauge("cine_cpu_usage_percent", "CPU usage percentage", &[])
+            .await?;
+        self.register_gauge("cine_memory_usage_bytes", "Memory usage in bytes", &[])
+            .await?;
+        self.register_gauge("cine_disk_usage_bytes", "Disk usage in bytes", &[])
+            .await?;
 
         // 业务指标
         self.register_counter(
             "cine_files_processed_total",
             "Total files processed",
             &["operation"],
-        ).await?;
+        )
+        .await?;
 
-        self.register_gauge("cine_active_connections", "Number of active connections", &[]).await?;
+        self.register_gauge(
+            "cine_active_connections",
+            "Number of active connections",
+            &[],
+        )
+        .await?;
 
         Ok(())
     }
@@ -162,9 +174,7 @@ impl EnhancedMetricsCollector {
         labels: &[&str],
         buckets: Vec<f64>,
     ) -> anyhow::Result<()> {
-        let histogram = Histogram::with_opts(
-            HistogramOpts::new(name, help).buckets(buckets)
-        )?;
+        let histogram = Histogram::with_opts(HistogramOpts::new(name, help).buckets(buckets))?;
 
         let labeled_histogram = if labels.is_empty() {
             histogram
@@ -174,8 +184,12 @@ impl EnhancedMetricsCollector {
             histogram
         };
 
-        self.registry.register(Box::new(labeled_histogram.clone()))?;
-        self.metrics.write().await.insert(name.to_string(), Box::new(labeled_histogram));
+        self.registry
+            .register(Box::new(labeled_histogram.clone()))?;
+        self.metrics
+            .write()
+            .await
+            .insert(name.to_string(), Box::new(labeled_histogram));
 
         Ok(())
     }
@@ -188,14 +202,13 @@ impl EnhancedMetricsCollector {
         labels: &[&str],
     ) -> anyhow::Result<()> {
         let counter = Counter::with_opts(Opts::new(name, help))?;
-        let labeled_counter = if labels.is_empty() {
-            counter
-        } else {
-            counter
-        };
+        let labeled_counter = if labels.is_empty() { counter } else { counter };
 
         self.registry.register(Box::new(labeled_counter.clone()))?;
-        self.metrics.write().await.insert(name.to_string(), Box::new(labeled_counter));
+        self.metrics
+            .write()
+            .await
+            .insert(name.to_string(), Box::new(labeled_counter));
 
         Ok(())
     }
@@ -208,14 +221,13 @@ impl EnhancedMetricsCollector {
         labels: &[&str],
     ) -> anyhow::Result<()> {
         let gauge = Gauge::with_opts(Opts::new(name, help))?;
-        let labeled_gauge = if labels.is_empty() {
-            gauge
-        } else {
-            gauge
-        };
+        let labeled_gauge = if labels.is_empty() { gauge } else { gauge };
 
         self.registry.register(Box::new(labeled_gauge.clone()))?;
-        self.metrics.write().await.insert(name.to_string(), Box::new(labeled_gauge));
+        self.metrics
+            .write()
+            .await
+            .insert(name.to_string(), Box::new(labeled_gauge));
 
         Ok(())
     }
@@ -234,7 +246,9 @@ impl EnhancedMetricsCollector {
         };
 
         // 存储时间序列数据
-        self.time_series_data.write().await
+        self.time_series_data
+            .write()
+            .await
             .entry(name.to_string())
             .or_insert_with(Vec::new)
             .push(data_point);
@@ -245,20 +259,24 @@ impl EnhancedMetricsCollector {
         let mut system = self.system.write().await;
         system.refresh_all();
 
-        let cpu_usage = system.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() / system.cpus().len() as f32;
+        let cpu_usage = system.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>()
+            / system.cpus().len() as f32;
         let memory_usage = system.used_memory();
         let memory_total = system.total_memory();
 
         // 磁盘使用情况（简化实现）
         let disk_usage = 0; // 需要实现
-        let disk_total = 0;  // 需要实现
+        let disk_total = 0; // 需要实现
 
         // 网络统计（简化实现）
         let network_rx = 0; // 需要实现
-        let network_tx = 0;  // 需要实现
+        let network_tx = 0; // 需要实现
 
         let stats = ResourceStats {
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             cpu_usage_percent: cpu_usage as f64,
             memory_usage_bytes: memory_usage,
             memory_total_bytes: memory_total,
@@ -275,7 +293,10 @@ impl EnhancedMetricsCollector {
         let cutoff = SystemTime::now() - Duration::from_secs(24 * 3600);
         let cutoff_timestamp = cutoff.duration_since(UNIX_EPOCH).unwrap().as_secs();
 
-        self.resource_history.write().await.retain(|stat| stat.timestamp >= cutoff_timestamp);
+        self.resource_history
+            .write()
+            .await
+            .retain(|stat| stat.timestamp >= cutoff_timestamp);
 
         stats
     }
@@ -284,12 +305,15 @@ impl EnhancedMetricsCollector {
     pub async fn analyze_performance_trend(
         &self,
         metric_name: &str,
-        time_range_seconds: u64
+        time_range_seconds: u64,
     ) -> Option<PerformanceTrend> {
         let cutoff = SystemTime::now() - Duration::from_secs(time_range_seconds);
         let cutoff_timestamp = cutoff.duration_since(UNIX_EPOCH).unwrap().as_secs();
 
-        let data = self.time_series_data.read().await
+        let data = self
+            .time_series_data
+            .read()
+            .await
             .get(metric_name)?
             .iter()
             .filter(|dp| dp.timestamp >= cutoff_timestamp)
@@ -322,7 +346,10 @@ impl EnhancedMetricsCollector {
             TrendDirection::Stable
         };
 
-        let data_points = self.time_series_data.read().await
+        let data_points = self
+            .time_series_data
+            .read()
+            .await
             .get(metric_name)?
             .iter()
             .filter(|dp| dp.timestamp >= cutoff_timestamp)
@@ -345,7 +372,8 @@ impl EnhancedMetricsCollector {
 
     /// 检测性能异常
     pub async fn detect_anomalies(&self, metric_name: &str) -> Vec<PerformanceAnomaly> {
-        let trend = match self.analyze_performance_trend(metric_name, 3600).await { // 1小时
+        let trend = match self.analyze_performance_trend(metric_name, 3600).await {
+            // 1小时
             Some(t) => t,
             None => return Vec::new(),
         };
@@ -355,7 +383,7 @@ impl EnhancedMetricsCollector {
         // 检查P99异常
         if let Some(latest) = trend.data_points.last() {
             let threshold_high = trend.p95 * 2.0; // P95的2倍作为异常阈值
-            let threshold_low = trend.p50 * 0.5;  // P50的0.5倍作为异常阈值
+            let threshold_low = trend.p50 * 0.5; // P50的0.5倍作为异常阈值
 
             if latest.value > threshold_high {
                 anomalies.push(PerformanceAnomaly {
@@ -364,7 +392,10 @@ impl EnhancedMetricsCollector {
                     expected_value: trend.p95,
                     actual_value: latest.value,
                     severity: AnomalySeverity::High,
-                    description: format!("{} 超出正常范围: {:.2} > {:.2}", metric_name, latest.value, threshold_high),
+                    description: format!(
+                        "{} 超出正常范围: {:.2} > {:.2}",
+                        metric_name, latest.value, threshold_high
+                    ),
                 });
             } else if latest.value < threshold_low {
                 anomalies.push(PerformanceAnomaly {
@@ -373,7 +404,10 @@ impl EnhancedMetricsCollector {
                     expected_value: trend.p50,
                     actual_value: latest.value,
                     severity: AnomalySeverity::Medium,
-                    description: format!("{} 低于正常范围: {:.2} < {:.2}", metric_name, latest.value, threshold_low),
+                    description: format!(
+                        "{} 低于正常范围: {:.2} < {:.2}",
+                        metric_name, latest.value, threshold_low
+                    ),
                 });
             }
         }
@@ -388,11 +422,20 @@ impl EnhancedMetricsCollector {
 
     /// 获取所有性能趋势
     pub async fn get_all_trends(&self, time_range_seconds: u64) -> Vec<PerformanceTrend> {
-        let metric_names = self.time_series_data.read().await.keys().cloned().collect::<Vec<_>>();
+        let metric_names = self
+            .time_series_data
+            .read()
+            .await
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
 
         let mut trends = Vec::new();
         for metric_name in metric_names {
-            if let Some(trend) = self.analyze_performance_trend(&metric_name, time_range_seconds).await {
+            if let Some(trend) = self
+                .analyze_performance_trend(&metric_name, time_range_seconds)
+                .await
+            {
                 trends.push(trend);
             }
         }
@@ -402,7 +445,9 @@ impl EnhancedMetricsCollector {
 
     /// 获取资源使用历史
     pub async fn get_resource_history(&self, limit: usize) -> Vec<ResourceStats> {
-        self.resource_history.read().await
+        self.resource_history
+            .read()
+            .await
             .iter()
             .rev()
             .take(limit)
@@ -415,7 +460,9 @@ impl EnhancedMetricsCollector {
 
     /// 获取检测到的异常
     pub async fn get_anomalies(&self, limit: usize) -> Vec<PerformanceAnomaly> {
-        self.anomalies.read().await
+        self.anomalies
+            .read()
+            .await
             .iter()
             .rev()
             .take(limit)
@@ -431,7 +478,9 @@ impl EnhancedMetricsCollector {
         use prometheus::Encoder;
         let encoder = prometheus::TextEncoder::new();
         let metric_families = self.registry.gather();
-        encoder.encode_to_string(&metric_families).unwrap_or_default()
+        encoder
+            .encode_to_string(&metric_families)
+            .unwrap_or_default()
     }
 
     /// 启动后台监控任务
@@ -468,7 +517,11 @@ impl EnhancedMetricsCollector {
                     for metric in metrics_to_check {
                         let anomalies = collector.detect_anomalies(metric).await;
                         if !anomalies.is_empty() {
-                            tracing::warn!("Detected {} anomalies for metric {}", anomalies.len(), metric);
+                            tracing::warn!(
+                                "Detected {} anomalies for metric {}",
+                                anomalies.len(),
+                                metric
+                            );
                         }
                     }
                 }
@@ -492,12 +545,16 @@ impl Clone for EnhancedMetricsCollector {
 }
 
 // 全局增强指标收集器
-pub static ENHANCED_METRICS: Lazy<EnhancedMetricsCollector> = Lazy::new(|| {
-    EnhancedMetricsCollector::new(Duration::from_secs(30))
-});
+pub static ENHANCED_METRICS: Lazy<EnhancedMetricsCollector> =
+    Lazy::new(|| EnhancedMetricsCollector::new(Duration::from_secs(30)));
 
 // 兼容性：保留原有METRICS结构
-pub struct Metrics;
+pub struct Metrics {
+    pub active_tasks: Gauge,
+    pub hash_throughput_bytes: Counter,
+    pub scan_duration_seconds: Histogram,
+    pub scrape_requests_total: Counter,
+}
 
 pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry::new());
 
@@ -508,5 +565,43 @@ pub static METRICS: Lazy<Metrics> = Lazy::new(|| {
         ENHANCED_METRICS.start_monitoring().await;
     });
 
-    Metrics
+    let active_tasks = Gauge::with_opts(Opts::new(
+        "cine_active_tasks",
+        "Number of currently active tasks",
+    ))
+    .unwrap();
+    let hash_throughput_bytes = Counter::with_opts(Opts::new(
+        "cine_hash_throughput_bytes",
+        "Total bytes hashed",
+    ))
+    .unwrap();
+    let scan_duration_seconds = Histogram::with_opts(HistogramOpts::new(
+        "cine_scan_duration_seconds",
+        "Duration of directory scans",
+    ))
+    .unwrap();
+
+    let scrape_requests_total = Counter::with_opts(Opts::new(
+        "cine_scrape_requests_total",
+        "Total number of scrape requests",
+    ))
+    .unwrap();
+
+    REGISTRY.register(Box::new(active_tasks.clone())).unwrap();
+    REGISTRY
+        .register(Box::new(hash_throughput_bytes.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(scan_duration_seconds.clone()))
+        .unwrap();
+    REGISTRY
+        .register(Box::new(scrape_requests_total.clone()))
+        .unwrap();
+
+    Metrics {
+        active_tasks,
+        hash_throughput_bytes,
+        scan_duration_seconds,
+        scrape_requests_total,
+    }
 });

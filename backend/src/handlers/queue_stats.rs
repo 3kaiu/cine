@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    response::Json,
+    response::{IntoResponse, Json},
 };
 use std::sync::Arc;
 
@@ -20,17 +20,13 @@ use crate::services::task_queue::QueueStats;
 pub async fn get_queue_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<QueueStats>, (axum::http::StatusCode, String)> {
-    let stats = state
-        .task_queue
-        .get_stats()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get queue stats: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("获取队列统计失败: {}", e),
-            )
-        })?;
+    let stats = state.task_queue.get_stats().await.map_err(|e| {
+        tracing::error!("Failed to get queue stats: {}", e);
+        (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("获取队列统计失败: {}", e),
+        )
+    })?;
 
     Ok(Json(stats))
 }
@@ -52,7 +48,7 @@ pub async fn get_queue_stats(
 pub async fn get_execution_history(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<Vec<crate::services::task_queue::TaskExecutionRecord>>, (axum::http::StatusCode, String)> {
+) -> axum::response::Response {
     let limit = params
         .get("limit")
         .and_then(|s| s.parse().ok())
@@ -63,17 +59,15 @@ pub async fn get_execution_history(
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
-    let history = state
-        .task_queue
-        .get_execution_history(limit, offset)
-        .await
-        .map_err(|e| {
+    match state.task_queue.get_execution_history(limit, offset).await {
+        Ok(history) => Json(history).into_response(),
+        Err(e) => {
             tracing::error!("Failed to get execution history: {}", e);
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 format!("获取执行历史失败: {}", e),
             )
-        })?;
-
-    Ok(Json(history))
+                .into_response()
+        }
+    }
 }

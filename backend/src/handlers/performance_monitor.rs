@@ -3,11 +3,13 @@ use axum::{
     response::Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::handlers::AppState;
-use crate::services::metrics::{EnhancedMetricsCollector, PerformanceTrend, ResourceStats, PerformanceAnomaly};
+use crate::services::metrics::{
+    EnhancedMetricsCollector, PerformanceAnomaly, PerformanceTrend, ResourceStats,
+};
 
 /// 获取性能趋势分析
 #[utoipa::path(
@@ -117,7 +119,10 @@ pub async fn get_system_health(
         .cloned();
 
     // 获取队列统计
-    let queue_stats = state.task_queue.get_stats().await
+    let queue_stats = state
+        .task_queue
+        .get_stats()
+        .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // 计算健康分数 (0.0-1.0, 1.0为最佳)
@@ -167,51 +172,60 @@ pub async fn get_system_health(
         HealthStatus::Unhealthy
     };
 
+    let checks = vec![
+        HealthCheck {
+            name: "CPU Usage".to_string(),
+            status: if resource_stats
+                .as_ref()
+                .map_or(true, |s| s.cpu_usage_percent < 80.0)
+            {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Warning
+            },
+            message: resource_stats
+                .as_ref()
+                .map_or("CPU stats unavailable".to_string(), |s| {
+                    format!("CPU usage: {:.1}%", s.cpu_usage_percent)
+                }),
+        },
+        HealthCheck {
+            name: "Memory Usage".to_string(),
+            status: if resource_stats.as_ref().map_or(true, |s| {
+                let ratio = s.memory_usage_bytes as f64 / s.memory_total_bytes as f64;
+                ratio < 0.85
+            }) {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Warning
+            },
+            message: resource_stats
+                .as_ref()
+                .map_or("Memory stats unavailable".to_string(), |s| {
+                    format!(
+                        "Memory usage: {} / {} bytes",
+                        s.memory_usage_bytes, s.memory_total_bytes
+                    )
+                }),
+        },
+        HealthCheck {
+            name: "Queue Health".to_string(),
+            status: if queue_stats.pending_tasks < 5 {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Warning
+            },
+            message: format!("Pending tasks: {}", queue_stats.pending_tasks),
+        },
+    ];
+
     let health = SystemHealth {
         status,
         health_score,
         timestamp: chrono::Utc::now(),
         resource_stats,
         queue_stats: Some(queue_stats),
-        checks: vec![
-            HealthCheck {
-                name: "CPU Usage".to_string(),
-                status: if resource_stats.as_ref().map_or(true, |s| s.cpu_usage_percent < 80.0) {
-                    HealthStatus::Healthy
-                } else {
-                    HealthStatus::Warning
-                },
-                message: resource_stats.as_ref().map_or(
-                    "CPU stats unavailable".to_string(),
-                    |s| format!("CPU usage: {:.1}%", s.cpu_usage_percent)
-                ),
-            },
-            HealthCheck {
-                name: "Memory Usage".to_string(),
-                status: if resource_stats.as_ref().map_or(true, |s| {
-                    let ratio = s.memory_usage_bytes as f64 / s.memory_total_bytes as f64;
-                    ratio < 0.85
-                }) {
-                    HealthStatus::Healthy
-                } else {
-                    HealthStatus::Warning
-                },
-                message: resource_stats.as_ref().map_or(
-                    "Memory stats unavailable".to_string(),
-                    |s| format!("Memory usage: {} / {} bytes",
-                        s.memory_usage_bytes, s.memory_total_bytes)
-                ),
-            },
-            HealthCheck {
-                name: "Queue Health".to_string(),
-                status: if queue_stats.pending_tasks < 5 {
-                    HealthStatus::Healthy
-                } else {
-                    HealthStatus::Warning
-                },
-                message: format!("Pending tasks: {}", queue_stats.pending_tasks),
-            },
-        ],
+        checks,
     };
 
     Ok(Json(health))

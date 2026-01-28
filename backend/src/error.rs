@@ -21,18 +21,11 @@ use tracing::{error, warn};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RecoveryStrategy {
     /// 重试操作
-    Retry {
-        max_attempts: u32,
-        backoff_ms: u64,
-    },
+    Retry { max_attempts: u32, backoff_ms: u64 },
     /// 使用备用方案
-    Fallback {
-        alternative: String,
-    },
+    Fallback { alternative: String },
     /// 用户手动干预
-    ManualIntervention {
-        instructions: String,
-    },
+    ManualIntervention { instructions: String },
     /// 不可恢复
     Irrecoverable,
 }
@@ -92,10 +85,7 @@ pub enum AppError {
     // ===== 文件系统错误 =====
     /// 文件未找到
     #[error("File not found: {path}")]
-    FileNotFound {
-        path: String,
-        context: ErrorContext,
-    },
+    FileNotFound { path: String, context: ErrorContext },
 
     /// 文件权限错误
     #[error("File permission denied: {path}")]
@@ -216,7 +206,10 @@ impl AppError {
         match self {
             // 数据库错误
             AppError::DatabaseConnection { source, context } => {
-                error!("Database connection failed: {} - Context: {:?}", source, context);
+                error!(
+                    "Database connection failed: {} - Context: {:?}",
+                    source, context
+                );
                 ErrorResponse {
                     code: "DATABASE_CONNECTION_ERROR".to_string(),
                     message: format!("Database connection failed: {}", source),
@@ -232,8 +225,15 @@ impl AppError {
                 }
             }
 
-            AppError::DatabaseQuery { source, query, context } => {
-                error!("Database query failed: {} - Query: {} - Context: {:?}", source, query, context);
+            AppError::DatabaseQuery {
+                source,
+                query,
+                context,
+            } => {
+                error!(
+                    "Database query failed: {} - Query: {} - Context: {:?}",
+                    source, query, context
+                );
                 ErrorResponse {
                     code: "DATABASE_QUERY_ERROR".to_string(),
                     message: format!("Database query failed: {}", source),
@@ -251,7 +251,10 @@ impl AppError {
             }
 
             AppError::DataIntegrity { details, context } => {
-                warn!("Data integrity violation: {} - Context: {:?}", details, context);
+                warn!(
+                    "Data integrity violation: {} - Context: {:?}",
+                    details, context
+                );
                 ErrorResponse {
                     code: "DATA_INTEGRITY_ERROR".to_string(),
                     message: format!("Data integrity violation: {}", details),
@@ -279,11 +282,21 @@ impl AppError {
                 }
             }
 
-            AppError::FilePermission { path, operation, context } => {
-                warn!("File permission denied: {} - Operation: {} - Context: {:?}", path, operation, context);
+            AppError::FilePermission {
+                path,
+                operation,
+                context,
+            } => {
+                warn!(
+                    "File permission denied: {} - Operation: {} - Context: {:?}",
+                    path, operation, context
+                );
                 ErrorResponse {
                     code: "FILE_PERMISSION_ERROR".to_string(),
-                    message: format!("Permission denied for operation '{}' on file: {}", operation, path),
+                    message: format!(
+                        "Permission denied for operation '{}' on file: {}",
+                        operation, path
+                    ),
                     user_message: format!("文件权限不足，无法执行{}操作", operation),
                     details: Some(json!({
                         "path": path,
@@ -296,8 +309,15 @@ impl AppError {
                 }
             }
 
-            AppError::FileIo { source, path, context } => {
-                error!("File I/O error: {} - Path: {:?} - Context: {:?}", source, path, context);
+            AppError::FileIo {
+                source,
+                path,
+                context,
+            } => {
+                error!(
+                    "File I/O error: {} - Path: {:?} - Context: {:?}",
+                    source, path, context
+                );
                 ErrorResponse {
                     code: "FILE_IO_ERROR".to_string(),
                     message: format!("File I/O error: {}", source),
@@ -315,8 +335,16 @@ impl AppError {
             }
 
             // 网络错误
-            AppError::TmdbApi { status_code, message, retry_after, context } => {
-                warn!("TMDB API error: {} - {} - Context: {:?}", status_code, message, context);
+            AppError::TmdbApi {
+                status_code,
+                message,
+                retry_after,
+                context,
+            } => {
+                warn!(
+                    "TMDB API error: {} - {} - Context: {:?}",
+                    status_code, message, context
+                );
                 let recovery = if *status_code == 429 {
                     Some(RecoveryStrategy::Retry {
                         max_attempts: 3,
@@ -343,11 +371,21 @@ impl AppError {
                 }
             }
 
-            AppError::NetworkTimeout { operation, timeout_ms, context } => {
-                warn!("Network timeout: {} - Timeout: {}ms - Context: {:?}", operation, timeout_ms, context);
+            AppError::NetworkTimeout {
+                operation,
+                timeout_ms,
+                context,
+            } => {
+                warn!(
+                    "Network timeout: {} - Timeout: {}ms - Context: {:?}",
+                    operation, timeout_ms, context
+                );
                 ErrorResponse {
                     code: "NETWORK_TIMEOUT".to_string(),
-                    message: format!("Network timeout for operation '{}': {}ms", operation, timeout_ms),
+                    message: format!(
+                        "Network timeout for operation '{}': {}ms",
+                        operation, timeout_ms
+                    ),
                     user_message: format!("网络请求超时: {}", operation),
                     details: Some(json!({
                         "operation": operation,
@@ -361,8 +399,15 @@ impl AppError {
                 }
             }
 
-            AppError::Network { source, url, context } => {
-                error!("Network error: {} - URL: {:?} - Context: {:?}", source, url, context);
+            AppError::Network {
+                source,
+                url,
+                context,
+            } => {
+                error!(
+                    "Network error: {} - URL: {:?} - Context: {:?}",
+                    source, url, context
+                );
                 ErrorResponse {
                     code: "NETWORK_ERROR".to_string(),
                     message: format!("Network error: {}", source),
@@ -380,8 +425,16 @@ impl AppError {
             }
 
             // 验证错误
-            AppError::Validation { field, reason, value, context } => {
-                warn!("Validation failed: {} - {} - Value: {:?} - Context: {:?}", field, reason, value, context);
+            AppError::Validation {
+                field,
+                reason,
+                value,
+                context,
+            } => {
+                warn!(
+                    "Validation failed: {} - {} - Value: {:?} - Context: {:?}",
+                    field, reason, value, context
+                );
                 ErrorResponse {
                     code: "VALIDATION_ERROR".to_string(),
                     message: format!("Validation failed for field '{}': {}", field, reason),
@@ -398,8 +451,15 @@ impl AppError {
                 }
             }
 
-            AppError::UnsupportedFormat { format, supported_formats, context } => {
-                warn!("Unsupported format: {} - Supported: {:?} - Context: {:?}", format, supported_formats, context);
+            AppError::UnsupportedFormat {
+                format,
+                supported_formats,
+                context,
+            } => {
+                warn!(
+                    "Unsupported format: {} - Supported: {:?} - Context: {:?}",
+                    format, supported_formats, context
+                );
                 ErrorResponse {
                     code: "UNSUPPORTED_FORMAT".to_string(),
                     message: format!("Unsupported file format: {}", format),
@@ -409,7 +469,10 @@ impl AppError {
                         "supported_formats": supported_formats
                     })),
                     recovery_strategy: Some(RecoveryStrategy::ManualIntervention {
-                        instructions: format!("请使用以下格式之一: {}", supported_formats.join(", ")),
+                        instructions: format!(
+                            "请使用以下格式之一: {}",
+                            supported_formats.join(", ")
+                        ),
                     }),
                     context: Some(context.clone()),
                 }
@@ -430,11 +493,22 @@ impl AppError {
                 }
             }
 
-            AppError::QuotaExceeded { resource, current, limit, context } => {
-                warn!("Quota exceeded: {} - {}/{} - Context: {:?}", resource, current, limit, context);
+            AppError::QuotaExceeded {
+                resource,
+                current,
+                limit,
+                context,
+            } => {
+                warn!(
+                    "Quota exceeded: {} - {}/{} - Context: {:?}",
+                    resource, current, limit, context
+                );
                 ErrorResponse {
                     code: "QUOTA_EXCEEDED".to_string(),
-                    message: format!("Resource quota exceeded: {} - {}/{}", resource, current, limit),
+                    message: format!(
+                        "Resource quota exceeded: {} - {}/{}",
+                        resource, current, limit
+                    ),
                     user_message: format!("资源配额不足: {}", resource),
                     details: Some(json!({
                         "resource": resource,
@@ -448,8 +522,15 @@ impl AppError {
                 }
             }
 
-            AppError::OperationCancelled { operation, reason, context } => {
-                warn!("Operation cancelled: {} - Reason: {:?} - Context: {:?}", operation, reason, context);
+            AppError::OperationCancelled {
+                operation,
+                reason,
+                context,
+            } => {
+                warn!(
+                    "Operation cancelled: {} - Reason: {:?} - Context: {:?}",
+                    operation, reason, context
+                );
                 ErrorResponse {
                     code: "OPERATION_CANCELLED".to_string(),
                     message: format!("Operation cancelled: {}", operation),
@@ -467,8 +548,15 @@ impl AppError {
             }
 
             // 配置和系统错误
-            AppError::ConfigInvalid { key, reason, context } => {
-                error!("Invalid configuration: {} - {} - Context: {:?}", key, reason, context);
+            AppError::ConfigInvalid {
+                key,
+                reason,
+                context,
+            } => {
+                error!(
+                    "Invalid configuration: {} - {} - Context: {:?}",
+                    key, reason, context
+                );
                 ErrorResponse {
                     code: "CONFIG_INVALID".to_string(),
                     message: format!("Invalid configuration for '{}': {}", key, reason),
@@ -484,11 +572,22 @@ impl AppError {
                 }
             }
 
-            AppError::SystemResource { resource, available, required, context } => {
-                error!("System resource exhausted: {} - Available: {}, Required: {} - Context: {:?}", resource, available, required, context);
+            AppError::SystemResource {
+                resource,
+                available,
+                required,
+                context,
+            } => {
+                error!(
+                    "System resource exhausted: {} - Available: {}, Required: {} - Context: {:?}",
+                    resource, available, required, context
+                );
                 ErrorResponse {
                     code: "SYSTEM_RESOURCE_EXHAUSTED".to_string(),
-                    message: format!("System resource exhausted: {} - Available: {}, Required: {}", resource, available, required),
+                    message: format!(
+                        "System resource exhausted: {} - Available: {}, Required: {}",
+                        resource, available, required
+                    ),
                     user_message: format!("系统资源不足: {}", resource),
                     details: Some(json!({
                         "resource": resource,
@@ -503,8 +602,15 @@ impl AppError {
                 }
             }
 
-            AppError::Internal { message, source, context } => {
-                error!("Internal error: {} - Source: {:?} - Context: {:?}", message, source, context);
+            AppError::Internal {
+                message,
+                source,
+                context,
+            } => {
+                error!(
+                    "Internal error: {} - Source: {:?} - Context: {:?}",
+                    message, source, context
+                );
                 ErrorResponse {
                     code: "INTERNAL_ERROR".to_string(),
                     message: format!("Internal error: {}", message),
@@ -523,15 +629,21 @@ impl AppError {
     /// 获取 HTTP 状态码
     pub fn http_status(&self) -> StatusCode {
         match self {
-            AppError::DatabaseConnection { .. } | AppError::DatabaseQuery { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::DatabaseConnection { .. } | AppError::DatabaseQuery { .. } => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
             AppError::DataIntegrity { .. } => StatusCode::CONFLICT,
             AppError::FileNotFound { .. } => StatusCode::NOT_FOUND,
             AppError::FilePermission { .. } => StatusCode::FORBIDDEN,
             AppError::FileIo { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            AppError::TmdbApi { status_code: 429, .. } => StatusCode::TOO_MANY_REQUESTS,
+            AppError::TmdbApi {
+                status_code: 429, ..
+            } => StatusCode::TOO_MANY_REQUESTS,
             AppError::TmdbApi { .. } => StatusCode::BAD_GATEWAY,
             AppError::NetworkTimeout { .. } | AppError::Network { .. } => StatusCode::BAD_GATEWAY,
-            AppError::Validation { .. } | AppError::UnsupportedFormat { .. } => StatusCode::BAD_REQUEST,
+            AppError::Validation { .. } | AppError::UnsupportedFormat { .. } => {
+                StatusCode::BAD_REQUEST
+            }
             AppError::TaskExists { .. } => StatusCode::CONFLICT,
             AppError::QuotaExceeded { .. } => StatusCode::INSUFFICIENT_STORAGE,
             AppError::OperationCancelled { .. } => StatusCode::REQUEST_TIMEOUT,
@@ -562,11 +674,12 @@ pub type AppResult<T> = Result<T, AppError>;
 impl AppError {
     /// 创建带上下文的文件未找到错误
     pub fn file_not_found(path: impl Into<String>, operation: impl Into<String>) -> Self {
+        let path_str = path.into();
         AppError::FileNotFound {
-            path: path.into(),
+            path: path_str.clone(),
             context: ErrorContext {
                 operation: operation.into(),
-                resource: Some(path.into()),
+                resource: Some(path_str),
                 user_id: None,
                 metadata: HashMap::new(),
             },
@@ -574,7 +687,11 @@ impl AppError {
     }
 
     /// 创建带上下文的验证错误
-    pub fn validation_error(field: impl Into<String>, reason: impl Into<String>, operation: impl Into<String>) -> Self {
+    pub fn validation_error(
+        field: impl Into<String>,
+        reason: impl Into<String>,
+        operation: impl Into<String>,
+    ) -> Self {
         AppError::Validation {
             field: field.into(),
             reason: reason.into(),
@@ -589,7 +706,11 @@ impl AppError {
     }
 
     /// 创建带上下文的数据库查询错误
-    pub fn db_query_error(error: sqlx::Error, query: impl Into<String>, operation: impl Into<String>) -> Self {
+    pub fn db_query_error(
+        error: sqlx::Error,
+        query: impl Into<String>,
+        operation: impl Into<String>,
+    ) -> Self {
         AppError::DatabaseQuery {
             source: error,
             query: query.into(),
@@ -603,7 +724,12 @@ impl AppError {
     }
 
     /// 创建带上下文的系统资源错误
-    pub fn system_resource_error(resource: impl Into<String>, available: u64, required: u64, operation: impl Into<String>) -> Self {
+    pub fn system_resource_error(
+        resource: impl Into<String>,
+        available: u64,
+        required: u64,
+        operation: impl Into<String>,
+    ) -> Self {
         AppError::SystemResource {
             resource: resource.into(),
             available,
@@ -644,7 +770,11 @@ impl AppError {
     }
 
     /// 添加元数据到错误上下文
-    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_metadata(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         let key = key.into();
         let value = value.into();
 

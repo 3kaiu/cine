@@ -12,9 +12,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn, Level};
 
+use dashmap::DashMap;
+
 /// 日志采样器 - 用于控制高频日志的输出频率
 pub struct LogSampler {
-    counters: HashMap<String, AtomicUsize>,
+    counters: DashMap<String, AtomicUsize>,
     last_reset: Instant,
     sample_interval: Duration,
 }
@@ -22,7 +24,7 @@ pub struct LogSampler {
 impl LogSampler {
     pub fn new(sample_interval: Duration) -> Self {
         Self {
-            counters: HashMap::new(),
+            counters: DashMap::new(),
             last_reset: Instant::now(),
             sample_interval,
         }
@@ -30,13 +32,8 @@ impl LogSampler {
 
     /// 检查是否应该记录日志（基于采样）
     pub fn should_log(&self, key: &str, sample_rate: usize) -> bool {
-        // 重置计数器
-        if self.last_reset.elapsed() > self.sample_interval {
-            // 这里简化实现，实际应该使用原子操作重置
-            // 但为了示例，我们只检查时间
-        }
-
-        let counter = self.counters
+        let counter = self
+            .counters
             .entry(key.to_string())
             .or_insert_with(|| AtomicUsize::new(0));
 
@@ -72,8 +69,14 @@ impl PerformanceLogger {
         self
     }
 
-    pub fn log_progress(&self, current: usize, total: usize, extra_fields: Option<HashMap<&str, serde_json::Value>>) {
-        static SAMPLER: once_cell::sync::Lazy<LogSampler> = once_cell::sync::Lazy::new(LogSampler::default);
+    pub fn log_progress(
+        &self,
+        current: usize,
+        total: usize,
+        extra_fields: Option<HashMap<&str, serde_json::Value>>,
+    ) {
+        static SAMPLER: once_cell::sync::Lazy<LogSampler> =
+            once_cell::sync::Lazy::new(LogSampler::default);
 
         if !SAMPLER.should_log(&self.operation, self.sample_rate) {
             return;
@@ -158,7 +161,7 @@ impl ConditionalLogger {
     pub fn error_with_context(
         error: &impl std::fmt::Display,
         operation: &str,
-        context: Option<HashMap<&str, serde_json::Value>>
+        context: Option<HashMap<&str, serde_json::Value>>,
     ) {
         let mut json_context = serde_json::json!({
             "operation": operation,
@@ -186,7 +189,7 @@ impl ConditionalLogger {
         level: Level,
         operation: &str,
         duration: Duration,
-        metrics: HashMap<&str, serde_json::Value>
+        metrics: HashMap<&str, serde_json::Value>,
     ) {
         let mut fields = serde_json::json!({
             "operation": operation,

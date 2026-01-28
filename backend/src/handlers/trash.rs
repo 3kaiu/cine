@@ -2,6 +2,7 @@ use axum::{
     extract::{Path, State},
     response::Json,
 };
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -147,7 +148,7 @@ pub async fn batch_move_to_trash(
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrent));
 
     let results: Vec<TrashResult> = futures::stream::iter(req.file_ids.into_iter())
-        .map(|file_id| {
+        .map(|file_id: String| {
             let semaphore = semaphore.clone();
             let db = state.db.clone();
             let trash_config = &trash_config;

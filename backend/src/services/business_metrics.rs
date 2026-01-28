@@ -6,12 +6,12 @@
 //! - 业务KPI监控
 //! - 使用模式分析
 
+use chrono::{DateTime, Timelike, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 
 /// 用户会话信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,7 +162,12 @@ impl BusinessMetricsCollector {
     }
 
     /// 记录用户会话开始
-    pub async fn start_user_session(&self, session_id: String, user_id: Option<String>, device_info: Option<DeviceInfo>) {
+    pub async fn start_user_session(
+        &self,
+        session_id: String,
+        user_id: Option<String>,
+        device_info: Option<DeviceInfo>,
+    ) {
         let session = UserSession {
             session_id: session_id.clone(),
             user_id,
@@ -172,7 +177,10 @@ impl BusinessMetricsCollector {
             device_info,
         };
 
-        self.active_sessions.write().await.insert(session_id, session);
+        self.active_sessions
+            .write()
+            .await
+            .insert(session_id, session);
     }
 
     /// 记录用户会话结束
@@ -205,7 +213,12 @@ impl BusinessMetricsCollector {
     }
 
     /// 设置性能基准
-    pub async fn set_performance_baseline(&self, metric_name: String, baseline_value: f64, target_value: f64) {
+    pub async fn set_performance_baseline(
+        &self,
+        metric_name: String,
+        baseline_value: f64,
+        target_value: f64,
+    ) {
         let baseline = PerformanceBaseline {
             metric_name: metric_name.clone(),
             baseline_value,
@@ -213,7 +226,10 @@ impl BusinessMetricsCollector {
             last_updated: Utc::now(),
         };
 
-        self.performance_baselines.write().await.insert(metric_name, baseline);
+        self.performance_baselines
+            .write()
+            .await
+            .insert(metric_name, baseline);
     }
 
     /// 记录业务KPI
@@ -233,14 +249,20 @@ impl BusinessMetricsCollector {
         let period_start = now - chrono::Duration::days(period_days as i64);
 
         // 获取指定时间段内的操作历史
-        let operations = self.operation_history.read().await
+        let operations = self
+            .operation_history
+            .read()
+            .await
             .iter()
             .filter(|op| op.timestamp >= period_start)
             .cloned()
             .collect::<Vec<_>>();
 
         // 获取活跃会话
-        let active_sessions = self.active_sessions.read().await
+        let active_sessions = self
+            .active_sessions
+            .read()
+            .await
             .values()
             .filter(|s| s.last_activity >= period_start)
             .cloned()
@@ -256,7 +278,10 @@ impl BusinessMetricsCollector {
         let performance_benchmarks = self.calculate_performance_benchmarks().await;
 
         // 获取最新的业务KPI
-        let business_kpis = self.business_kpi_history.read().await
+        let business_kpis = self
+            .business_kpi_history
+            .read()
+            .await
             .last()
             .cloned()
             .unwrap_or_else(|| BusinessKPIs {
@@ -278,15 +303,21 @@ impl BusinessMetricsCollector {
     }
 
     /// 计算用户参与度指标
-    fn calculate_user_engagement(&self, sessions: &[UserSession], operations: &[UserOperation]) -> UserEngagementMetrics {
+    fn calculate_user_engagement(
+        &self,
+        sessions: &[UserSession],
+        operations: &[UserOperation],
+    ) -> UserEngagementMetrics {
         let total_sessions = sessions.len() as u64;
-        let unique_users = sessions.iter()
+        let unique_users = sessions
+            .iter()
             .filter_map(|s| s.user_id.as_ref())
             .collect::<HashSet<_>>()
             .len() as u64;
 
         // 计算平均会话时长
-        let total_session_duration: u64 = sessions.iter()
+        let total_session_duration: u64 = sessions
+            .iter()
             .map(|s| {
                 let duration = s.last_activity.signed_duration_since(s.start_time);
                 duration.num_seconds().max(0) as u64
@@ -300,9 +331,7 @@ impl BusinessMetricsCollector {
         };
 
         // 计算跳出率（会话中只有一个操作的会话比例）
-        let bounce_sessions = sessions.iter()
-            .filter(|s| s.operations.len() <= 1)
-            .count() as f64;
+        let bounce_sessions = sessions.iter().filter(|s| s.operations.len() <= 1).count() as f64;
 
         let bounce_rate = if total_sessions > 0 {
             bounce_sessions / total_sessions as f64
@@ -313,10 +342,13 @@ impl BusinessMetricsCollector {
         // 计算功能采用率
         let mut feature_usage = HashMap::new();
         for operation in operations {
-            *feature_usage.entry(operation.operation_type.clone()).or_insert(0u64) += 1;
+            *feature_usage
+                .entry(operation.operation_type.clone())
+                .or_insert(0u64) += 1;
         }
 
-        let feature_adoption_rates = feature_usage.into_iter()
+        let feature_adoption_rates = feature_usage
+            .into_iter()
             .map(|(feature, count)| {
                 let rate = if total_sessions > 0 {
                     count as f64 / total_sessions as f64
@@ -329,10 +361,10 @@ impl BusinessMetricsCollector {
 
         // 简化的留存率计算（实际应该基于用户历史数据）
         let retention = RetentionMetrics {
-            day_1_retention: 0.8,   // 示例值
-            day_7_retention: 0.6,   // 示例值
-            day_30_retention: 0.4,  // 示例值
-            churn_rate: 0.1,        // 示例值
+            day_1_retention: 0.8,  // 示例值
+            day_7_retention: 0.6,  // 示例值
+            day_30_retention: 0.4, // 示例值
+            churn_rate: 0.1,       // 示例值
         };
 
         // 计算回头客率（简化为示例）
@@ -361,10 +393,14 @@ impl BusinessMetricsCollector {
 
         for operation in operations {
             // 操作类型统计
-            *operations_by_type.entry(operation.operation_type.clone()).or_insert(0u64) += 1;
+            *operations_by_type
+                .entry(operation.operation_type.clone())
+                .or_insert(0u64) += 1;
 
             // 成功率统计
-            let success_count = success_by_type.entry(operation.operation_type.clone()).or_insert((0u64, 0u64));
+            let success_count = success_by_type
+                .entry(operation.operation_type.clone())
+                .or_insert((0u64, 0u64));
             success_count.1 += 1; // 总数
             if operation.success {
                 success_count.0 += 1; // 成功数
@@ -372,19 +408,23 @@ impl BusinessMetricsCollector {
 
             // 时长统计
             if let Some(duration) = operation.duration_ms {
-                duration_by_type.entry(operation.operation_type.clone())
+                duration_by_type
+                    .entry(operation.operation_type.clone())
                     .or_insert_with(Vec::new)
                     .push(duration);
             }
 
             // 错误模式统计
             if !operation.success {
-                *errors_by_type.entry(operation.operation_type.clone()).or_insert(0u64) += 1;
+                *errors_by_type
+                    .entry(operation.operation_type.clone())
+                    .or_insert(0u64) += 1;
             }
         }
 
         // 计算成功率
-        let success_rate_by_type = success_by_type.into_iter()
+        let success_rate_by_type = success_by_type
+            .into_iter()
             .map(|(op_type, (success_count, total_count))| {
                 let rate = if total_count > 0 {
                     success_count as f64 / total_count as f64
@@ -396,7 +436,8 @@ impl BusinessMetricsCollector {
             .collect();
 
         // 计算平均时长
-        let avg_duration_by_type = duration_by_type.into_iter()
+        let avg_duration_by_type = duration_by_type
+            .into_iter()
             .map(|(op_type, durations)| {
                 let avg_duration = if !durations.is_empty() {
                     durations.iter().sum::<u64>() / durations.len() as u64
@@ -418,14 +459,16 @@ impl BusinessMetricsCollector {
 
         // 找出使用量最高的小时
         let max_usage = hourly_usage.iter().max().copied().unwrap_or(0);
-        let peak_usage_hours = hourly_usage.into_iter()
+        let peak_usage_hours = hourly_usage
+            .into_iter()
             .enumerate()
             .filter(|(_, count)| *count >= max_usage.saturating_sub(10)) // 允许小幅波动
             .map(|(hour, _)| hour as u8)
             .collect();
 
         // 分析错误模式
-        let error_patterns = errors_by_type.into_iter()
+        let error_patterns = errors_by_type
+            .into_iter()
             .map(|(error_type, frequency)| ErrorPattern {
                 error_type,
                 frequency,
@@ -517,7 +560,8 @@ impl BusinessMetricsCollector {
         // 按会话分组操作
         for operation in &operations {
             // 简化：假设所有操作都在同一个会话中
-            session_operations.entry("default_session".to_string())
+            session_operations
+                .entry("default_session".to_string())
                 .or_insert_with(Vec::new)
                 .push(operation.operation_type.clone());
         }
@@ -540,7 +584,9 @@ impl BusinessMetricsCollector {
         // 分析功能使用频率
         let mut feature_usage = HashMap::new();
         for operation in &operations {
-            *feature_usage.entry(operation.operation_type.clone()).or_insert(0u64) += 1;
+            *feature_usage
+                .entry(operation.operation_type.clone())
+                .or_insert(0u64) += 1;
         }
 
         let mut top_features: Vec<(String, u64)> = feature_usage.into_iter().collect();
@@ -587,11 +633,9 @@ mod tests {
 
         // 测试用户会话记录
         let session_id = "test_session".to_string();
-        collector.start_user_session(
-            session_id.clone(),
-            Some("user123".to_string()),
-            None,
-        ).await;
+        collector
+            .start_user_session(session_id.clone(), Some("user123".to_string()), None)
+            .await;
 
         // 测试操作记录
         let operation = UserOperation {
@@ -604,7 +648,9 @@ mod tests {
             metadata: HashMap::new(),
         };
 
-        collector.record_user_operation(&session_id, operation).await;
+        collector
+            .record_user_operation(&session_id, operation)
+            .await;
 
         // 测试报告生成
         let report = collector.generate_business_report(1).await;
@@ -643,14 +689,22 @@ mod tests {
         ];
 
         for operation in operations {
-            collector.record_user_operation("test_session", operation).await;
+            collector
+                .record_user_operation("test_session", operation)
+                .await;
         }
 
         let analysis = collector.analyze_usage_patterns().await;
 
         // 验证分析结果
         assert!(!analysis.top_used_features.is_empty());
-        assert!(analysis.top_used_features.iter().any(|(feature, _)| feature == "file_scan"));
-        assert!(analysis.top_used_features.iter().any(|(feature, _)| feature == "hash_calculation"));
+        assert!(analysis
+            .top_used_features
+            .iter()
+            .any(|(feature, _)| feature == "file_scan"));
+        assert!(analysis
+            .top_used_features
+            .iter()
+            .any(|(feature, _)| feature == "hash_calculation"));
     }
 }

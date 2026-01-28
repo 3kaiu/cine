@@ -9,10 +9,10 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use axum_extra::headers::Header;
+use axum_extra::typed_header::TypedHeader;
 use std::collections::HashMap;
 use tower::ServiceBuilder;
-use axum_extra::typed_header::TypedHeader;
-use axum_extra::headers::Header;
 
 /// API版本头
 pub const API_VERSION_HEADER: &str = "x-api-version";
@@ -68,6 +68,15 @@ pub struct ApiVersionContext {
     pub requested_version: Option<String>,
 }
 
+impl Default for ApiVersionContext {
+    fn default() -> Self {
+        Self {
+            version: ApiVersion::Latest,
+            requested_version: None,
+        }
+    }
+}
+
 /// API版本中间件
 pub async fn api_version_middleware(
     headers: HeaderMap,
@@ -80,7 +89,8 @@ pub async fn api_version_middleware(
     // 将版本信息添加到请求扩展中
     let context = ApiVersionContext {
         version,
-        requested_version: headers.get(API_VERSION_HEADER)
+        requested_version: headers
+            .get(API_VERSION_HEADER)
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string()),
     };
@@ -132,32 +142,32 @@ fn extract_api_version(headers: &HeaderMap) -> ApiVersion {
 }
 
 /// 创建版本化路由的辅助函数
-pub fn versioned_route<F, T>(
-    path: &str,
-    handler_v1: F,
-    handler_v2: Option<T>,
-) -> axum::Router
+pub fn versioned_route<F, T>(path: &str, handler_v1: F, handler_v2: Option<T>) -> axum::Router
 where
     F: axum::handler::Handler<(), ()>,
     T: axum::handler::Handler<(), ()>,
 {
-    axum::Router::new()
-        .route(path, axum::routing::get(move |req: axum::extract::Request| async move {
-            let context = req.extensions().get::<ApiVersionContext>()
+    axum::Router::new().route(
+        path,
+        axum::routing::get(move |req: axum::extract::Request| async move {
+            let context = req
+                .extensions()
+                .get::<ApiVersionContext>()
                 .cloned()
                 .unwrap_or_default();
 
             match context.version {
-                ApiVersion::V1 => handler_v1.call(req).await,
+                ApiVersion::V1 => handler_v1.call(req, ()).await,
                 ApiVersion::V2 | ApiVersion::Latest => {
                     if let Some(handler) = handler_v2 {
-                        handler.call(req).await
+                        handler.call(req, ()).await
                     } else {
-                        handler_v1.call(req).await
+                        handler_v1.call(req, ()).await
                     }
                 }
             }
-        }))
+        }),
+    )
 }
 
 /// API版本协商器
@@ -211,12 +221,14 @@ pub enum ApiVersionError {
 impl IntoResponse for ApiVersionError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            ApiVersionError::UnsupportedVersion(version) => {
-                (StatusCode::BAD_REQUEST, format!("Unsupported API version: {}", version))
-            }
-            ApiVersionError::InvalidVersionFormat(format) => {
-                (StatusCode::BAD_REQUEST, format!("Invalid API version format: {}", format))
-            }
+            ApiVersionError::UnsupportedVersion(version) => (
+                StatusCode::BAD_REQUEST,
+                format!("Unsupported API version: {}", version),
+            ),
+            ApiVersionError::InvalidVersionFormat(format) => (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid API version format: {}", format),
+            ),
         };
 
         let body = serde_json::json!({
@@ -228,25 +240,15 @@ impl IntoResponse for ApiVersionError {
     }
 }
 
-/// 创建API版本控制的中间件栈
-pub fn api_version_layer() -> tower::layer::util::Stack<
-    axum::middleware::from_fn<fn(HeaderMap, Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>>,
-    tower::layer::util::Identity,
-> {
-    ServiceBuilder::new()
-        .layer(axum::middleware::from_fn(api_version_middleware))
-}
-
 /// 版本兼容性检查装饰器
-pub fn with_version_compatibility<F, Fut>(
-    handler: F,
-) -> impl Fn(Request) -> Fut
+pub fn with_version_compatibility<F, Fut>(handler: F) -> impl Fn(Request) -> Fut
 where
     F: Fn(Request, ApiVersion) -> Fut,
     Fut: std::future::Future<Output = Response> + Send,
 {
     move |req: Request| {
-        let version = req.extensions()
+        let version = req
+            .extensions()
             .get::<ApiVersionContext>()
             .map(|ctx| ctx.version)
             .unwrap_or_default();

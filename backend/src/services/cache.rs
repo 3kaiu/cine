@@ -3,8 +3,8 @@ use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use sysinfo::System;
 use tokio::sync::RwLock;
-use sysinfo::{System, SystemExt};
 
 /// 缓存项
 #[derive(Debug, Clone, Serialize, Deserialize)]

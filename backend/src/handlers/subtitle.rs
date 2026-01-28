@@ -31,12 +31,27 @@ pub async fn find_subtitles(
             .bind(&file_id)
             .fetch_optional(&_state.db)
             .await
-            .map_err(AppError::Database)?;
+            .map_err(|e| {
+                AppError::db_query_error(
+                    e,
+                    "SELECT * FROM media_files WHERE id = ?",
+                    "find_subtitles",
+                )
+            })?;
 
-    let file = file.ok_or_else(|| AppError::FileNotFound(file_id))?;
+    let file = file.ok_or_else(|| AppError::file_not_found(file_id, "find_subtitles"))?;
 
     let subtitles = subtitle::find_matching_subtitles(&file.path, query.subtitle_dir.as_deref())
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|e| AppError::Internal {
+            message: e.to_string(),
+            source: None,
+            context: crate::error::ErrorContext {
+                operation: "find_subtitles".to_string(),
+                resource: Some(file.path.clone()),
+                user_id: None,
+                metadata: std::collections::HashMap::new(),
+            },
+        })?;
 
     Ok(Json(SubtitleResponse {
         total: subtitles.len(),
@@ -53,13 +68,28 @@ pub async fn search_remote_subtitles(
             .bind(&file_id)
             .fetch_optional(&state.db)
             .await
-            .map_err(AppError::Database)?;
+            .map_err(|e| {
+                AppError::db_query_error(
+                    e,
+                    "SELECT * FROM media_files WHERE id = ?",
+                    "search_remote_subtitles",
+                )
+            })?;
 
-    let file = file.ok_or_else(|| AppError::FileNotFound(file_id))?;
+    let file = file.ok_or_else(|| AppError::file_not_found(file_id, "search_remote_subtitles"))?;
 
     let results = subtitle::search_subtitles_remote(&file.name)
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|e| AppError::Internal {
+            message: e.to_string(),
+            source: None,
+            context: crate::error::ErrorContext {
+                operation: "search_remote_subtitles".to_string(),
+                resource: Some(file.path.clone()),
+                user_id: None,
+                metadata: std::collections::HashMap::new(),
+            },
+        })?;
 
     Ok(Json(results))
 }
@@ -69,7 +99,14 @@ pub async fn download_remote_subtitle(
     Path(_file_id): Path<String>,
 ) -> AppResult<Json<String>> {
     // 这里将集成具体的下载逻辑
-    Err(AppError::Internal(
-        "Subtitle downloading is currently pending API integration.".to_string(),
-    ))
+    Err(AppError::Internal {
+        message: "Subtitle downloading is currently pending API integration.".to_string(),
+        source: None,
+        context: crate::error::ErrorContext {
+            operation: "download_remote_subtitle".to_string(),
+            resource: None,
+            user_id: None,
+            metadata: std::collections::HashMap::new(),
+        },
+    })
 }

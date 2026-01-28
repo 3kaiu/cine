@@ -1,7 +1,8 @@
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     response::Json,
 };
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -51,7 +52,7 @@ pub async fn get_video_info(
     Path(file_id): Path<String>,
 ) -> Result<Json<VideoInfoResponse>, (axum::http::StatusCode, String)> {
     // 从数据库获取文件信息（只查询需要的字段）
-    let file = crate::queries::get_file_detail_by_id(&state.db, &file_id)
+    let file = crate::services::queries::get_file_by_id_optimized(&state.db, &file_id, true, true)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 

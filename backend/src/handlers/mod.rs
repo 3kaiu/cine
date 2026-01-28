@@ -8,10 +8,12 @@ use crate::services::plugin::PluginManager;
 use crate::services::task_queue::TaskQueue;
 use crate::websocket::ProgressBroadcaster;
 
+pub mod business_monitor;
 pub mod dedupe;
 pub mod hash;
 pub mod metrics;
 pub mod nfo;
+pub mod performance_monitor;
 pub mod queue_stats;
 pub mod rename;
 pub mod scan;
