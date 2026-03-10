@@ -103,10 +103,21 @@ async fn main() -> anyhow::Result<()> {
     let hash_cache = Arc::new(cine_backend::services::cache::FileHashCache::new());
 
     // 初始化任务队列并注册执行器
-    let task_queue = Arc::new(cine_backend::services::task_queue::TaskQueue::new(
-        db.clone(),
-        4,
-    ));
+    // 使用配置化的并发控制，避免重型任务压垮系统
+    let mut task_queue_config =
+        cine_backend::services::task_queue::TaskQueueConfig::new(4 /* 全局最大并发 */);
+    // 限制扫描任务并发，避免同时多目录深度遍历导致 IO 峰值过高
+    task_queue_config
+        .per_type_limits
+        .insert(cine_backend::services::task_queue::TaskType::Scan, 1);
+    // 为哈希任务设置略高并发，充分利用 CPU，但仍受全局并发限制
+    task_queue_config
+        .per_type_limits
+        .insert(cine_backend::services::task_queue::TaskType::Hash, 3);
+
+    let task_queue = Arc::new(
+        cine_backend::services::task_queue::TaskQueue::with_config(db.clone(), task_queue_config),
+    );
 
     // 初始化分布式服务
     let distributed =
@@ -220,7 +231,16 @@ async fn main() -> anyhow::Result<()> {
                 // GraphQL API
                 .route("/graphql", axum::routing::post(graphql_handler))
                 .layer(axum::extract::Extension(graphql_schema))
-                // .route("/api/ws", get(crate::websocket::ws_handler))
+            // WebSocket 进度推送（供前端使用）
+            .route(
+                "/ws",
+                get(
+                    |ws: axum::extract::WebSocketUpgrade,
+                     state: axum::extract::State<Arc<handlers::AppState>>| async move {
+                        cine_backend::websocket::ws_handler(ws, state).await
+                    },
+                ),
+            )
                 .route(
                     "/api/ws/worker",
                     get(

@@ -71,6 +71,32 @@ impl std::fmt::Display for TaskType {
     }
 }
 
+/// 任务队列配置
+#[derive(Debug, Clone)]
+pub struct TaskQueueConfig {
+    /// 全局最大并发任务数
+    pub max_concurrent: usize,
+    /// 按任务类型的最大并发数（可选）
+    pub per_type_limits: HashMap<TaskType, usize>,
+    /// 将进度写入数据库的最小时间间隔
+    pub progress_db_interval: Duration,
+    /// 触发进度写入数据库的最小进度变化（百分比，例如 1.0 表示 1%）
+    pub progress_db_min_delta: f64,
+}
+
+impl TaskQueueConfig {
+    pub fn new(max_concurrent: usize) -> Self {
+        Self {
+            max_concurrent,
+            per_type_limits: HashMap::new(),
+            // 300ms 写库节流间隔，在实时性与写压力之间取中间值
+            progress_db_interval: Duration::from_millis(300),
+            // 只有当进度变化 >= 1% 时才写库
+            progress_db_min_delta: 1.0,
+        }
+    }
+}
+
 /// 任务控制命令
 #[derive(Debug, Clone)]
 pub enum TaskCommand {
@@ -360,6 +386,8 @@ pub struct TaskQueue {
     tasks: DashMap<String, TaskHandle>, // 运行时句柄 (用于控制活跃任务)
     max_concurrent: usize,
     active_count: Arc<RwLock<usize>>,
+    /// 各任务类型当前活跃数
+    active_by_type: DashMap<TaskType, usize>,
     node_id: String,
 
     // 监控和统计字段
@@ -370,17 +398,26 @@ pub struct TaskQueue {
 
     // 智能进度估算器
     progress_estimator: Arc<ProgressEstimator>,
+    /// 任务队列运行时配置
+    config: TaskQueueConfig,
 }
 
 impl TaskQueue {
     /// 创建新的任务队列
     pub fn new(db: sqlx::SqlitePool, max_concurrent: usize) -> Self {
+        let config = TaskQueueConfig::new(max_concurrent);
+        Self::with_config(db, config)
+    }
+
+    /// 使用自定义配置创建任务队列
+    pub fn with_config(db: sqlx::SqlitePool, config: TaskQueueConfig) -> Self {
         Self {
             db,
             executors: DashMap::new(),
             tasks: DashMap::new(),
-            max_concurrent,
+            max_concurrent: config.max_concurrent,
             active_count: Arc::new(RwLock::new(0)),
+            active_by_type: DashMap::new(),
             node_id: Uuid::new_v4().to_string(), // 当前节点 ID
 
             // 初始化监控字段
@@ -391,6 +428,7 @@ impl TaskQueue {
 
             // 初始化进度估算器
             progress_estimator: Arc::new(ProgressEstimator::new(ProgressConfig::default())),
+            config,
         }
     }
 
@@ -434,14 +472,6 @@ impl TaskQueue {
 
     /// 调度任务执行
     pub async fn dispatch(&self, task_id: String) -> anyhow::Result<()> {
-        // 检查并发限制
-        {
-            let count = self.active_count.read().await;
-            if *count >= self.max_concurrent {
-                return Ok(()); // 达到上限，等待下一次调度
-            }
-        }
-
         // 获取任务信息
         let task: crate::models::DbTask =
             sqlx::query_as("SELECT * FROM tasks WHERE id = ? AND status = 'pending'")
@@ -460,6 +490,25 @@ impl TaskQueue {
             "cleanup" => TaskType::Cleanup,
             _ => TaskType::Custom(task_type_str),
         };
+
+        // 检查全局与按类型并发限制
+        {
+            let count = self.active_count.read().await;
+            if *count >= self.max_concurrent {
+                return Ok(()); // 达到上限，等待下一次调度
+            }
+
+            if let Some(limit) = self.config.per_type_limits.get(&task_type) {
+                let current = self
+                    .active_by_type
+                    .get(&task_type)
+                    .map(|c| *c.value())
+                    .unwrap_or(0);
+                if current >= *limit {
+                    return Ok(()); // 该任务类型达到上限，等待下一次调度
+                }
+            }
+        }
 
         let executor = match self.executors.get(&task_type) {
             Some(e) => e.clone(),
@@ -507,10 +556,13 @@ impl TaskQueue {
         let task_id_clone = task_id.clone();
         tracing::info!(task_id = %task_id, task_type = %task.task_type, "Task submitted");
         let active_count = self.active_count.clone();
+        let active_by_type = self.active_by_type.clone();
         let execution_records = self.execution_records.clone();
         let total_tasks_processed = self.total_tasks_processed.clone();
         let total_tasks_failed = self.total_tasks_failed.clone();
         let progress_estimator = self.progress_estimator.clone();
+        let config = self.config.clone();
+        let task_type_for_counters = task_type.clone();
 
         tokio::spawn(async move {
             crate::services::metrics::METRICS.active_tasks.inc();
@@ -518,6 +570,11 @@ impl TaskQueue {
                 let mut count = active_count.write().await;
                 *count += 1;
             }
+            // 更新按类型计数
+            active_by_type
+                .entry(task_type_for_counters.clone())
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
 
             let start_time = Instant::now();
             let now = chrono::Utc::now();
@@ -537,8 +594,15 @@ impl TaskQueue {
             let db_for_status = db.clone();
             let task_id_for_status = task_id_clone.clone();
             let info_for_status = info_arc.clone();
+             // 进度写库节流控制
+            let progress_db_interval = config.progress_db_interval;
+            let progress_db_min_delta = config.progress_db_min_delta;
             tokio::spawn(async move {
                 let mut status_rx = status_rx;
+                let mut last_db_update = Instant::now()
+                    .checked_sub(progress_db_interval)
+                    .unwrap_or_else(Instant::now);
+                let mut last_progress: f64 = 0.0;
                 while let Some(update) = status_rx.recv().await {
                     // 更新内存
                     {
@@ -548,22 +612,45 @@ impl TaskQueue {
                     }
 
                     // 更新 DB
-                    let (status_str, progress) = match &update.status {
-                        TaskStatus::Running { progress, .. } => ("running", progress),
-                        TaskStatus::Paused { progress } => ("paused", progress),
-                        _ => ("", &0.0),
+                    let (status_str, progress_opt) = match &update.status {
+                        TaskStatus::Running { progress, .. } => ("running", Some(*progress)),
+                        TaskStatus::Paused { progress } => ("paused", Some(*progress)),
+                        _ => ("", None),
                     };
 
                     if !status_str.is_empty() {
-                        let _ = sqlx::query(
-                            "UPDATE tasks SET status = ?, progress = ?, updated_at = ? WHERE id = ?"
-                        )
-                        .bind(status_str)
-                        .bind(progress)
-                        .bind(chrono::Utc::now())
-                        .bind(&task_id_for_status)
-                        .execute(&db_for_status)
-                        .await;
+                        let now_inst = Instant::now();
+                        let should_persist = if status_str == "paused" {
+                            // 暂停状态始终同步到数据库，保证可见性
+                            true
+                        } else if let Some(progress) = progress_opt {
+                            let progress_changed =
+                                (progress - last_progress).abs() >= progress_db_min_delta;
+                            let interval_ok =
+                                now_inst.duration_since(last_db_update) >= progress_db_interval;
+                            if progress_changed && interval_ok {
+                                last_progress = progress;
+                                last_db_update = now_inst;
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if should_persist {
+                            let progress = progress_opt.unwrap_or(0.0);
+                            let _ = sqlx::query(
+                                "UPDATE tasks SET status = ?, progress = ?, updated_at = ? WHERE id = ?",
+                            )
+                            .bind(status_str)
+                            .bind(progress)
+                            .bind(chrono::Utc::now())
+                            .bind(&task_id_for_status)
+                            .execute(&db_for_status)
+                            .await;
+                        }
                     }
                 }
             });
@@ -695,6 +782,15 @@ impl TaskQueue {
                 *count -= 1;
             }
             crate::services::metrics::METRICS.active_tasks.dec();
+            // 更新按类型计数
+            if let Some(mut entry) = active_by_type.get_mut(&task_type_for_counters) {
+                if *entry > 0 {
+                    *entry -= 1;
+                }
+                if *entry == 0 {
+                    active_by_type.remove(&task_type_for_counters);
+                }
+            }
         });
 
         Ok(())

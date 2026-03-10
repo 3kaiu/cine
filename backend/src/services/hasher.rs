@@ -90,6 +90,22 @@ pub async fn calculate_file_hash(
 
     let mtime = file.last_modified.timestamp();
 
+    // 0. 如果数据库里已经存在哈希并且文件未修改，则直接复用，避免重复 IO
+    if let Some(existing_md5) = &file.hash_md5 {
+        // 将现有哈希预热到缓存中，便于后续任务使用
+        if let Some(ref cache) = hash_cache {
+            cache
+                .set(&file.path, mtime, existing_md5.clone())
+                .await;
+        }
+        tracing::debug!(
+            "Skip hash calculation, using existing DB hash for {} ({})",
+            file.name,
+            file.id
+        );
+        return Ok(());
+    }
+
     // 1. 分级哈希 - 第一级：缓存检查
     if let Some(ref cache) = hash_cache {
         if let Some(cached_hash) = cache.get(&file.path, mtime).await {
