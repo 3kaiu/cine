@@ -20,6 +20,9 @@ pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGro
         .execute(db)
         .await?;
 
+    // 限制返回的重复组数量，防止大库时响应过大
+    const MAX_DUPLICATE_GROUPS: i64 = 500;
+
     let duplicate_hashes: Vec<DuplicateHash> = sqlx::query_as(
         r#"
         SELECT 
@@ -32,8 +35,10 @@ pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGro
         GROUP BY hash_md5
         HAVING COUNT(*) > 1
         ORDER BY total_size DESC
+        LIMIT ?
         "#,
     )
+    .bind(MAX_DUPLICATE_GROUPS)
     .fetch_all(db)
     .await?;
 

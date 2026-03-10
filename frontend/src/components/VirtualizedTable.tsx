@@ -64,6 +64,10 @@ const VirtualRow = React.memo(<T extends { id: string }>({
 
 VirtualRow.displayName = 'VirtualRow';
 
+/**
+ * 虚拟化表格 - 适用于大数据量列表（建议 >500 条）
+ * 使用建议：columns 请用 useMemo 包装，避免每次渲染创建新引用导致重算
+ */
 interface VirtualizedTableProps<T> {
   dataSource: T[]
   columns: any[]

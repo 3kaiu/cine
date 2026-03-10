@@ -1,44 +1,28 @@
-import { useState, useEffect } from 'react'
-import axios from 'axios'
 import clsx from 'clsx'
+import { useQuery } from '@tanstack/react-query'
 import { Chip, Surface, Button } from '@heroui/react'
 import { Icon } from '@iconify/react'
 import StatCard from '@/components/StatCard'
 import PageHeader from '@/components/PageHeader'
+import { metricsApi } from '@/api/metrics'
+import { queryKeys } from '@/config/queryConfig'
 
-interface DashboardMetrics {
-  active_tasks: number
-  cpu_usage: number
-  memory_used_bytes: number
-  memory_total_bytes: number
-  total_hashes_bytes: number
-  total_scrapes: number
+const DEFAULT_METRICS = {
+  active_tasks: 0,
+  cpu_usage: 0,
+  memory_used_bytes: 0,
+  memory_total_bytes: 1,
+  total_hashes_bytes: 0,
+  total_scrapes: 0,
 }
 
 export default function Dashboard() {
-  const [metrics, setMetrics] = useState<DashboardMetrics>({
-    active_tasks: 0,
-    cpu_usage: 0,
-    memory_used_bytes: 0,
-    memory_total_bytes: 0,
-    total_hashes_bytes: 0,
-    total_scrapes: 0
+  const { data } = useQuery({
+    queryKey: queryKeys.metrics(),
+    queryFn: () => metricsApi.get(),
+    refetchInterval: 5000,
   })
-
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const res = await axios.get('/api/metrics')
-        setMetrics(res.data)
-      } catch (err) {
-        console.error('Failed to fetch metrics:', err)
-      }
-    }
-
-    fetchMetrics()
-    const timer = setInterval(fetchMetrics, 5000)
-    return () => clearInterval(timer)
-  }, [])
+  const metrics = { ...DEFAULT_METRICS, ...data }
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B'

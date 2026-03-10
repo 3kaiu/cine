@@ -180,7 +180,7 @@ export default function Scanner() {
     }
   }, [messages, taskId, scanning, refetch, refetchHistory])
 
-  const columns = [
+  const columns = useMemo(() => [
     {
       title: '文件名',
       dataIndex: 'name',
@@ -245,7 +245,7 @@ export default function Scanner() {
         </Button>
       )
     },
-  ]
+  ], [])
 
 
   // 解析文件类型统计

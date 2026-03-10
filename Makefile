@@ -1,10 +1,12 @@
-.PHONY: help build run test clean docker-build docker-run
+.PHONY: help build run test clean bench bench-quick docker-build docker-run
 
 help:
 	@echo "可用命令:"
 	@echo "  make build          - 构建后端和前端"
 	@echo "  make run            - 运行开发服务器"
 	@echo "  make test           - 运行测试"
+	@echo "  make bench          - 运行后端基准测试（criterion）"
+	@echo "  make bench-quick    - 快速基准（单次迭代，仅验证可运行）"
 	@echo "  make clean          - 清理构建文件"
 	@echo "  make docker-build   - 构建 Docker 镜像"
 	@echo "  make docker-run     - 运行 Docker 容器"
@@ -44,6 +46,14 @@ test-integration:
 	cd backend && cargo test --test '*'
 	@echo "运行前端集成测试..."
 	cd frontend && npm run test -- --run
+
+bench:
+	@echo "运行后端基准测试..."
+	cd backend && cargo bench
+
+bench-quick:
+	@echo "仅编译基准（不运行，用于 CI 或快速校验）..."
+	cd backend && cargo build --benches
 
 test-e2e:
 	@echo "运行 E2E 测试..."

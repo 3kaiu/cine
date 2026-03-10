@@ -73,7 +73,7 @@ pub enum AnomalySeverity {
 
 /// 增强的指标收集器
 pub struct EnhancedMetricsCollector {
-    registry: Registry,
+    registry: Arc<Registry>,
     metrics: Arc<RwLock<HashMap<String, Box<dyn prometheus::core::Collector>>>>,
     time_series_data: Arc<RwLock<HashMap<String, Vec<MetricDataPoint>>>>,
     resource_history: Arc<RwLock<Vec<ResourceStats>>>,
@@ -88,7 +88,7 @@ impl EnhancedMetricsCollector {
         system.refresh_all();
 
         Self {
-            registry: Registry::new(),
+            registry: Arc::new(Registry::new()),
             metrics: Arc::new(RwLock::new(HashMap::new())),
             time_series_data: Arc::new(RwLock::new(HashMap::new())),
             resource_history: Arc::new(RwLock::new(Vec::new())),
@@ -232,8 +232,13 @@ impl EnhancedMetricsCollector {
         Ok(())
     }
 
-    /// 记录指标值
+    /// 记录指标值（带容量与保留策略，防止内存膨胀）
+    /// - 每个指标最多保留 MAX_TIME_SERIES_POINTS 个数据点
+    /// - 超过 24 小时的数据自动丢弃
     pub async fn record_metric(&self, name: &str, value: f64, labels: HashMap<String, String>) {
+        const MAX_TIME_SERIES_POINTS: usize = 10_000;
+        const RETENTION_SECS: u64 = 24 * 3600;
+
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -245,13 +250,16 @@ impl EnhancedMetricsCollector {
             labels,
         };
 
-        // 存储时间序列数据
-        self.time_series_data
-            .write()
-            .await
-            .entry(name.to_string())
-            .or_insert_with(Vec::new)
-            .push(data_point);
+        let mut data = self.time_series_data.write().await;
+        let series = data.entry(name.to_string()).or_insert_with(Vec::new);
+        series.push(data_point);
+
+        // 容量与时间保留策略
+        let cutoff = timestamp.saturating_sub(RETENTION_SECS);
+        series.retain(|dp| dp.timestamp >= cutoff);
+        if series.len() > MAX_TIME_SERIES_POINTS {
+            series.drain(0..(series.len() - MAX_TIME_SERIES_POINTS));
+        }
     }
 
     /// 收集系统资源统计
@@ -287,16 +295,22 @@ impl EnhancedMetricsCollector {
         };
 
         // 存储历史数据
-        self.resource_history.write().await.push(stats.clone());
+        let mut history = self.resource_history.write().await;
+        history.push(stats.clone());
 
-        // 只保留最近24小时的数据
-        let cutoff = SystemTime::now() - Duration::from_secs(24 * 3600);
-        let cutoff_timestamp = cutoff.duration_since(UNIX_EPOCH).unwrap().as_secs();
-
-        self.resource_history
-            .write()
-            .await
-            .retain(|stat| stat.timestamp >= cutoff_timestamp);
+        // 容量与时间保留策略：最多 10000 点，且只保留最近 24 小时
+        const MAX_RESOURCE_HISTORY: usize = 10_000;
+        const RETENTION_SECS: u64 = 24 * 3600;
+        let cutoff = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_sub(RETENTION_SECS);
+        history.retain(|stat| stat.timestamp >= cutoff);
+        let to_remove = history.len().saturating_sub(MAX_RESOURCE_HISTORY);
+        if to_remove > 0 {
+            history.drain(0..to_remove);
+        }
 
         stats
     }
@@ -412,9 +426,15 @@ impl EnhancedMetricsCollector {
             }
         }
 
-        // 存储异常记录
+        // 存储异常记录（带容量限制，最多保留 1000 条）
+        const MAX_ANOMALIES: usize = 1000;
+        let mut stored = self.anomalies.write().await;
         for anomaly in &anomalies {
-            self.anomalies.write().await.push(anomaly.clone());
+            stored.push(anomaly.clone());
+        }
+        let to_remove = stored.len().saturating_sub(MAX_ANOMALIES);
+        if to_remove > 0 {
+            stored.drain(0..to_remove);
         }
 
         anomalies
@@ -533,7 +553,7 @@ impl EnhancedMetricsCollector {
 impl Clone for EnhancedMetricsCollector {
     fn clone(&self) -> Self {
         Self {
-            registry: Registry::new(), // 克隆时创建新的registry
+            registry: self.registry.clone(),
             metrics: self.metrics.clone(),
             time_series_data: self.time_series_data.clone(),
             resource_history: self.resource_history.clone(),

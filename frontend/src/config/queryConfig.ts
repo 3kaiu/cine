@@ -43,9 +43,17 @@ export const queryClient = new QueryClient({
  * 统一管理查询键，避免重复
  */
 export const queryKeys = {
-  files: (params?: any) => ['files', params],
+  files: (params?: Record<string, unknown>) => ['files', params],
   duplicates: () => ['duplicates'],
   trash: () => ['trash'],
-  emptyDirs: () => ['empty-dirs'],
-  largeFiles: (params?: any) => ['large-files', params],
+  emptyDirs: (params?: Record<string, unknown>) => ['empty-dirs', params],
+  largeFiles: (params?: Record<string, unknown>) => ['large-files', params],
+  tasks: (params?: { page?: number; page_size?: number }) => ['tasks', params],
+  task: (id: string) => ['tasks', id],
+  logs: () => ['logs'],
+  settings: (category?: string) => ['settings', category],
+  metrics: () => ['metrics'],
+  scanHistory: () => ['scan-history'],
+  subtitles: (fileId: string) => ['subtitles', fileId],
+  subtitlesSearch: (fileId: string) => ['subtitles-search', fileId],
 } as const

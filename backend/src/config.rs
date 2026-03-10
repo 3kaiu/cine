@@ -19,6 +19,10 @@ pub struct AppConfig {
     pub media_directories: Vec<PathBuf>,
     pub log_level: String,  // 日志级别
     pub log_format: String, // 日志格式: "pretty" 或 "json"
+    /// 是否启用插件系统（WASM）。设为 false 时不加载 plugins 目录，/api/plugins 返回空列表
+    pub enable_plugins: bool,
+    /// 是否启用缓存预热。设为 false 时跳过启动时的 cache warmup，减少启动时间
+    pub enable_cache_warmup: bool,
 }
 
 // FileConfig struct removed
@@ -45,6 +49,8 @@ impl AppConfig {
             .set_default("trash_dir", default_trash.to_str().unwrap())?
             .set_default("log_level", "cine=info,axum=info")?
             .set_default("log_format", "pretty")?
+            .set_default("enable_plugins", true)?
+            .set_default("enable_cache_warmup", true)?
             // 2. 加载配置文件 (如果存在)
             .add_source(config::File::with_name(&config_path).required(false))
             // 3. 加载环境变量 (CINE_ 前缀，例如 CINE_PORT=8080)
@@ -70,6 +76,8 @@ impl AppConfig {
                 .collect(),
             log_level: config.log_level,
             log_format: config.log_format,
+            enable_plugins: config.enable_plugins,
+            enable_cache_warmup: config.enable_cache_warmup,
         };
 
         // 确保目录存在
@@ -93,4 +101,12 @@ struct Dictionary {
     media_directories: Option<Vec<String>>,
     log_level: String,
     log_format: String,
+    #[serde(default = "default_true")]
+    enable_plugins: bool,
+    #[serde(default = "default_true")]
+    enable_cache_warmup: bool,
+}
+
+fn default_true() -> bool {
+    true
 }

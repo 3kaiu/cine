@@ -18,6 +18,7 @@ use cine_backend::config::AppConfig;
 use cine_backend::handlers;
 use cine_backend::handlers::*;
 use cine_backend::openapi;
+use utoipa::OpenApi;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -81,9 +82,9 @@ async fn main() -> anyhow::Result<()> {
     let cache_config = cine_backend::services::smart_cache::SmartCacheConfig {
         max_size: 10000,
         ttl: std::time::Duration::from_secs(3600), // 1小时
-        warmup_strategy: Some(
-            cine_backend::services::smart_cache::WarmupStrategy::MostFrequent { top_n: 1000 },
-        ),
+        warmup_strategy: config.enable_cache_warmup.then(|| {
+            cine_backend::services::smart_cache::WarmupStrategy::MostFrequent { top_n: 1000 }
+        }),
         sync_interval: std::time::Duration::from_secs(30),
         metrics_interval: std::time::Duration::from_secs(60),
         enable_distributed_sync: false, // 可以根据配置启用
@@ -115,9 +116,10 @@ async fn main() -> anyhow::Result<()> {
         .per_type_limits
         .insert(cine_backend::services::task_queue::TaskType::Hash, 3);
 
-    let task_queue = Arc::new(
-        cine_backend::services::task_queue::TaskQueue::with_config(db.clone(), task_queue_config),
-    );
+    let task_queue = Arc::new(cine_backend::services::task_queue::TaskQueue::with_config(
+        db.clone(),
+        task_queue_config,
+    ));
 
     // 初始化分布式服务
     let distributed =
@@ -128,13 +130,17 @@ async fn main() -> anyhow::Result<()> {
         "plugins",
     ));
 
-    // 异步加载插件 (后台运行，不阻塞启动)
-    let pm = plugin_manager.clone();
-    tokio::spawn(async move {
-        if let Err(e) = pm.load_plugins().await {
-            tracing::error!("Failed to load plugins: {}", e);
-        }
-    });
+    // 异步加载插件 (后台运行，不阻塞启动)；可通过配置 disable
+    if config.enable_plugins {
+        let pm = plugin_manager.clone();
+        tokio::spawn(async move {
+            if let Err(e) = pm.load_plugins().await {
+                tracing::error!("Failed to load plugins: {}", e);
+            }
+        });
+    } else {
+        tracing::info!("Plugins disabled by config (enable_plugins = false)");
+    }
 
     task_queue.register_executor(
         cine_backend::services::task_queue::TaskType::Scan,
@@ -182,17 +188,21 @@ async fn main() -> anyhow::Result<()> {
             // 启动后台服务
             start_background_services(db.clone(), app_state.clone()).await?;
 
-            // 缓存预热（异步执行，不阻塞启动）
-            let db_for_warmup = db.clone();
-            let cache_for_warmup = smart_cache.clone();
-            tokio::spawn(async move {
-                if let Err(e) = cache_for_warmup
-                    .warmup_cache("file_hash", &db_for_warmup)
-                    .await
-                {
-                    tracing::warn!("Cache warmup failed: {}", e);
-                }
-            });
+            // 缓存预热（可配置关闭，减少启动时间）
+            if config.enable_cache_warmup {
+                let db_for_warmup = db.clone();
+                let cache_for_warmup = smart_cache.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = cache_for_warmup
+                        .warmup_cache("file_hash", &db_for_warmup)
+                        .await
+                    {
+                        tracing::warn!("Cache warmup failed: {}", e);
+                    }
+                });
+            } else {
+                tracing::info!("Cache warmup disabled by config (enable_cache_warmup = false)");
+            }
 
             // CORS 配置
             let cors = CorsLayer::new()
@@ -222,12 +232,7 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/monitoring/anomalies", get(cine_backend::handlers::performance_monitor::get_performance_anomalies))
                 .route("/api/monitoring/health", get(cine_backend::handlers::performance_monitor::get_system_health))
                 .route("/api/monitoring/metrics", get(cine_backend::handlers::performance_monitor::get_detailed_metrics))
-                // 业务指标监控API
-                .route("/api/business/metrics", get(cine_backend::handlers::business_monitor::get_business_metrics))
-                .route("/api/business/usage-patterns", get(cine_backend::handlers::business_monitor::get_usage_patterns))
-                .route("/api/business/benchmarks", post(cine_backend::handlers::business_monitor::set_performance_benchmark))
-                .route("/api/business/kpis", post(cine_backend::handlers::business_monitor::record_business_kpis))
-                .route("/api/business/dashboard", get(cine_backend::handlers::business_monitor::get_business_dashboard))
+
                 // GraphQL API
                 .route("/graphql", axum::routing::post(graphql_handler))
                 .layer(axum::extract::Extension(graphql_schema))
@@ -254,10 +259,7 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .route("/api/scan", post(scan_directory))
                 .route("/api/files", get(list_files))
-                // .route("/api/files/:id/hash", post(calculate_hash))
-                // .route("/api/files/batch-hash", post(batch_calculate_hash))
                 .route("/api/files/:id/info", get(get_video_info))
-                // .route("/api/files/batch-info", post(batch_get_video_info))
                 .route("/api/files/:id/subtitles", get(find_subtitles))
                 .route(
                     "/api/files/:id/subtitles/search",
@@ -282,7 +284,6 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/files/batch-copy", post(batch_copy_files))
                 .route("/api/trash", get(list_trash))
                 .route("/api/trash/:id", post(move_to_trash))
-                // .route("/api/files/batch-trash", post(batch_move_to_trash))
                 .route("/api/trash/:id/restore", post(restore_from_trash))
                 .route("/api/trash/:id/delete", delete(permanently_delete))
                 .route("/api/trash/cleanup", post(cleanup_trash))
@@ -346,6 +347,18 @@ async fn start_background_services(
     tokio::spawn(async move {
         if let Err(e) = scheduler.start().await {
             tracing::error!("Scheduler error: {}", e);
+        }
+    });
+
+    // 1b. 定期清理任务队列执行记录，防止内存膨胀
+    let tq = state.task_queue.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 3600)); // 每 6 小时
+        interval.tick().await; // 跳过首次立即执行
+        loop {
+            interval.tick().await;
+            tq.cleanup_execution_records(std::time::Duration::from_secs(24 * 3600))
+                .await;
         }
     });
 

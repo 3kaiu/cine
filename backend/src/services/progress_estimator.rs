@@ -426,7 +426,8 @@ mod tests {
         assert_eq!(state.processed_items, 50);
         assert_eq!(state.overall_progress, 0.5);
 
-        // 检查是否应该更新进度
+        // 检查是否应该更新进度（需等待超过 min_update_interval_ms=100ms）
+        sleep(Duration::from_millis(150)).await;
         assert!(estimator.should_update_progress("test_task", 0.6).await);
         assert!(!estimator.should_update_progress("test_task", 0.501).await); // 变化不够大
 

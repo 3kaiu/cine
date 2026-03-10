@@ -7,6 +7,9 @@ use chrono::Utc;
 use cine_backend::config::AppConfig;
 use cine_backend::handlers::AppState;
 use cine_backend::services::cache::FileHashCache;
+use cine_backend::services::distributed::DistributedService;
+use cine_backend::services::plugin::PluginManager;
+use cine_backend::services::task_queue::TaskQueue;
 use cine_backend::websocket::ProgressBroadcaster;
 use common::{create_test_db, create_test_file};
 // use sqlx::SqlitePool;
@@ -21,10 +24,17 @@ async fn create_test_app_state() -> (Arc<AppState>, tempfile::TempDir) {
         port: 3000,
         tmdb_api_key: None,
         hash_cache_dir: temp_dir.path().join("hash_cache"),
+        trash_dir: temp_dir.path().join("trash"),
         max_file_size: 200_000_000_000,
         chunk_size: 64 * 1024 * 1024,
         media_directories: vec![],
+        log_level: "info".to_string(),
+        log_format: "pretty".to_string(),
+        enable_plugins: false,
+        enable_cache_warmup: false,
     });
+
+    let task_queue = Arc::new(TaskQueue::new(pool.clone(), 4));
 
     let app_state = Arc::new(AppState {
         db: pool,
@@ -32,6 +42,9 @@ async fn create_test_app_state() -> (Arc<AppState>, tempfile::TempDir) {
         progress_broadcaster: ProgressBroadcaster::new(),
         hash_cache: Arc::new(FileHashCache::new()),
         http_client: reqwest::Client::new(),
+        task_queue: task_queue.clone(),
+        distributed: Arc::new(DistributedService::new(task_queue)),
+        plugin_manager: Arc::new(PluginManager::new(temp_dir.path().join("plugins"))),
     });
 
     (app_state, temp_dir)

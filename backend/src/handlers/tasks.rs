@@ -1,18 +1,18 @@
 // 任务管理 API 端点
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::services::task_queue::TaskInfo;
 use crate::AppState;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 /// API 响应包装
 #[derive(Serialize, ToSchema)]
@@ -41,11 +41,22 @@ impl<T: Serialize> ApiResponse<T> {
     }
 }
 
+/// 任务列表查询参数
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+pub struct TaskListQuery {
+    /// 页码，从 1 开始
+    pub page: Option<u32>,
+    /// 每页数量，默认 50，最大 200
+    pub page_size: Option<u32>,
+}
+
 /// 任务列表响应
 #[derive(Serialize, ToSchema)]
 pub struct TaskListResponse {
     pub tasks: Vec<TaskInfo>,
-    pub total: usize,
+    pub total: u64,
+    pub page: u32,
+    pub page_size: u32,
     pub active: usize,
 }
 
@@ -57,23 +68,33 @@ pub struct TaskActionResponse {
     pub message: String,
 }
 
-/// 获取所有任务列表
+/// 获取任务列表（分页）
 #[utoipa::path(
     get,
     path = "/api/tasks",
     tag = "tasks",
+    params(TaskListQuery),
     responses(
         (status = 200, description = "获取任务列表成功", body = TaskListApiResponse)
     )
 )]
-pub async fn list_tasks(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let tasks = state.task_queue.list_tasks().await;
+pub async fn list_tasks(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<TaskListQuery>,
+) -> impl IntoResponse {
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(50).min(200).max(1);
+    let offset = ((page - 1) * page_size) as usize;
+    let limit = page_size as usize;
+
+    let (tasks, total) = state.task_queue.list_tasks(limit, offset).await;
     let active = state.task_queue.active_count().await;
-    let total = tasks.len();
 
     Json(ApiResponse::ok(TaskListResponse {
         tasks,
         total,
+        page,
+        page_size,
         active,
     }))
 }

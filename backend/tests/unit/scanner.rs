@@ -1,4 +1,5 @@
 use cine_backend::services::scanner;
+use cine_backend::services::task_queue::TaskContext;
 #[path = "../common/mod.rs"]
 mod common;
 use common::{create_test_db, create_test_directory_structure, create_test_file};
@@ -30,8 +31,7 @@ async fn test_scan_directory_basic() {
         test_dir.to_str().unwrap(),
         false, // 非递归
         &["video".to_string()],
-        "test-task",
-        None,
+        TaskContext::for_test("test-task"),
     )
     .await;
 
@@ -60,8 +60,7 @@ async fn test_scan_directory_recursive() {
         test_dir.to_str().unwrap(),
         true, // 递归
         &["video".to_string()],
-        "test-task",
-        None,
+        TaskContext::for_test("test-task"),
     )
     .await;
 
@@ -84,8 +83,7 @@ async fn test_scan_directory_nonexistent() {
         "/nonexistent/path",
         false,
         &["video".to_string()],
-        "test-task",
-        None,
+        TaskContext::for_test("test-task"),
     )
     .await;
 
@@ -107,8 +105,7 @@ async fn test_scan_directory_file_type_filter() {
         test_dir.to_str().unwrap(),
         false,
         &["video".to_string()], // 只扫描视频
-        "test-task",
-        None,
+        TaskContext::for_test("test-task"),
     )
     .await;
 

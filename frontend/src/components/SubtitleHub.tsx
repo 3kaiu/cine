@@ -3,7 +3,7 @@ import { Modal, Button, Tabs, Chip, Surface } from "@heroui/react";
 import { Text } from '@gravity-ui/icons'
 import { Icon } from '@iconify/react'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { mediaApi } from '@/api/media'
 
 interface SubtitleHubProps {
   fileId: string
@@ -16,20 +16,14 @@ export default function SubtitleHub({ fileId, visible, onClose }: SubtitleHubPro
 
   const { data: localData } = useQuery({
     queryKey: ['subtitles-local', fileId],
-    queryFn: async () => {
-      const res = await axios.get(`/api/files/${fileId}/subtitles`)
-      return res.data
-    },
-    enabled: visible
+    queryFn: () => mediaApi.findSubtitles(fileId),
+    enabled: visible,
   })
 
   const { data: remoteData, refetch: searchRemote } = useQuery({
     queryKey: ['subtitles-remote', fileId],
-    queryFn: async () => {
-      const res = await axios.get(`/api/files/${fileId}/subtitles/search`)
-      return res.data
-    },
-    enabled: visible && activeTab === 'remote'
+    queryFn: () => mediaApi.searchSubtitles(fileId),
+    enabled: visible && activeTab === 'remote',
   })
 
   return (
@@ -118,29 +112,29 @@ export default function SubtitleHub({ fileId, visible, onClose }: SubtitleHubPro
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-divider">
-                            {(remoteData || []).length === 0 ? (
+                            {(!Array.isArray(remoteData) || remoteData.length === 0) ? (
                               <tr>
                                 <td colSpan={4} className="py-12 text-center text-sm text-muted">
                                   未找到在线字幕
                                 </td>
                               </tr>
                             ) : (
-                              (remoteData || []).map((item: any, idx: number) => (
+                              remoteData.map((item: Record<string, unknown>, idx: number) => (
                                 <tr key={idx} className="hover:bg-default-100 transition-colors">
-                                  <td className="px-4 py-3 text-sm font-medium text-foreground max-w-[200px] truncate" title={item.filename}>
-                                    {item.filename}
+                                  <td className="px-4 py-3 text-sm font-medium text-foreground max-w-[200px] truncate" title={String(item.filename ?? '')}>
+                                    {String(item.filename ?? '-')}
                                   </td>
-                                  <td className="px-4 py-3 text-sm text-muted">{item.language}</td>
+                                  <td className="px-4 py-3 text-sm text-muted">{String(item.language ?? '-')}</td>
                                   <td className="px-4 py-3">
                                     <div className="flex items-center gap-2">
                                       <div className="w-12 h-1 bg-default-100 rounded-full overflow-hidden">
                                         <div
-                                          className={`h-full rounded-full ${item.score > 90 ? "bg-success" : "bg-warning"}`}
-                                          style={{ width: `${item.score}%` }}
+                                          className={`h-full rounded-full ${(item.score as number) > 90 ? "bg-success" : "bg-warning"}`}
+                                          style={{ width: `${item.score ?? 0}%` }}
                                         />
                                       </div>
-                                      <span className={`text-xs font-medium ${item.score > 90 ? "text-success" : "text-warning"}`}>
-                                        {item.score}
+                                      <span className={`text-xs font-medium ${(item.score as number) > 90 ? "text-success" : "text-warning"}`}>
+                                        {Number(item.score ?? 0)}
                                       </span>
                                     </div>
                                   </td>

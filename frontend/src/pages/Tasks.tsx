@@ -1,65 +1,13 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import clsx from 'clsx'
 import { Button, Chip, Modal, Surface } from "@heroui/react"
 import { Icon } from '@iconify/react'
 import { ArrowsRotateRight, Pause, Play, Xmark, TrashBin } from '@gravity-ui/icons'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
 import VirtualizedTable from '@/components/VirtualizedTable'
-import { handleError } from '@/utils/errorHandler'
-import { showSuccess } from '@/utils/toast'
-
-// API 类型定义
-interface TaskInfo {
-  id: string
-  task_type: string
-  status: TaskStatus
-  created_at: string
-  updated_at: string
-  description: string | null
-}
-
-type TaskStatus =
-  | { status: 'pending' }
-  | { status: 'running'; progress: number; message: string | null }
-  | { status: 'paused'; progress: number }
-  | { status: 'completed'; duration_secs: number; result: string | null }
-  | { status: 'failed'; error: string }
-  | { status: 'cancelled' }
-
-interface TaskListResponse {
-  success: boolean
-  data: {
-    tasks: TaskInfo[]
-    total: number
-    active: number
-  }
-}
-
-// API 调用
-const tasksApi = {
-  list: async (): Promise<TaskListResponse> => {
-    const res = await fetch('/api/tasks')
-    return res.json()
-  },
-  pause: async (id: string) => {
-    const res = await fetch(`/api/tasks/${id}/pause`, { method: 'POST' })
-    return res.json()
-  },
-  resume: async (id: string) => {
-    const res = await fetch(`/api/tasks/${id}/resume`, { method: 'POST' })
-    return res.json()
-  },
-  cancel: async (id: string) => {
-    const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' })
-    return res.json()
-  },
-  cleanup: async () => {
-    const res = await fetch('/api/tasks/cleanup', { method: 'POST' })
-    return res.json()
-  },
-}
+import { useTasksQuery, useTaskMutations } from '@/hooks/useTasksQuery'
+import type { TaskInfo, TaskStatus } from '@/api/tasks'
 
 // 任务类型标签
 const taskTypeLabels: Record<string, string> = {
@@ -93,25 +41,19 @@ const statusLabels: Record<string, string> = {
 }
 
 export default function Tasks() {
-  const queryClient = useQueryClient()
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; taskId: string | null; action: 'cancel' | 'cleanup' }>({
     isOpen: false,
     taskId: null,
     action: 'cancel',
   })
 
-  // 获取任务列表
-  const { data, refetch, isPending } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: tasksApi.list,
-    refetchInterval: 2000, // 每 2 秒刷新
-  })
+  const { data, refetch, isPending } = useTasksQuery()
+  const { pauseMutation, resumeMutation, cancelMutation, cleanupMutation } = useTaskMutations()
 
   const tasks = data?.data?.tasks || []
   const activeCount = data?.data?.active || 0
   const totalCount = data?.data?.total || 0
 
-  // 统计
   const stats = {
     total: totalCount,
     active: activeCount,
@@ -119,50 +61,15 @@ export default function Tasks() {
     failed: tasks.filter(t => t.status.status === 'failed').length,
   }
 
-  // 暂停任务
-  const pauseMutation = useMutation({
-    mutationFn: tasksApi.pause,
-    onSuccess: () => {
-      showSuccess('任务已暂停')
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
-    onError: (e: any) => handleError(e, '暂停失败'),
-  })
+  const handleCancelSuccess = useCallback(() => {
+    setConfirmModal(prev => ({ ...prev, isOpen: false }))
+  }, [])
 
-  // 恢复任务
-  const resumeMutation = useMutation({
-    mutationFn: tasksApi.resume,
-    onSuccess: () => {
-      showSuccess('任务已恢复')
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
-    onError: (e: any) => handleError(e, '恢复失败'),
-  })
+  const handleCleanupSuccess = useCallback(() => {
+    setConfirmModal(prev => ({ ...prev, isOpen: false }))
+  }, [])
 
-  // 取消任务
-  const cancelMutation = useMutation({
-    mutationFn: tasksApi.cancel,
-    onSuccess: () => {
-      showSuccess('任务已取消')
-      setConfirmModal({ ...confirmModal, isOpen: false })
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
-    onError: (e: any) => handleError(e, '取消失败'),
-  })
-
-  // 清理任务
-  const cleanupMutation = useMutation({
-    mutationFn: tasksApi.cleanup,
-    onSuccess: () => {
-      showSuccess('已清理完成的任务')
-      setConfirmModal({ ...confirmModal, isOpen: false })
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-    },
-    onError: (e: any) => handleError(e, '清理失败'),
-  })
-
-  // 获取状态显示信息
-  const getStatusInfo = (status: TaskStatus) => {
+  const getStatusInfo = useCallback((status: TaskStatus) => {
     const statusKey = status.status
     return {
       label: statusLabels[statusKey] || statusKey,
@@ -172,10 +79,9 @@ export default function Tasks() {
       error: 'error' in status ? status.error : undefined,
       duration: 'duration_secs' in status ? status.duration_secs : undefined,
     }
-  }
+  }, [])
 
-  // 表格列定义
-  const columns = [
+  const columns = useMemo(() => [
     {
       title: '任务类型',
       dataIndex: 'task_type',
@@ -309,7 +215,7 @@ export default function Tasks() {
         )
       },
     },
-  ]
+  ], [getStatusInfo, pauseMutation, resumeMutation])
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -420,9 +326,9 @@ export default function Tasks() {
                 size="md"
                 onPress={() => {
                   if (confirmModal.action === 'cancel' && confirmModal.taskId) {
-                    cancelMutation.mutate(confirmModal.taskId)
+                    cancelMutation.mutate(confirmModal.taskId, { onSuccess: handleCancelSuccess })
                   } else if (confirmModal.action === 'cleanup') {
-                    cleanupMutation.mutate()
+                    cleanupMutation.mutate(undefined, { onSuccess: handleCleanupSuccess })
                   }
                 }}
               >

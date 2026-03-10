@@ -743,9 +743,9 @@ impl AppError {
         }
     }
 
-    /// 添加用户ID到错误上下文
-    pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
-        match &mut self {
+    /// 获取可变的 ErrorContext 引用
+    fn context_mut(&mut self) -> &mut ErrorContext {
+        match self {
             AppError::DatabaseConnection { context, .. }
             | AppError::DatabaseQuery { context, .. }
             | AppError::DataIntegrity { context, .. }
@@ -762,10 +762,13 @@ impl AppError {
             | AppError::OperationCancelled { context, .. }
             | AppError::ConfigInvalid { context, .. }
             | AppError::SystemResource { context, .. }
-            | AppError::Internal { context, .. } => {
-                context.user_id = Some(user_id.into());
-            }
+            | AppError::Internal { context, .. } => context,
         }
+    }
+
+    /// 添加用户ID到错误上下文
+    pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
+        self.context_mut().user_id = Some(user_id.into());
         self
     }
 
@@ -775,30 +778,7 @@ impl AppError {
         key: impl Into<String>,
         value: impl Into<serde_json::Value>,
     ) -> Self {
-        let key = key.into();
-        let value = value.into();
-
-        match &mut self {
-            AppError::DatabaseConnection { context, .. }
-            | AppError::DatabaseQuery { context, .. }
-            | AppError::DataIntegrity { context, .. }
-            | AppError::FileNotFound { context, .. }
-            | AppError::FilePermission { context, .. }
-            | AppError::FileIo { context, .. }
-            | AppError::TmdbApi { context, .. }
-            | AppError::NetworkTimeout { context, .. }
-            | AppError::Network { context, .. }
-            | AppError::Validation { context, .. }
-            | AppError::UnsupportedFormat { context, .. }
-            | AppError::TaskExists { context, .. }
-            | AppError::QuotaExceeded { context, .. }
-            | AppError::OperationCancelled { context, .. }
-            | AppError::ConfigInvalid { context, .. }
-            | AppError::SystemResource { context, .. }
-            | AppError::Internal { context, .. } => {
-                context.metadata.insert(key, value);
-            }
-        }
+        self.context_mut().metadata.insert(key.into(), value.into());
         self
     }
 }

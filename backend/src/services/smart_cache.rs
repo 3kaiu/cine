@@ -128,6 +128,8 @@ struct AccessPatternTracker {
     frequency_map: HashMap<String, u64>,
     recent_accesses: VecDeque<(String, Instant)>,
     max_recent_items: usize,
+    /// 防止 frequency_map 无限增长
+    max_frequency_entries: usize,
 }
 
 impl AccessPatternTracker {
@@ -136,12 +138,23 @@ impl AccessPatternTracker {
             frequency_map: HashMap::new(),
             recent_accesses: VecDeque::new(),
             max_recent_items,
+            max_frequency_entries: 50_000,
         }
     }
 
     fn record_access(&mut self, key: String) {
         // 更新访问频率
         *self.frequency_map.entry(key.clone()).or_insert(0) += 1;
+
+        // 容量限制：超出时淘汰访问频率最低的条目
+        if self.frequency_map.len() > self.max_frequency_entries {
+            // 找到最低频率的阈值进行批量淘汰
+            let target_size = self.max_frequency_entries * 3 / 4; // 淘汰到 75% 容量
+            let mut freqs: Vec<u64> = self.frequency_map.values().copied().collect();
+            freqs.sort_unstable();
+            let cutoff_freq = freqs[freqs.len() - target_size];
+            self.frequency_map.retain(|_, v| *v >= cutoff_freq);
+        }
 
         // 更新最近访问记录
         let now = Instant::now();
@@ -261,8 +274,10 @@ impl SmartCacheManager {
             Some(WarmupStrategy::Predictive {
                 confidence_threshold: _,
             }) => {
-                // 预测性预热需要更复杂的实现
-                warn!("Predictive warmup not yet implemented, skipping");
+                // 预测性预热为可选高级功能，当前未实现，可改用 MostFrequent / MostRecent
+                warn!(
+                    "Predictive warmup is not implemented (optional feature); use MostFrequent or MostRecent"
+                );
             }
             None => {
                 debug!("No warmup strategy configured for {}", cache_type);
@@ -508,46 +523,15 @@ impl SmartCacheManager {
         metrics.values().cloned().collect()
     }
 
-    /// 启动后台任务（定期清理、同步等）
+    /// 启动后台任务（定期清理过期缓存）
     pub async fn start_background_tasks(&self) {
-        let manager = Arc::new(self.clone());
-
         // 定期清理过期缓存
-        tokio::spawn({
-            let manager = manager.clone();
-            async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5分钟
-                loop {
-                    interval.tick().await;
-                    // 清理过期缓存（MemoryCache会自动处理）
-                    debug!("Running periodic cache cleanup");
-                }
-            }
-        });
-
-        // 定期同步（如果启用分布式同步）
-        if self.config.enable_distributed_sync {
-            tokio::spawn({
-                let manager = manager.clone();
-                async move {
-                    let mut interval = tokio::time::interval(manager.config.sync_interval);
-                    loop {
-                        interval.tick().await;
-                        // 执行分布式同步逻辑
-                        debug!("Running distributed cache sync");
-                    }
-                }
-            });
-        }
-
-        // 定期更新性能指标
-        tokio::spawn({
-            async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(60)); // 1分钟
-                loop {
-                    interval.tick().await;
-                    // 这里可以计算并更新性能指标
-                }
+        let memory_cache = self.memory_cache.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5分钟
+            loop {
+                interval.tick().await;
+                memory_cache.cleanup_expired().await;
             }
         });
     }

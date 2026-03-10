@@ -239,9 +239,11 @@ pub async fn list_trash(
 ) -> anyhow::Result<Vec<TrashItem>> {
     let trash_prefix = trash_config.trash_dir.to_string_lossy().to_string();
 
+    const MAX_TRASH_ITEMS: i64 = 1000;
     let files: Vec<MediaFile> =
-        sqlx::query_as("SELECT * FROM media_files WHERE path LIKE ? ORDER BY updated_at DESC")
+        sqlx::query_as("SELECT * FROM media_files WHERE path LIKE ? ORDER BY updated_at DESC LIMIT ?")
             .bind(format!("{}%", trash_prefix))
+            .bind(MAX_TRASH_ITEMS)
             .fetch_all(db)
             .await?;
 

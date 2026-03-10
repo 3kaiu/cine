@@ -10,28 +10,24 @@ const api = axios.create({
 
 // 请求拦截器
 api.interceptors.request.use(
-  (config) => {
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (config) => config,
+  (error) => Promise.reject(error)
 )
 
-// 响应拦截器
+// 响应拦截器：统一返回 data，错误时增强 error 信息
 api.interceptors.response.use(
-  (response) => {
-    return response.data
-  },
+  (response) => response.data,
   (error) => {
     if (error.response) {
       const { status, data } = error.response
+      const msg = (data as { error?: string })?.error || error.message
       if (status === 401) {
-        // 处理未授权
+        // 未授权，可在此跳转登录
       } else if (status >= 500) {
-        // 处理服务器错误
-        console.error('Server error:', data)
+        console.error('[API] Server error:', status, msg)
       }
+      // 将后端错误信息挂到 error 上，便于 handleError 使用
+      error.apiMessage = msg
     }
     return Promise.reject(error)
   }

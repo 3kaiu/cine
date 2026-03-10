@@ -1,5 +1,6 @@
 use cine_backend::services::cache::FileHashCache;
 use cine_backend::services::hasher;
+use cine_backend::services::task_queue::TaskContext;
 #[path = "../common/mod.rs"]
 mod common;
 use common::{create_test_db, create_test_file};
@@ -31,7 +32,9 @@ async fn test_calculate_file_hash_small_file() {
     .await
     .unwrap();
 
-    let result = hasher::calculate_file_hash(&pool, &file_id, "test-task", None, None).await;
+    let result =
+        hasher::calculate_file_hash(&pool, &file_id, TaskContext::for_test("test-task"), None)
+            .await;
 
     assert!(result.is_ok());
 
@@ -82,8 +85,13 @@ async fn test_calculate_file_hash_with_cache() {
         .await;
 
     // 第一次计算（应该使用缓存）
-    let result1 =
-        hasher::calculate_file_hash(&pool, &file_id, "test-task", None, Some(cache.clone())).await;
+    let result1 = hasher::calculate_file_hash(
+        &pool,
+        &file_id,
+        TaskContext::for_test("test-task"),
+        Some(cache.clone()),
+    )
+    .await;
 
     assert!(result1.is_ok());
 
@@ -113,7 +121,9 @@ async fn test_calculate_file_hash_nonexistent_file() {
     .await
     .unwrap();
 
-    let result = hasher::calculate_file_hash(&pool, &file_id, "test-task", None, None).await;
+    let result =
+        hasher::calculate_file_hash(&pool, &file_id, TaskContext::for_test("test-task"), None)
+            .await;
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not found"));

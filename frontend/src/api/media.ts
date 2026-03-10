@@ -233,6 +233,15 @@ export const mediaApi = {
       total: number
     }>(`/files/${fileId}/subtitles`, { params }),
 
+  // 在线搜索字幕（后端直接返回数组）
+  searchSubtitles: (fileId: string) =>
+    api.get<Array<{
+      filename?: string
+      language?: string
+      score?: number
+      [key: string]: unknown
+    }>>(`/files/${fileId}/subtitles/search`),
+
   // 移动文件
   moveFile: (data: { file_id: string; target_dir: string }) =>
     api.post<{ result: { file_id: string; success: boolean; new_path?: string; error?: string } }>(

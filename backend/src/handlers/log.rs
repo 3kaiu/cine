@@ -6,11 +6,11 @@ use axum::{
 };
 use std::sync::Arc;
 
-/// 获取操作记录
+/// 获取操作记录（最多 200 条，防止大库时响应过大）
 pub async fn list_operation_logs(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::models::OperationLog>>, (axum::http::StatusCode, String)> {
-    let logs = log::get_recent_logs(&state.db, 100)
+    let logs = log::get_recent_logs(&state.db, 200)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(logs))

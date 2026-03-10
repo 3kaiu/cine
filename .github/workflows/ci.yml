@@ -37,6 +37,30 @@ jobs:
         working-directory: backend
         run: cargo check --all-features
 
+  bench-backend:
+    name: Bench Backend (compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            backend/target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build benches (no run)
+        working-directory: backend
+        run: cargo build --benches
+
   lint-frontend:
     name: Lint Frontend
     runs-on: ubuntu-latest

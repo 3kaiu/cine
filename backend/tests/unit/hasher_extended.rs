@@ -2,6 +2,7 @@
 
 use cine_backend::services::cache::FileHashCache;
 use cine_backend::services::hasher;
+use cine_backend::services::task_queue::TaskContext;
 #[path = "../common/mod.rs"]
 mod common;
 use chrono::Utc;
@@ -30,7 +31,9 @@ async fn test_calculate_file_hash_empty_file() {
     .await
     .unwrap();
 
-    let result = hasher::calculate_file_hash(&pool, &file_id, "test-task", None, None).await;
+    let result =
+        hasher::calculate_file_hash(&pool, &file_id, TaskContext::for_test("test-task"), None)
+            .await;
 
     assert!(result.is_ok());
 
@@ -74,10 +77,10 @@ async fn test_calculate_file_hash_identical_files() {
     }
 
     // 计算两个文件的哈希
-    hasher::calculate_file_hash(&pool, &file1_id, "task1", None, None)
+    hasher::calculate_file_hash(&pool, &file1_id, TaskContext::for_test("task1"), None)
         .await
         .unwrap();
-    hasher::calculate_file_hash(&pool, &file2_id, "task2", None, None)
+    hasher::calculate_file_hash(&pool, &file2_id, TaskContext::for_test("task2"), None)
         .await
         .unwrap();
 
@@ -128,10 +131,10 @@ async fn test_calculate_file_hash_different_files() {
         .unwrap();
     }
 
-    hasher::calculate_file_hash(&pool, &file1_id, "task1", None, None)
+    hasher::calculate_file_hash(&pool, &file1_id, TaskContext::for_test("task1"), None)
         .await
         .unwrap();
-    hasher::calculate_file_hash(&pool, &file2_id, "task2", None, None)
+    hasher::calculate_file_hash(&pool, &file2_id, TaskContext::for_test("task2"), None)
         .await
         .unwrap();
 
@@ -183,8 +186,7 @@ async fn test_calculate_file_hash_concurrent() {
             hasher::calculate_file_hash(
                 &pool_clone,
                 &file_id_clone,
-                &format!("task{}", i),
-                None,
+                TaskContext::for_test(&format!("task{}", i)),
                 None,
             )
             .await
@@ -236,9 +238,14 @@ async fn test_calculate_file_hash_cache_invalidation() {
     let cache = Arc::new(FileHashCache::new());
 
     // 第一次计算
-    hasher::calculate_file_hash(&pool, &file_id, "task1", None, Some(cache.clone()))
-        .await
-        .unwrap();
+    hasher::calculate_file_hash(
+        &pool,
+        &file_id,
+        TaskContext::for_test("task1"),
+        Some(cache.clone()),
+    )
+    .await
+    .unwrap();
 
     // 修改文件（改变修改时间）
     std::fs::write(&file_path, b"Modified content").unwrap();
@@ -257,9 +264,14 @@ async fn test_calculate_file_hash_cache_invalidation() {
         .unwrap();
 
     // 第二次计算应该使用新的修改时间，不使用旧缓存
-    hasher::calculate_file_hash(&pool, &file_id, "task2", None, Some(cache.clone()))
-        .await
-        .unwrap();
+    hasher::calculate_file_hash(
+        &pool,
+        &file_id,
+        TaskContext::for_test("task2"),
+        Some(cache.clone()),
+    )
+    .await
+    .unwrap();
 
     // 验证缓存键不同
     let _cached1 = cache.get(&file_path.to_string_lossy(), mtime1).await;

@@ -46,9 +46,10 @@ export function formatErrorMessage(error: Error | string | unknown): string {
   if (typeof error === 'string') {
     errorMessage = error
   }
-  // 处理 Error 对象
+  // 处理 Error 对象（含 axios 增强的 apiMessage）
   else if (error instanceof Error) {
-    errorMessage = error.message || error.name || '未知错误'
+    const err = error as Error & { apiMessage?: string }
+    errorMessage = err.apiMessage || error.message || error.name || '未知错误'
   }
   // 处理对象类型的错误
   else if (typeof error === 'object' && error !== null) {
