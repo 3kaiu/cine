@@ -86,9 +86,9 @@ export default function Tasks() {
       title: '任务类型',
       dataIndex: 'task_type',
       width: 120,
-      render: (type: string) => (
+      render: (type: unknown) => (
         <Chip size="sm" variant="soft" className="font-medium">
-          {taskTypeLabels[type] || type}
+          {taskTypeLabels[type as string] || (type as string)}
         </Chip>
       ),
     },
@@ -96,9 +96,9 @@ export default function Tasks() {
       title: '描述',
       dataIndex: 'description',
       width: 200,
-      render: (desc: string | null) => (
+      render: (desc: unknown) => (
         <span className="text-sm text-foreground/80 line-clamp-1">
-          {desc || '-'}
+          {(desc as string) || '-'}
         </span>
       ),
     },
@@ -106,14 +106,14 @@ export default function Tasks() {
       title: '状态',
       dataIndex: 'status',
       width: 150,
-      render: (status: TaskStatus) => {
-        const info = getStatusInfo(status)
+      render: (status: unknown) => {
+        const info = getStatusInfo(status as TaskStatus)
         return (
           <div className="flex flex-col gap-1.5">
             <Chip
               size="sm"
               variant="soft"
-              color={(info.color === 'primary' ? 'accent' : info.color) as any}
+              color={(info.color === 'primary' ? 'accent' : info.color) as "default" | "accent" | "success" | "warning" | "danger" | undefined}
               className="h-5 text-[10px] font-black uppercase tracking-tighter px-1.5 border-none"
             >
               {info.label}
@@ -133,7 +133,8 @@ export default function Tasks() {
       title: '进度',
       dataIndex: 'status',
       width: 120,
-      render: (status: TaskStatus) => {
+      render: (rawStatus: unknown) => {
+        const status = rawStatus as TaskStatus;
         if (status.status !== 'running' && status.status !== 'paused') {
           return <span className="text-default-300 text-[10px] font-bold uppercase tracking-widest pl-1">-</span>
         }
@@ -160,9 +161,9 @@ export default function Tasks() {
       title: '创建时间',
       dataIndex: 'created_at',
       width: 160,
-      render: (time: string) => (
+      render: (time: unknown) => (
         <span className="text-[11px] text-default-400 font-mono">
-          {new Date(time).toLocaleString()}
+          {new Date(time as string).toLocaleString()}
         </span>
       ),
     },
@@ -170,7 +171,7 @@ export default function Tasks() {
       title: '操作',
       dataIndex: 'id',
       width: 100,
-      render: (_: any, task: any) => {
+      render: (_: unknown, task: TaskInfo) => {
         const status = task.status.status
         const canPause = status === 'running'
         const canResume = status === 'paused'

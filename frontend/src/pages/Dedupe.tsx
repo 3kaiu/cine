@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Button, Chip, Surface, SearchField, Select, Popover, ListBox, Tabs } from "@heroui/react";
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Icon } from '@iconify/react'
@@ -242,13 +242,13 @@ export default function Dedupe() {
     batchTrashMutation.mutate(files)
   }
 
-  const handleSelectAll = () => {
+  const handleSelectAll = useCallback(() => {
     if (selectedGroups.size === sortedData?.length) {
       setSelectedGroups(new Set())
     } else {
       setSelectedGroups(new Set(sortedData?.map((g: DedupeGroup) => g.id) || []))
     }
-  }
+  }, [selectedGroups.size, sortedData]);
 
   const handleExpandAll = () => {
     if (expandedKeys.size === sortedData?.length) {
@@ -437,7 +437,7 @@ export default function Dedupe() {
                   selectedKey={String(similarityThreshold)}
                   onSelectionChange={(keys) => {
                     if (!keys) return
-                    const selected = Array.from(keys as any)[0] as string
+                    const selected = Array.from(keys as Iterable<unknown>)[0] as string
                     setSimilarityThreshold(parseFloat(selected))
                   }}
                   className="w-[120px]"
@@ -484,8 +484,8 @@ export default function Dedupe() {
                 selectedKey={sortBy}
                 onSelectionChange={(keys) => {
                   if (!keys) return
-                  const selected = Array.isArray(Array.from(keys as any))
-                    ? Array.from(keys as any)[0] as SortBy
+                  const selected = Array.isArray(Array.from(keys as Iterable<unknown>))
+                    ? Array.from(keys as Iterable<unknown>)[0] as SortBy
                     : keys as SortBy
                   if (selected) {
                     setSortBy(selected)

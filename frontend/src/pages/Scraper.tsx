@@ -222,32 +222,32 @@ export default function Scraper() {
       dataIndex: 'name',
       key: 'name',
       width: 400,
-      render: (text: string) => <span className="text-sm font-medium text-foreground">{text}</span>
+      render: (text: unknown) => <span className="text-sm font-medium text-foreground">{text as string}</span>
     },
     {
       title: '大小',
       dataIndex: 'size',
       key: 'size',
       width: 120,
-      render: (size: number) => <span className="text-xs text-muted font-mono">{formatSize(size)}</span>,
+      render: (size: unknown) => <span className="text-xs text-muted font-mono">{formatSize(size as number)}</span>,
     },
     {
       title: '元数据状态',
       dataIndex: 'metadata',
       key: 'metadata',
       width: 300,
-      render: (metadata: Record<string, unknown> | string | undefined) => {
+      render: (metadata: unknown) => {
         if (!metadata) return <Chip size="sm" variant="soft" className="h-5 px-1.5 text-[10px] font-bold">未刮削</Chip>
         try {
-          const data = typeof metadata === 'string' ? JSON.parse(metadata) : metadata
+          const data = typeof metadata === 'string' ? JSON.parse(metadata) : metadata as Record<string, unknown>
           return (
             <div className="flex items-center gap-2">
-              <Chip size="sm" color="success" variant="soft" className="h-5 px-1.5 text-[10px] font-bold">{data.title || data.name}</Chip>
+              <Chip size="sm" color="success" variant="soft" className="h-5 px-1.5 text-[10px] font-bold">{data.title as string || data.name as string}</Chip>
               {data.poster_url && <Filmstrip className="w-3.5 h-3.5 text-default-400" />}
               {data.rating && (
                 <span className="text-[10px] text-warning font-bold flex items-center gap-0.5">
                   <Icon icon="mdi:star" className="w-3 h-3" />
-                  {data.rating}
+                  {data.rating as string | number}
                 </span>
               )}
             </div>
@@ -423,7 +423,7 @@ export default function Scraper() {
               selectedKey={filterStatus}
               onSelectionChange={(keys) => {
                 if (!keys) return
-                const selected = Array.from(keys as any)[0] as string
+                const selected = Array.from(keys as Iterable<unknown>)[0] as string
                 if (selected) {
                   setFilterStatus(selected)
                 }
@@ -460,9 +460,9 @@ export default function Scraper() {
               selectedKeys={new Set(selectedFiles)}
               onSelectionChange={(keys) => {
                 if (keys === "all") {
-                  setSelectedFiles(filteredFiles.map((f: any) => f.id) || [])
+                  setSelectedFiles(filteredFiles.map((f: MediaFile) => f.id) || [])
                 } else {
-                  setSelectedFiles(Array.from(keys as any) as string[])
+                  setSelectedFiles(Array.from(keys as Iterable<unknown>) as string[])
                 }
               }}
             />
@@ -530,8 +530,8 @@ export default function Scraper() {
                 {previewMetadata && Array.isArray(previewMetadata) && previewMetadata.length > 0 ? (
                   previewMetadata.map((item: Record<string, unknown>, idx: number) => (
                     <button
-                      key={(item.tmdb_id as any) || idx}
-                      onClick={() => handleSelectMetadata(item as any)}
+                      key={(item.tmdb_id as string | number) || idx}
+                      onClick={() => handleSelectMetadata(item)}
                       className="w-full text-left p-4 hover:bg-default-100 transition-colors border-b border-divider/50 last:border-b-0 flex items-start gap-4 group"
                     >
                       {(item.poster_url as string) && (

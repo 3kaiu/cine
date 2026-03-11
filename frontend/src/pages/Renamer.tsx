@@ -97,7 +97,7 @@ export default function Renamer() {
 
   const selectedIds = useMemo(() => {
     if (String(selectedKeys) === 'all') return filesWithMetadata.map(f => f.id)
-    return Array.from(selectedKeys as any) as string[]
+    return Array.from(selectedKeys as Iterable<string | number>) as string[]
   }, [selectedKeys, filesWithMetadata])
 
   const handleSelectAll = () => {
@@ -346,7 +346,7 @@ export default function Renamer() {
               <VirtualizedTable
                 dataSource={filesWithMetadata}
                 rowHeight={72}
-                onSelectionChange={(keys) => setSelectedKeys(keys as any)}
+                onSelectionChange={(keys) => setSelectedKeys(keys as Selection)}
                 selectionMode="multiple"
                 selectedKeys={selectedKeys}
                 columns={[
@@ -354,7 +354,7 @@ export default function Renamer() {
                     title: '文件信息',
                     dataIndex: 'name',
                     width: 400,
-                    render: (_: any, file: any) => (
+                    render: (_: unknown, file: MediaFile) => (
                       <div className="flex flex-col gap-1 py-1">
                         <div className="flex items-center gap-2">
                           {isTVShow(file) ? (
@@ -372,7 +372,7 @@ export default function Renamer() {
                     title: '预览结果',
                     dataIndex: 'id',
                     width: 280,
-                    render: (_: any, file: any) => {
+                    render: (_: unknown, file: MediaFile) => {
                       const previewName = previewMap[file.id]
                       return (
                         <div className="flex flex-col gap-1">

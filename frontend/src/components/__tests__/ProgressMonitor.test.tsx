@@ -8,7 +8,9 @@ vi.mock('../../hooks/useWebSocket', () => ({
   useWebSocket: vi.fn(),
 }))
 
-const mockUseWebSocket = useWebSocket as any
+import { Mock } from 'vitest'
+
+const mockUseWebSocket = useWebSocket as unknown as Mock
 
 describe('ProgressMonitor', () => {
   beforeEach(() => {

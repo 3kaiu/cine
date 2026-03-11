@@ -14,7 +14,7 @@ describe('useTheme', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    } as any)
+    } as unknown as MediaQueryList)
   })
 
   afterEach(() => {

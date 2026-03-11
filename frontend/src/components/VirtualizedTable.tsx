@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useVirtualizer, VirtualItem } from '@tanstack/react-virtual';
 import { Spinner, ListBox, Selection } from "@heroui/react";
 
 /**
@@ -10,7 +10,7 @@ export interface TableColumn<T> {
   title: React.ReactNode;
   dataIndex?: string | string[] | number;
   width?: number;
-  render?: (value: any, record: T, index: number) => React.ReactNode;
+  render?: (value: unknown, record: T, index: number) => React.ReactNode;
 }
 
 /**
@@ -21,8 +21,8 @@ interface InternalProcessedColumn<T> {
   title: React.ReactNode;
   dataIndex?: string | string[] | number;
   width?: number;
-  render?: (value: any, record: T, index: number) => React.ReactNode;
-  dataGetter?: (record: T) => any;
+  render?: (value: unknown, record: T, index: number) => React.ReactNode;
+  dataGetter?: (record: T) => unknown;
   flexValue: string;
   minWidth: number;
 }
@@ -91,7 +91,7 @@ interface VirtualizedTableProps<T> {
 }
 
 // 数据访问函数编译器 - 将dataIndex路径预编译为函数
-function compileDataGetter<T>(dataIndex?: string | string[] | number): ((record: T) => any) | undefined {
+function compileDataGetter<T>(dataIndex?: string | string[] | number): ((record: T) => unknown) | undefined {
   if (dataIndex === undefined || dataIndex === null) return undefined;
 
   const path = Array.isArray(dataIndex) ? dataIndex : [dataIndex];
@@ -101,9 +101,11 @@ function compileDataGetter<T>(dataIndex?: string | string[] | number): ((record:
     return (record: T) => record?.[key];
   } else if (path.length === 2) {
     const [key1, key2] = path;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (record: T) => (record?.[key1 as keyof T] as any)?.[key2];
   } else {
     return (record: T) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let value: any = record;
       for (const key of path) {
         if (value == null) return undefined;
@@ -161,7 +163,7 @@ export default function VirtualizedTable<T extends { id: string }>({
     overscan: 10,
   });
 
-  const renderVirtualRow = useCallback((virtualRow: any) => {
+  const renderVirtualRow = useCallback((virtualRow: VirtualItem) => {
     const record = dataSource[virtualRow.index];
     if (!record) return null;
 

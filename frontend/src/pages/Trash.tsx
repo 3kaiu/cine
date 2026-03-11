@@ -51,7 +51,7 @@ export default function Trash() {
   const selectedItems = useMemo(() => {
     return selectedKeys === 'all'
       ? new Set(data?.items.map(f => f.id) || [])
-      : (selectedKeys as any as Set<string>)
+      : (selectedKeys as unknown as Set<string>)
   }, [selectedKeys, data])
 
   const filteredFiles = useMemo(() => {
@@ -188,7 +188,7 @@ export default function Trash() {
                 selectedKey={fileTypeFilter}
                 onSelectionChange={(keys) => {
                   if (!keys) return
-                  const selected = Array.from(keys as any)[0] as string
+                  const selected = Array.from(keys as Iterable<unknown>)[0] as string
                   if (selected) setFileTypeFilter(selected)
                 }}
                 className="w-24 border-none"
@@ -211,7 +211,7 @@ export default function Trash() {
                 selectedKey={sortBy}
                 onSelectionChange={(keys) => {
                   if (!keys) return
-                  const selected = Array.from(keys as any)[0] as string
+                  const selected = Array.from(keys as Iterable<unknown>)[0] as string
                   if (selected) setSortBy(selected)
                 }}
                 className="w-32 border-none"
@@ -250,7 +250,7 @@ export default function Trash() {
             <VirtualizedTable
               dataSource={filteredFiles}
               rowHeight={72}
-              onSelectionChange={(keys) => setSelectedKeys(keys as any)}
+              onSelectionChange={(keys) => setSelectedKeys(keys as Selection)}
               selectedKeys={selectedKeys}
               selectionMode="multiple"
               columns={[
@@ -258,7 +258,7 @@ export default function Trash() {
                   title: '文件名',
                   dataIndex: 'original_name',
                   width: 400,
-                  render: (_: any, file: any) => (
+                  render: (_: unknown, file: TrashItem) => (
                     <div className="flex flex-col gap-1 py-1">
                       <div className="flex items-center gap-2">
                         <Icon
@@ -275,7 +275,7 @@ export default function Trash() {
                   title: '大小',
                   dataIndex: 'file_size',
                   width: 120,
-                  render: (_: any, file: TrashItem) => (
+                  render: (_: unknown, file: TrashItem) => (
                     <span className="text-[11px] font-bold text-default-500 tabular-nums">
                       {formatSize(file.file_size)}
                     </span>
@@ -285,7 +285,7 @@ export default function Trash() {
                   title: '删除时间',
                   dataIndex: 'deleted_at',
                   width: 160,
-                  render: (_: any, file: any) => (
+                  render: (_: unknown, file: TrashItem) => (
                     <div className="flex flex-col">
                       <span className="text-[11px] font-bold text-default-600">
                         {dayjs(file.deleted_at).fromNow()}
@@ -300,7 +300,7 @@ export default function Trash() {
                   title: '',
                   dataIndex: 'id',
                   width: 120,
-                  render: (_: any, file: any) => (
+                  render: (_: unknown, file: TrashItem) => (
                     <div className="flex justify-end pr-4">
                       <Tooltip closeDelay={0}>
                         <Button
@@ -357,7 +357,7 @@ export default function Trash() {
               {confirmAction !== 'clear' && selectedItems.size > 0 && (
                 <div className="p-3 rounded-xl bg-default-100/30 border border-divider/10 max-h-32 overflow-y-auto">
                   <div className="flex flex-col gap-1.5">
-                    {Array.from(selectedItems).slice(0, 3).map((id: any) => {
+                    {Array.from(selectedItems).slice(0, 3).map((id: unknown) => {
                       const fileId = id as string
                       const file = data?.items.find((f: TrashItem) => f.id === fileId)
                       return (

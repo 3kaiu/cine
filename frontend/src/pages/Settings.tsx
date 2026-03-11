@@ -98,7 +98,7 @@ export default function Settings() {
       setApiTestStatus('success')
       setApiTestMessage('TMDB API 连接正常')
     },
-    onError: (err: any) => {
+    onError: (err: { response?: { data?: { status_message?: string } } }) => {
       setApiTestStatus('error')
       setApiTestMessage(err.response?.data?.status_message || '连接失败，请检查 API Key')
     }
@@ -133,7 +133,7 @@ export default function Settings() {
 
   const handleFolderSelect = async () => {
     try {
-      // @ts-ignore
+      // @ts-expect-error window.electron is injected in desktop environment
       const dir = await window.electron?.ipcRenderer.invoke('select-directory')
       if (dir) {
         setBasicConfig({ ...basicConfig, default_dir: dir })

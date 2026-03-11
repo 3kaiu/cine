@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Modal, SearchField, Select, ListBox, Chip, Surface } from "@heroui/react";
+import { Button, Modal, SearchField, Select, Chip, Surface, ListBox } from "@heroui/react";
 import { Copy, TrashBin, ArrowRight, File, HardDrive, TriangleExclamation, Video, Picture, ArrowDownToLine } from '@gravity-ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
@@ -81,12 +81,12 @@ export default function FileManager() {
       title: '名称',
       dataIndex: 'name',
       width: 300,
-      render: (name: string) => (
+      render: (name: unknown) => (
         <div className="flex items-center gap-3">
           <div className="p-1 px-1.5 bg-default-100 rounded-lg shrink-0">
-            <File className="w-[14px] h-[14px] text-default-400" />
+             <File className="w-[14px] h-[14px] text-default-400" />
           </div>
-          <span className="font-bold text-sm text-foreground/90 line-clamp-1">{name}</span>
+          <span className="font-bold text-sm text-foreground/90 line-clamp-1">{name as string}</span>
         </div>
       )
     },
@@ -94,39 +94,39 @@ export default function FileManager() {
       title: '大小',
       dataIndex: 'size',
       width: 100,
-      render: (size: number) => (
-        <span className="font-mono text-[11px] text-default-500 font-medium">{formatSize(size)}</span>
+      render: (size: unknown) => (
+        <span className="font-mono text-[11px] text-default-500 font-medium">{formatSize(size as number)}</span>
       )
     },
     {
       title: '类型',
       dataIndex: 'file_type',
       width: 100,
-      render: (type: string) => (
+      render: (type: unknown) => (
         <Chip
           size="sm"
           variant="soft"
           color={
-            type === 'video' ? 'accent' :
-              type === 'subtitle' ? 'success' :
-                type === 'image' ? 'warning' :
-                  type === 'nfo' ? 'default' : 'default'
+            (type as string) === 'video' ? 'accent' :
+              (type as string) === 'subtitle' ? 'success' :
+                (type as string) === 'image' ? 'warning' :
+                  (type as string) === 'nfo' ? 'default' : 'default'
           }
           className="h-5 text-[10px] font-bold px-2 uppercase tracking-tight"
         >
-          {type === 'video' ? '视频' :
-            type === 'subtitle' ? '字幕' :
-              type === 'image' ? '图片' :
-                type === 'nfo' ? '信息' : type}
+          {(type as string) === 'video' ? '视频' :
+            (type as string) === 'subtitle' ? '字幕' :
+              (type as string) === 'image' ? '图片' :
+                (type as string) === 'nfo' ? '信息' : (type as string)}
         </Chip>
       )
     },
     {
       title: '路径',
       dataIndex: 'path',
-      render: (path: string) => (
-        <div className="truncate max-w-xs text-[11px] text-default-400 font-mono opacity-60" title={path}>
-          {path}
+      render: (path: unknown) => (
+        <div className="truncate max-w-xs text-[11px] text-default-400 font-mono opacity-60" title={path as string}>
+          {path as string}
         </div>
       )
     }
@@ -399,7 +399,7 @@ export default function FileManager() {
                 selectedKey={fileTypeFilter}
                 onSelectionChange={(keys) => {
                   if (!keys) return
-                  const selected = Array.from(keys as any)[0] as string
+                  const selected = Array.from(keys as Iterable<unknown>)[0] as string
                   if (selected) {
                     setFileTypeFilter(selected)
                   }
@@ -447,7 +447,7 @@ export default function FileManager() {
                 if (keys === 'all') {
                   setSelectedRowKeys(filteredFiles.map(f => f.id))
                 } else {
-                  setSelectedRowKeys(Array.from(keys as any) as string[])
+                  setSelectedRowKeys(Array.from(keys as Iterable<unknown>) as string[])
                 }
               }}
             />

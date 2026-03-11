@@ -107,12 +107,12 @@ export default function OperationLogs() {
       title: '动作',
       dataIndex: 'action',
       width: 160,
-      render: (action: string) => (
+      render: (action: unknown) => (
         <div className="flex gap-2.5 items-center">
           <div className="p-1 px-1.5 bg-default-100/50 rounded-md border border-divider/10">
-            {getActionIcon(action)}
+            {getActionIcon(action as string)}
           </div>
-          {getActionLabel(action)}
+          {getActionLabel(action as string)}
         </div>
       )
     },
@@ -138,8 +138,8 @@ export default function OperationLogs() {
       title: '执行时间',
       dataIndex: 'created_at',
       width: 180,
-      render: (created_at: string) => (
-        <span className="text-[11px] text-default-400 font-mono font-medium">{dayjs(created_at).format('YYYY-MM-DD HH:mm:ss')}</span>
+      render: (created_at: unknown) => (
+        <span className="text-[11px] text-default-400 font-mono font-medium">{dayjs(created_at as string).format('YYYY-MM-DD HH:mm:ss')}</span>
       )
     },
     {
@@ -262,7 +262,7 @@ export default function OperationLogs() {
                 selectedKey={actionFilter}
                 onSelectionChange={(keys) => {
                   if (!keys) return
-                  const selected = Array.from(keys as any)[0] as string
+                  const selected = Array.from(keys as Iterable<unknown>)[0] as string
                   if (selected) {
                     setActionFilter(selected)
                   }
@@ -307,7 +307,7 @@ export default function OperationLogs() {
               selectionMode="multiple"
               selectedKeys={new Set(selectedLogs)}
               onSelectionChange={(keys) => {
-                setSelectedLogs(Array.from(keys as any))
+                setSelectedLogs(Array.from(keys as Iterable<unknown>) as string[])
               }}
             />
           )}
@@ -390,7 +390,7 @@ export default function OperationLogs() {
               <Button
                 variant="danger"
                 size="md"
-                onPress={() => deleteMutation.mutate(confirmDelete.logIds)}
+                onPress={() => deleteMutation.mutate()}
                 isPending={deleteMutation.isPending}
               >
                 确认删除

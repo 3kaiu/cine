@@ -266,7 +266,7 @@ export default function Workflow() {
       setIsRunning(false)
       setCurrentStepIndex(-1)
     }
-  }, [steps, scrapeMutation, dedupeMutation, renameMutation, cleanupMutation, cleanupEmptyDirs, updateStepStatus, DEFAULT_DIRECTORY])
+  }, [steps, scrapeMutation, dedupeMutation, renameMutation, cleanupMutation, updateStepStatus])
 
   // 监听 nextStepIndex 变化，触发下一步
   useEffect(() => {

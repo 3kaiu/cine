@@ -186,21 +186,21 @@ export default function Scanner() {
       dataIndex: 'name',
       key: 'name',
       width: 400,
-      render: (text: string) => <span className="text-sm font-medium text-foreground">{text}</span>
+      render: (text: unknown) => <span className="text-sm font-medium text-foreground">{text as string}</span>
     },
     {
       title: '类型',
       dataIndex: 'file_type',
       key: 'file_type',
       width: 100,
-      render: (type: string) => (
+      render: (type: unknown) => (
         <Chip
           size="sm"
           variant="soft"
-          color={type === 'video' ? 'accent' : type === 'audio' ? 'warning' : 'default'}
+          color={(type as string) === 'video' ? 'accent' : (type as string) === 'audio' ? 'warning' : 'default'}
           className="h-5 text-[10px] font-bold px-2 uppercase tracking-tight"
         >
-          {type === 'video' ? '视频' : type === 'audio' ? '音频' : type.toUpperCase()}
+          {(type as string) === 'video' ? '视频' : (type as string) === 'audio' ? '音频' : (type as string).toUpperCase()}
         </Chip>
       )
     },
@@ -209,7 +209,7 @@ export default function Scanner() {
       dataIndex: 'size',
       key: 'size',
       width: 120,
-      render: (size: number) => <span className="text-xs text-muted font-mono">{formatSize(size)}</span>,
+      render: (size: unknown) => <span className="text-xs text-muted font-mono">{formatSize(size as number)}</span>,
     },
     {
       title: '画质',
@@ -348,9 +348,9 @@ export default function Scanner() {
 
                     {Object.keys(fileTypes).length > 0 && (
                       <div className="flex gap-1.5 flex-wrap">
-                        {Object.entries(fileTypes).map(([type, count]: [any, any]) => (
+                        {Object.entries(fileTypes).map(([type, count]) => (
                           <Chip key={type} size="sm" variant="soft" color={type === 'video' ? 'accent' : type === 'audio' ? 'warning' : 'default'} className="h-5 px-1.5 text-[10px] font-bold uppercase">
-                            {type}: {count}
+                            {type}: {count as React.ReactNode}
                           </Chip>
                         ))}
                       </div>
@@ -474,7 +474,7 @@ export default function Scanner() {
                       selectedKey={fileTypeFilter}
                       onSelectionChange={(keys) => {
                         if (!keys) return
-                        const selected = Array.from(keys as any)[0] as string
+                        const selected = Array.from(keys as Iterable<unknown>)[0] as string
                         if (selected) {
                           setFileTypeFilter(selected)
                         }
