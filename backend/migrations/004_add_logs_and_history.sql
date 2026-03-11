@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS operation_logs (
     file_id TEXT,
     old_path TEXT NOT NULL,
     new_path TEXT,
+    operation TEXT, -- 对应操作类型
     created_at TEXT NOT NULL
 );
 
