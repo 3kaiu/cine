@@ -45,8 +45,7 @@ fn bench_file_scan(c: &mut Criterion) {
                         test_dir.to_str().unwrap(),
                         true,
                         &["video".to_string()],
-                        "bench-task",
-                        None,
+                        cine_backend::services::task_queue::TaskContext::for_test("bench-task"),
                     )
                     .await
                     .unwrap();

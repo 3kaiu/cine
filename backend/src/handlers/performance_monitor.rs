@@ -2,13 +2,13 @@ use axum::{
     extract::{Query, State},
     response::Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::handlers::AppState;
 use crate::services::metrics::{
-    EnhancedMetricsCollector, PerformanceAnomaly, PerformanceTrend, ResourceStats,
+    PerformanceAnomaly, PerformanceTrend, ResourceStats,
 };
 
 /// 获取性能趋势分析

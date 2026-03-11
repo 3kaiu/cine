@@ -35,7 +35,7 @@ pub async fn batch_calculate_hash_parallel(
     db: &SqlitePool,
     file_ids: &[String],
     max_concurrent: usize,
-    mut ctx: crate::services::task_queue::TaskContext,
+    ctx: crate::services::task_queue::TaskContext,
     hash_cache: Option<Arc<FileHashCache>>,
 ) -> anyhow::Result<()> {
     let total = file_ids.len();
@@ -68,7 +68,7 @@ pub async fn batch_calculate_hash_parallel(
 
     // 使用流式处理，控制并发数
     let results: Vec<Result<(), String>> = stream::iter(file_ids.iter().enumerate())
-        .map(|(index, file_id)| {
+        .map(|(_index, file_id)| {
             let db = db.clone();
             let file_id = file_id.clone();
             let semaphore = semaphore.clone();

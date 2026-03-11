@@ -7,14 +7,14 @@
 //! - 缓存性能监控
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, info, warn};
 
-use crate::models::MediaFile;
+// use crate::models::MediaFile;
 use crate::services::cache::{FileHashCache, MemoryCache};
 
 /// 缓存同步消息类型
@@ -118,9 +118,9 @@ pub struct SmartCacheManager {
 #[derive(Debug, Clone)]
 struct WarmupStatus {
     is_warming_up: bool,
-    start_time: Instant,
+    pub(crate) _start_time: Instant,
     items_processed: usize,
-    total_items: Option<usize>,
+    pub(crate) _total_items: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -244,9 +244,9 @@ impl SmartCacheManager {
                 cache_type.to_string(),
                 WarmupStatus {
                     is_warming_up: true,
-                    start_time,
+                    _start_time: start_time,
                     items_processed: 0,
-                    total_items: None,
+                    _total_items: None,
                 },
             );
         }
@@ -347,7 +347,7 @@ impl SmartCacheManager {
 
         let files = query_builder.fetch_all(db_pool).await?;
 
-        for (id, path, hash_md5, hash_xxhash, last_modified) in files {
+        for (_id, path, hash_md5, hash_xxhash, last_modified) in files {
             if let Some(hash) = hash_md5.or(hash_xxhash) {
                 self.file_hash_cache
                     .set(&path, last_modified.timestamp(), hash)
@@ -369,7 +369,7 @@ impl SmartCacheManager {
         cache_type: &str,
         time_window: Duration,
         max_items: usize,
-        db_pool: &sqlx::SqlitePool,
+        _db_pool: &sqlx::SqlitePool,
     ) -> anyhow::Result<()> {
         let patterns = self.access_patterns.read().await;
         let most_recent = patterns.get_most_recent(time_window, max_items);
@@ -417,7 +417,7 @@ impl SmartCacheManager {
         .fetch_all(db_pool)
         .await?;
 
-        for (id, file_path, hash_md5, hash_xxhash, last_modified) in files {
+        for (_id, file_path, hash_md5, hash_xxhash, last_modified) in files {
             if let Some(hash) = hash_md5.or(hash_xxhash) {
                 self.file_hash_cache
                     .set(&file_path, last_modified.timestamp(), hash)
@@ -434,7 +434,7 @@ impl SmartCacheManager {
     }
 
     /// 获取缓存项（带访问记录）
-    pub async fn get(&self, cache_type: &str, key: &str) -> Option<serde_json::Value> {
+    pub async fn get(&self, _cache_type: &str, key: &str) -> Option<serde_json::Value> {
         let start_time = Instant::now();
 
         // 异步记录访问模式 (Phase 2 优化)
@@ -445,14 +445,14 @@ impl SmartCacheManager {
         let result = self.memory_cache.get(key).await;
 
         // 更新性能指标
-        self.update_metrics(cache_type, result.is_some(), start_time.elapsed())
+        self.update_metrics(_cache_type, result.is_some(), start_time.elapsed())
             .await;
 
         result
     }
 
     /// 设置缓存项
-    pub async fn set(&self, cache_type: &str, key: String, value: serde_json::Value) {
+    pub async fn set(&self, _cache_type: &str, key: String, value: serde_json::Value) {
         self.memory_cache
             .set(key.clone(), value.clone(), Some(self.config.ttl.as_secs()))
             .await;
@@ -468,7 +468,7 @@ impl SmartCacheManager {
     }
 
     /// 使缓存项失效
-    pub async fn invalidate(&self, cache_type: &str, key: &str) {
+    pub async fn invalidate(&self, _cache_type: &str, key: &str) {
         self.memory_cache.remove(key).await;
 
         // 发送同步消息

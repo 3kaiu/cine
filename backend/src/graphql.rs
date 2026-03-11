@@ -15,7 +15,6 @@ use crate::{
     models::MediaFile,
     services::{
         queries::{get_file_stats_optimized, get_files_paginated_optimized, QueryOptions},
-        smart_cache::SmartCacheManager,
     },
 };
 

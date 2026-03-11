@@ -47,6 +47,7 @@ impl MemoryManager {
         }
     }
 
+    #[allow(dead_code)]
     fn get_chunk_size_for_file(&self, file_size: u64) -> usize {
         // 对于小文件，使用固定的小块大小
         if file_size < 100 * 1024 * 1024 {
@@ -116,7 +117,7 @@ pub async fn calculate_file_hash(
 
     // 2. 分级哈希 - 第二级：快速摘要 (Quick Hash)
     // 如果数据库中已有 md5_quick，且与当前计算一致，则可以考虑跳过全量（根据业务配置）
-    let quick_hash = calculate_quick_hash(file_path).await?;
+    let _quick_hash = calculate_quick_hash(file_path).await?;
 
     // 如果文件很大 (如 > 500MB)，且我们想极速去重，可以在这里通过 quick_hash 去重
     // 但为了 100% 准确性，我们继续执行全量计算，但使用 mmap 优化

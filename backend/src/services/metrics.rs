@@ -3,7 +3,7 @@ use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sysinfo::System;
 use tokio::sync::RwLock;
 
@@ -495,7 +495,6 @@ impl EnhancedMetricsCollector {
 
     /// 获取Prometheus格式的指标
     pub fn prometheus_metrics(&self) -> String {
-        use prometheus::Encoder;
         let encoder = prometheus::TextEncoder::new();
         let metric_families = self.registry.gather();
         encoder

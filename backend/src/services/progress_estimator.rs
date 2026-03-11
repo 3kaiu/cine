@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 /// 任务阶段定义
@@ -163,8 +163,7 @@ impl ProgressEstimator {
         let task = tasks.get_mut(task_id)?;
 
         let now = chrono::Utc::now();
-        let elapsed = now.signed_duration_since(task.start_time);
-        let time_since_last_update = now.signed_duration_since(task.last_update);
+        let _elapsed = now.signed_duration_since(task.start_time);
 
         // 更新基本信息
         task.processed_items = processed_items;
@@ -185,15 +184,14 @@ impl ProgressEstimator {
             }
         }
 
-        // 计算当前处理速率
-        if elapsed.num_milliseconds() > 0 {
+        if _elapsed.num_milliseconds() > 0 {
             task.current_rate =
-                processed_items as f64 / (elapsed.num_milliseconds() as f64 / 1000.0);
+                processed_items as f64 / (_elapsed.num_milliseconds() as f64 / 1000.0);
         }
 
         // 计算平均处理速率
         let total_processed = task.processed_items as f64;
-        let total_time_seconds = elapsed.num_seconds() as f64;
+        let total_time_seconds = _elapsed.num_seconds() as f64;
         if total_time_seconds > 0.0 {
             task.average_rate = total_processed / total_time_seconds;
         }
@@ -345,8 +343,8 @@ impl ProgressEstimator {
             _ => "unknown".to_string(),
         };
 
-        let elapsed = chrono::Utc::now().signed_duration_since(task.start_time);
-        let duration = Duration::from_millis(elapsed.num_milliseconds() as u64);
+        let _elapsed = chrono::Utc::now().signed_duration_since(task.start_time);
+        let duration = Duration::from_millis(_elapsed.num_milliseconds() as u64);
 
         let mut history = self.performance_history.write().await;
         let entry = history.entry(task_type).or_insert(PerformanceHistory {
@@ -359,7 +357,7 @@ impl ProgressEstimator {
         });
 
         // 更新移动平均值
-        let alpha = 0.1; // 学习率
+        let _alpha = 0.1; // 学习率
         let old_weight = entry.sample_count as f64;
         let new_weight = old_weight + 1.0;
 

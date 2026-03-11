@@ -188,7 +188,7 @@ pub async fn get_file_stats_optimized(db: &SqlitePool) -> anyhow::Result<serde_j
         "hashed_files": hashed_files,
         "scraped_files": scraped_files,
         "total_size_bytes": total_size,
-        "hash_coverage": if total_files > 0 { (hashed_files as f64 / total_files as f64 * 100.0) } else { 0.0 },
-        "scrape_coverage": if video_files > 0 { (scraped_files as f64 / video_files as f64 * 100.0) } else { 0.0 }
+        "hash_coverage": if total_files > 0 { hashed_files as f64 / total_files as f64 * 100.0 } else { 0.0 },
+        "scrape_coverage": if video_files > 0 { scraped_files as f64 / video_files as f64 * 100.0 } else { 0.0 }
     }))
 }

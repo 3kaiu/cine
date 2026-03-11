@@ -11,11 +11,11 @@ use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, RwLock};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::services::progress_estimator::{
-    MultiStageConfig, ProgressConfig, ProgressEstimator, TaskStage,
+    ProgressConfig, ProgressEstimator,
 };
 
 /// 任务状态
@@ -537,7 +537,7 @@ impl TaskQueue {
         };
 
         let (command_tx, _command_rx) = broadcast::channel(16);
-        let (status_tx, mut status_rx) = mpsc::channel(32);
+        let (status_tx, status_rx) = mpsc::channel(32);
         let is_paused = Arc::new(RwLock::new(false));
         let is_cancelled = Arc::new(RwLock::new(false));
 
@@ -718,6 +718,8 @@ impl TaskQueue {
 
             // 执行
             let result = executor.execute(ctx, payload).await;
+            let _active_tasks = active_count.read().await;
+            let _now = chrono::Utc::now();
             let duration = start_time.elapsed().as_secs_f64();
             let now = chrono::Utc::now();
 
@@ -1153,8 +1155,8 @@ impl TaskQueue {
     /// 获取队列统计信息
     pub async fn get_stats(&self) -> anyhow::Result<QueueStats> {
         // 获取活跃任务的进度信息
-        let active_tasks = self.progress_estimator.get_all_active_tasks().await;
-        let now = chrono::Utc::now();
+        let _active_tasks = self.progress_estimator.get_all_active_tasks().await;
+        let _now = chrono::Utc::now();
 
         // 获取数据库中的任务统计
         let db_stats: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
