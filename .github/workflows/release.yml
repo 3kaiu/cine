@@ -10,13 +10,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build-backend:
+    name: Build Backend
     runs-on: ubuntu-latest
-    
+    outputs:
+      version: ${{ steps.package_version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,23 +31,33 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v3
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            backend/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          workspaces: backend -> target
 
       - name: Build backend
         working-directory: ./backend
+        run: cargo build --release
+
+      - name: Get version for package
+        id: package_version
         run: |
-          cargo build --release
+          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Upload Backend Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-backend-bin
+          path: backend/target/release/cine-backend
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -64,30 +79,64 @@ jobs:
         working-directory: ./frontend
         run: pnpm run build
 
-      - name: Prepare fpk package
-        run: |
-          # 清理旧构建
-          rm -rf app config manifest ICON.PNG ICON_256.PNG cmd
+      - name: Upload Frontend Static Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-frontend-dist
+          path: frontend/dist/
+          
+      - name: Ensure Public Icon Exists
+        run: touch frontend/public/icon.svg
 
-          mkdir -p app/{frontend,backend}
-          mkdir -p config
-          mkdir -p cmd
+      - name: Upload Frontend Icon
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-frontend-icon
+          path: frontend/public/icon.svg
+
+  package-and-release:
+    name: Package and Release
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare Workspace
+        run: |
+          mkdir -p app/backend app/frontend config cmd
+
+      - name: Download Backend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-backend-bin
+          path: app/backend/
+
+      - name: Download Frontend Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-frontend-dist
+          path: app/frontend/
           
-          # 复制后端可执行文件
-          cp backend/target/release/cine-backend app/backend/
+      - name: Download Frontend Icon
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-frontend-icon
+          path: /tmp/icons/
+
+      - name: Ensure Correct Backend Permissions
+        run: chmod +x app/backend/cine-backend
+
+      - name: Generate Config and Manifests
+        run: |
+          VERSION="${{ needs.build-backend.outputs.version }}"
           
-          # 复制前端构建产物
-          cp -r frontend/dist/* app/frontend/
-          
-          # 处理图标 (使用 GitHub Actions 环境中的 convert 或直接复制)
-          if [ -f "frontend/public/icon.svg" ]; then
-             cp frontend/public/icon.svg ICON.PNG
-             cp frontend/public/icon.svg ICON_256.PNG
+          # 处理图标
+          if [ -s "/tmp/icons/icon.svg" ]; then
+             cp /tmp/icons/icon.svg ICON.PNG
+             cp /tmp/icons/icon.svg ICON_256.PNG
           else
              touch ICON.PNG ICON_256.PNG
           fi
           
-          # 创建配置文件 (config/privilege 在根目录)
+          # 创建配置文件
           cat > config/privilege <<EOF
           {
               "defaults": {
@@ -100,7 +149,6 @@ jobs:
           }
           EOF
           
-          # 应用内配置
           mkdir -p app/config
           cat > app/config/config.json <<EOF
           {
@@ -111,10 +159,6 @@ jobs:
           }
           EOF
           
-          # 读取版本号
-          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
-          
-          # 创建 manifest (注意：文件名为 manifest)
           cat > manifest <<EOF
           {
               "app": "cine",
@@ -126,15 +170,8 @@ jobs:
           }
           EOF
 
-      - name: Get version for package
-        id: package_version
-        run: |
-          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Install fnpack
         run: |
-          # 飞牛OS 官方 fnpack 工具下载地址
           FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.0-linux-amd64"
           echo "从 $FNPACK_URL 下载 fnpack..."
           
@@ -156,30 +193,23 @@ jobs:
       - name: Build FPK file
         id: build_fpk
         run: |
-          VERSION="${{ steps.package_version.outputs.version }}"
+          VERSION="${{ needs.build-backend.outputs.version }}"
           
           if [ "${{ env.FPK_BUILD }}" = "true" ]; then
-            echo "使用 fnpack 构建 fpk 文件..."
             fnpack build
             if [ -f "cine.fpk" ]; then
               mv cine.fpk cine-$VERSION.fpk
               echo "FPK_FILE=cine-$VERSION.fpk" >> $GITHUB_ENV
-              echo "FPK_EXTENSION=fpk" >> $GITHUB_ENV
             else
-              echo "fpk 文件生成失败，回退到 tar.gz"
               echo "FPK_BUILD=false" >> $GITHUB_ENV
             fi
           fi
           
           if [ "${{ env.FPK_BUILD }}" != "true" ]; then
-            echo "创建 tar.gz 压缩包..."
-            # 打包所有必要文件：app, config, manifest, command, icons
             tar -czf cine-$VERSION.tar.gz app/ config/ cmd/ manifest ICON.PNG ICON_256.PNG
             echo "FPK_FILE=cine-$VERSION.tar.gz" >> $GITHUB_ENV
-            echo "FPK_EXTENSION=tar.gz" >> $GITHUB_ENV
           fi
           
-          # 创建安装说明
           cat > INSTALL.md <<EOF
           # Cine 安装说明
           
@@ -193,32 +223,19 @@ jobs:
           1. 下载并解压 \`cine-$VERSION.tar.gz\`
           2. 在解压后的目录中运行 \`fnpack build\` 生成 fpk 文件
           3. 在飞牛OS管理界面中上传并安装生成的 fpk 文件
-          
-          ## 文件结构
-          
-          \`\`\`
-          app/
-          ├── backend/
-          │   └── cine-backend  # 后端可执行文件
-          ├── frontend/            # 前端静态文件
-          └── config/              # 配置文件
-          \`\`\`
           EOF
 
-      - name: Get version and tag
+      - name: Get Tag Output
         id: get_version
         run: |
-          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          
-          # 从 tag 或 ref 中提取版本号
+          VERSION="${{ needs.build-backend.outputs.version }}"
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
           else
             TAG_NAME="v$VERSION"
           fi
           echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION, Tag: $TAG_NAME"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Delete existing release
         continue-on-error: true
@@ -226,12 +243,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete ${{ steps.get_version.outputs.tag }} --cleanup-tag --yes || true
-          # 等待一下确保删除完成
           sleep 2
 
       - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.version }}

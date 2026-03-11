@@ -9,10 +9,13 @@ WORKDIR /app
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
 # 创建虚拟项目以缓存依赖
-RUN mkdir src && \
+RUN mkdir src benches && \
     echo "fn main() {}" > src/main.rs && \
+    touch src/lib.rs && \
+    touch benches/hash_bench.rs && \
+    touch benches/performance_bench.rs && \
     cargo build --release && \
-    rm -rf src
+    rm -rf src benches
 
 # 复制源代码
 COPY backend/src ./src
