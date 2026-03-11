@@ -5,7 +5,7 @@
 /**
  * 导出数据为 CSV 文件
  */
-export function exportToCSV<T extends Record<string, any>>(
+export function exportToCSV<T extends Record<string, unknown>>(
   data: T[],
   filename: string,
   columns?: { key: keyof T; label: string }[]
@@ -35,7 +35,7 @@ export function exportToCSV<T extends Record<string, any>>(
 /**
  * 导出数据为 JSON 文件
  */
-export function exportToJSON<T extends Record<string, any>>(
+export function exportToJSON<T extends Record<string, unknown>>(
   data: T[],
   filename: string
 ) {
@@ -61,7 +61,7 @@ function downloadFile(content: string, filename: string, mimeType: string) {
 /**
  * 导出表格数据
  */
-export function exportTableData<T extends Record<string, any>>(
+export function exportTableData<T extends Record<string, unknown>>(
   data: T[],
   format: 'csv' | 'json' = 'csv',
   filename?: string

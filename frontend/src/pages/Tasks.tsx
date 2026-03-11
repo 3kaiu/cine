@@ -113,7 +113,7 @@ export default function Tasks() {
             <Chip
               size="sm"
               variant="soft"
-              color={info.color as any}
+              color={(info.color === 'primary' ? 'accent' : info.color) as any}
               className="h-5 text-[10px] font-black uppercase tracking-tighter px-1.5 border-none"
             >
               {info.label}
@@ -170,7 +170,7 @@ export default function Tasks() {
       title: '操作',
       dataIndex: 'id',
       width: 100,
-      render: (_: any, task: TaskInfo) => {
+      render: (_: any, task: any) => {
         const status = task.status.status
         const canPause = status === 'running'
         const canResume = status === 'paused'

@@ -20,7 +20,7 @@ describe('Media API', () => {
 
   describe('scanDirectory', () => {
     it('应该发送扫描请求', async () => {
-      ;(api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ task_id: 'test-task' })
+      (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ task_id: 'test-task' })
 
       const result = await mediaApi.scanDirectory({
         directory: '/test/path',
@@ -32,7 +32,7 @@ describe('Media API', () => {
     })
 
     it('应该处理扫描错误', async () => {
-      ;(api.post as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Scan failed'))
+      (api.post as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Scan failed'))
 
       await expect(
         mediaApi.scanDirectory({
@@ -65,7 +65,7 @@ describe('Media API', () => {
     })
 
     it('应该支持分页参数', async () => {
-      ;(api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { files: [], total: 0 } })
+      (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { files: [], total: 0 } })
 
       await mediaApi.getFiles({ page: 2, page_size: 10 })
 
@@ -75,7 +75,7 @@ describe('Media API', () => {
     })
 
     it('应该支持文件类型过滤', async () => {
-      ;(api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { files: [], total: 0 } })
+      (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ data: { files: [], total: 0 } })
 
       await mediaApi.getFiles({ file_type: 'video' })
 

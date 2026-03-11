@@ -31,7 +31,7 @@ export default function FileManager() {
   const { data: filesData, refetch, isPending } = useQuery({
     queryKey: ['files', page, searchTerm, fileTypeFilter],
     queryFn: () => {
-      const params: any = { page_size: 50, page: page }
+      const params: Record<string, unknown> = { page_size: 50, page: page }
       if (searchTerm) params.name = searchTerm
       if (fileTypeFilter !== 'all') params.file_type = fileTypeFilter
       return mediaApi.getFiles(params)
@@ -141,7 +141,7 @@ export default function FileManager() {
       refetch()
       showSuccess('文件移动成功')
     },
-    onError: (error: any) => handleError(error, '移动失败'),
+    onError: (error: Error) => handleError(error, '移动失败'),
   })
 
   const copyMutation = useMutation({
@@ -152,7 +152,7 @@ export default function FileManager() {
       refetch()
       showSuccess('文件复制成功')
     },
-    onError: (error: any) => handleError(error, '复制失败'),
+    onError: (error: Error) => handleError(error, '复制失败'),
   })
 
   const batchMoveMutation = useMutation({
@@ -164,7 +164,7 @@ export default function FileManager() {
       refetch()
       showSuccess(`成功移动 ${selectedRowKeys.length} 个文件`)
     },
-    onError: (error: any) => handleError(error, '批量移动失败'),
+    onError: (error: Error) => handleError(error, '批量移动失败'),
   })
 
   const batchCopyMutation = useMutation({
@@ -176,7 +176,7 @@ export default function FileManager() {
       refetch()
       showSuccess(`成功复制 ${selectedRowKeys.length} 个文件`)
     },
-    onError: (error: any) => handleError(error, '批量复制失败'),
+    onError: (error: Error) => handleError(error, '批量复制失败'),
   })
 
   const handleMove = () => {
@@ -447,7 +447,7 @@ export default function FileManager() {
                 if (keys === 'all') {
                   setSelectedRowKeys(filteredFiles.map(f => f.id))
                 } else {
-                  setSelectedRowKeys(Array.from(keys as Set<string>))
+                  setSelectedRowKeys(Array.from(keys as any) as string[])
                 }
               }}
             />

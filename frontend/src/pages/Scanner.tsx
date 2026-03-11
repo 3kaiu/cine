@@ -50,7 +50,7 @@ export default function Scanner() {
   const { data: allFiles, refetch, isPending } = useQuery({
     queryKey: ['files', { page: currentPage, page_size: 10000, name: searchTerm, file_type: fileTypeFilter === 'all' ? undefined : fileTypeFilter }],
     queryFn: () => {
-      const params: any = { page: currentPage, page_size: 10000 }
+      const params: Record<string, unknown> = { page: currentPage, page_size: 10000 }
       if (searchTerm) params.name = searchTerm
       if (fileTypeFilter !== 'all') params.file_type = fileTypeFilter
       return mediaApi.getFiles(params)
@@ -151,7 +151,7 @@ export default function Scanner() {
       setTaskId(data.task_id)
       refetchHistory()
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       handleError(error, '扫描失败')
       setScanning(false)
     },
@@ -215,7 +215,7 @@ export default function Scanner() {
       title: '画质',
       key: 'quality',
       width: 250,
-      render: (_: any, record: MediaFile) => (
+      render: (_: unknown, record: MediaFile) => (
         <div className="flex gap-1.5 flex-wrap">
           {record.quality_score !== undefined && (
             <Chip size="sm" color={record.quality_score > 70 ? 'success' : 'warning'} variant="soft">
@@ -234,7 +234,7 @@ export default function Scanner() {
       title: '操作',
       key: 'action',
       width: 100,
-      render: (_: any, record: MediaFile) => (
+      render: (_: unknown, record: MediaFile) => (
         <Button
           size="sm"
           variant="ghost"
@@ -348,7 +348,7 @@ export default function Scanner() {
 
                     {Object.keys(fileTypes).length > 0 && (
                       <div className="flex gap-1.5 flex-wrap">
-                        {Object.entries(fileTypes).map(([type, count]: [string, any]) => (
+                        {Object.entries(fileTypes).map(([type, count]: [any, any]) => (
                           <Chip key={type} size="sm" variant="soft" color={type === 'video' ? 'accent' : type === 'audio' ? 'warning' : 'default'} className="h-5 px-1.5 text-[10px] font-bold uppercase">
                             {type}: {count}
                           </Chip>

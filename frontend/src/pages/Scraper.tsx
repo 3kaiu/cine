@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Button, Checkbox, Chip, Card, Modal, Surface, Label, SearchField, ListBox, Select } from "@heroui/react";
 import { Icon } from '@iconify/react'
 import {
@@ -22,7 +22,7 @@ export default function Scraper() {
   const [generateNfo, setGenerateNfo] = useState(true)
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [previewVisible, setPreviewVisible] = useState(false)
-  const [previewMetadata, setPreviewMetadata] = useState<any>(null)
+  const [previewMetadata, setPreviewMetadata] = useState<Record<string, unknown>[] | null>(null)
   const [editingFileId, setEditingFileId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -77,7 +77,9 @@ export default function Scraper() {
             totalRating += data.rating
             ratingCount++
           }
-        } catch { }
+        } catch (e) {
+          console.error('Failed to parse metadata:', e)
+        }
       }
     })
 
@@ -89,7 +91,7 @@ export default function Scraper() {
     }
   }, [files])
 
-  const currentFile = files?.files?.find((f: any) => f.id === selectedFile)
+  const currentFile = files?.files?.find((f) => f.id === selectedFile)
 
   const scrapeMutation = useMutation({
     mutationFn: mediaApi.scrapeMetadata,
@@ -98,7 +100,7 @@ export default function Scraper() {
       setPreviewVisible(false)
       showSuccess('元数据刮削成功')
     },
-    onError: (error: any) => handleError(error, '刮削失败'),
+    onError: (error: Error) => handleError(error, '刮削失败'),
   })
 
   // 刮削元数据（支持手动选择）
@@ -136,7 +138,7 @@ export default function Scraper() {
   }
 
   // 选择并应用元数据
-  const handleSelectMetadata = (metadata?: any) => {
+  const handleSelectMetadata = (metadata?: Record<string, unknown>) => {
     if (!selectedFile) return
 
     scrapeMutation.mutate({
@@ -145,12 +147,12 @@ export default function Scraper() {
       auto_match: !metadata,
       download_images: downloadImages,
       generate_nfo: generateNfo,
-      tmdb_id: metadata?.tmdb_id,
+      tmdb_id: metadata?.tmdb_id as string | undefined,
     })
     setPreviewVisible(false)
   }
 
-  const handleBatchScrape = async () => {
+  const handleBatchScrape = useCallback(async () => {
     if (selectedFiles.length === 0) return
 
     const toastId = showBatchProgress(0, selectedFiles.length, '正在刮削...')
@@ -173,7 +175,7 @@ export default function Scraper() {
     refetch()
     setSelectedFiles([])
     dismissLoading(toastId, `成功刮削 ${selectedFiles.length} 个文件`, 'success')
-  }
+  }, [selectedFiles, downloadImages, generateNfo, refetch])
 
   // 快捷键支持
   useEffect(() => {
@@ -234,7 +236,7 @@ export default function Scraper() {
       dataIndex: 'metadata',
       key: 'metadata',
       width: 300,
-      render: (metadata: any) => {
+      render: (metadata: Record<string, unknown> | string | undefined) => {
         if (!metadata) return <Chip size="sm" variant="soft" className="h-5 px-1.5 text-[10px] font-bold">未刮削</Chip>
         try {
           const data = typeof metadata === 'string' ? JSON.parse(metadata) : metadata
@@ -259,7 +261,7 @@ export default function Scraper() {
       title: '操作',
       key: 'action',
       width: 150,
-      render: (_: any, record: MediaFile) => (
+      render: (_: unknown, record: MediaFile) => (
         <div className="flex gap-2">
           <Button
             size="sm"
@@ -460,7 +462,7 @@ export default function Scraper() {
                 if (keys === "all") {
                   setSelectedFiles(filteredFiles.map((f: any) => f.id) || [])
                 } else {
-                  setSelectedFiles(Array.from(keys) as string[])
+                  setSelectedFiles(Array.from(keys as any) as string[])
                 }
               }}
             />
@@ -526,38 +528,38 @@ export default function Scraper() {
             <Modal.Body className="p-0">
               <div className="flex flex-col">
                 {previewMetadata && Array.isArray(previewMetadata) && previewMetadata.length > 0 ? (
-                  previewMetadata.map((item: any, idx: number) => (
+                  previewMetadata.map((item: Record<string, unknown>, idx: number) => (
                     <button
-                      key={item.tmdb_id || idx}
-                      onClick={() => handleSelectMetadata(item)}
+                      key={(item.tmdb_id as any) || idx}
+                      onClick={() => handleSelectMetadata(item as any)}
                       className="w-full text-left p-4 hover:bg-default-100 transition-colors border-b border-divider/50 last:border-b-0 flex items-start gap-4 group"
                     >
-                      {item.poster_url && (
+                      {(item.poster_url as string) && (
                         <div className="relative w-16 h-24 shrink-0 rounded-md overflow-hidden shadow-sm border border-divider/20 group-hover:border-primary/50 transition-colors">
                           <img
-                            src={item.poster_url}
-                            alt={item.title || item.name}
+                            src={item.poster_url as string}
+                            alt={(item.title || item.name) as string}
                             className="w-full h-full object-cover"
                           />
                         </div>
                       )}
                       <div className="flex-1 min-w-0 py-1">
-                        <h3 className="text-sm font-bold mb-1.5 group-hover:text-primary transition-colors">{item.title || item.name}</h3>
-                        {item.overview && (
-                          <p className="text-[11px] text-default-400 line-clamp-2 mb-2 font-medium leading-relaxed">{item.overview}</p>
+                        <h3 className="text-sm font-bold mb-1.5 group-hover:text-primary transition-colors">{(item.title || item.name) as string}</h3>
+                        {(item.overview as string) && (
+                          <p className="text-[11px] text-default-400 line-clamp-2 mb-2 font-medium leading-relaxed">{item.overview as string}</p>
                         )}
                         <div className="flex items-center gap-4">
-                          {item.year && (
+                          {(item.year as string) && (
                             <span className="text-[10px] font-black text-default-400 uppercase tracking-widest">
-                              年份 <span className="text-foreground ml-1">{item.year}</span>
+                              年份 <span className="text-foreground ml-1">{item.year as string}</span>
                             </span>
                           )}
-                          {item.rating && (
+                          {(item.rating as string) && (
                             <div className="flex items-center gap-1">
                               <span className="text-[10px] font-black text-default-400 uppercase tracking-widest">评分</span>
                               <span className="text-[10px] font-bold text-warning flex items-center gap-0.5 ml-1">
                                 <Icon icon="mdi:star" className="w-3 h-3" />
-                                {item.rating}
+                                {item.rating as string}
                               </span>
                             </div>
                           )}

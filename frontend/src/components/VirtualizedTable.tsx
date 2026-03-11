@@ -1,25 +1,38 @@
 import React, { useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Spinner, ListBox } from "@heroui/react";
+import { Spinner, ListBox, Selection } from "@heroui/react";
 
-// 预计算的列配置类型
-interface ProcessedColumn {
+/**
+ * 基础列配置类型（由页面提供）
+ */
+export interface TableColumn<T> {
+  key?: string;
+  title: React.ReactNode;
+  dataIndex?: string | string[] | number;
+  width?: number;
+  render?: (value: any, record: T, index: number) => React.ReactNode;
+}
+
+/**
+ * 内部处理后的列配置
+ */
+interface InternalProcessedColumn<T> {
   key: string;
   title: React.ReactNode;
-  dataIndex?: string | string[];
+  dataIndex?: string | string[] | number;
   width?: number;
-  render?: (value: any, record: any, index: number) => React.ReactNode;
-  // 预编译的数据访问函数
-  dataGetter?: (record: any) => any;
-  // 预计算的flex值
+  render?: (value: any, record: T, index: number) => React.ReactNode;
+  dataGetter?: (record: T) => any;
   flexValue: string;
   minWidth: number;
 }
 
-// 虚拟化行组件 - 使用React.memo优化重渲染
+/**
+ * 虚拟化行组件
+ */
 interface VirtualRowProps<T> {
   record: T;
-  columns: ProcessedColumn[];
+  columns: InternalProcessedColumn<T>[];
   style: React.CSSProperties;
   index: number;
 }
@@ -40,9 +53,8 @@ const VirtualRow = React.memo(<T extends { id: string }>({
     >
       <div className="flex items-center h-full w-full">
         {columns.map((col) => {
-          // 使用预计算的数据访问函数
           const value = col.dataGetter ? col.dataGetter(record) : undefined;
-          const displayValue = col.render ? col.render(value, record, index) : value;
+          const displayValue = col.render ? col.render(value, record, index) : (value as React.ReactNode);
 
           return (
             <div
@@ -64,42 +76,35 @@ const VirtualRow = React.memo(<T extends { id: string }>({
 
 VirtualRow.displayName = 'VirtualRow';
 
-/**
- * 虚拟化表格 - 适用于大数据量列表（建议 >500 条）
- * 使用建议：columns 请用 useMemo 包装，避免每次渲染创建新引用导致重算
- */
 interface VirtualizedTableProps<T> {
   dataSource: T[]
-  columns: any[]
+  columns: TableColumn<T>[]
   height?: number
   rowHeight?: number
   loading?: boolean
   showPagination?: boolean
   rowKey?: string
-  pagination?: any
-  onSelectionChange?: (keys: any) => void
-  selectedKeys?: any
+  pagination?: unknown
+  onSelectionChange?: (keys: Selection) => void
+  selectedKeys?: Selection
   selectionMode?: "none" | "single" | "multiple"
 }
 
 // 数据访问函数编译器 - 将dataIndex路径预编译为函数
-function compileDataGetter(dataIndex?: string | string[]): ((record: any) => any) | undefined {
-  if (!dataIndex) return undefined;
+function compileDataGetter<T>(dataIndex?: string | string[] | number): ((record: T) => any) | undefined {
+  if (dataIndex === undefined || dataIndex === null) return undefined;
 
   const path = Array.isArray(dataIndex) ? dataIndex : [dataIndex];
 
   if (path.length === 1) {
-    // 优化单层访问
-    const key = path[0];
-    return (record: any) => record?.[key];
+    const key = path[0] as keyof T;
+    return (record: T) => record?.[key];
   } else if (path.length === 2) {
-    // 优化双层访问
     const [key1, key2] = path;
-    return (record: any) => record?.[key1]?.[key2];
+    return (record: T) => (record?.[key1 as keyof T] as any)?.[key2];
   } else {
-    // 多层访问
-    return (record: any) => {
-      let value = record;
+    return (record: T) => {
+      let value: any = record;
       for (const key of path) {
         if (value == null) return undefined;
         value = value[key];
@@ -121,21 +126,17 @@ export default function VirtualizedTable<T extends { id: string }>({
 }: VirtualizedTableProps<T>) {
   const parentRef = React.useRef<HTMLDivElement>(null);
 
-  // 预计算列配置 - 只在columns改变时重新计算
-  const processedColumns = useMemo<ProcessedColumn[]>(() => {
-    return columns.map((col, index) => ({
-      key: col.key || `col-${index}`,
-      title: typeof col.title === 'function' ? col.title({}) : col.title,
-      dataIndex: col.dataIndex,
-      width: col.width,
-      render: col.render,
-      dataGetter: compileDataGetter(col.dataIndex),
+  // 内部预计算列配置
+  const processedColumns = useMemo<InternalProcessedColumn<T>[]>(() => {
+    return columns.map((col, idx) => ({
+      ...col,
+      key: col.key || (typeof col.dataIndex === 'string' ? col.dataIndex : `col-${idx}`),
+      dataGetter: compileDataGetter<T>(col.dataIndex),
       flexValue: col.width ? `0 0 ${col.width}px` : '1 1 0',
       minWidth: col.width || 120,
     }));
   }, [columns]);
 
-  // 预计算表头 - 只在processedColumns改变时重新计算
   const headerContent = useMemo(() => (
     <div className="flex border-b border-divider sticky top-0 z-20 bg-surface text-xs font-medium text-muted shrink-0">
       {processedColumns.map((col) => (
@@ -160,7 +161,6 @@ export default function VirtualizedTable<T extends { id: string }>({
     overscan: 10,
   });
 
-  // 渲染单个虚拟行
   const renderVirtualRow = useCallback((virtualRow: any) => {
     const record = dataSource[virtualRow.index];
     if (!record) return null;
@@ -169,6 +169,7 @@ export default function VirtualizedTable<T extends { id: string }>({
       <VirtualRow
         key={virtualRow.key}
         record={record}
+        // @ts-expect-error - Internal generic variance mismatch
         columns={processedColumns}
         index={virtualRow.index}
         style={{

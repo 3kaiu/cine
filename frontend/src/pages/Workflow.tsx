@@ -90,8 +90,8 @@ export default function Workflow() {
     }
 
     const totalScans = scanHistory.length
-    const totalFiles = scanHistory.reduce((sum, h: any) => sum + (h.total_files || 0), 0)
-    const totalSize = scanHistory.reduce((sum, h: any) => sum + (h.total_size || 0), 0)
+    const totalFiles = scanHistory.reduce((sum, h) => sum + (h.total_files || 0), 0)
+    const totalSize = scanHistory.reduce((sum, h) => sum + (h.total_size || 0), 0)
     const lastScan = scanHistory[0]?.last_scanned_at || null
 
     return { totalScans, totalFiles, totalSize, lastScan }
@@ -110,7 +110,7 @@ export default function Workflow() {
       setTaskId(data.task_id)
       updateStepStatus('scan', 'running')
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       handleError(error, '扫描失败')
       updateStepStatus('scan', 'error')
       setIsRunning(false)
@@ -126,7 +126,7 @@ export default function Workflow() {
         setNextStepIndex(2)
       }, 500)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       handleError(error, '元数据获取失败')
       updateStepStatus('scrape', 'error')
       setIsRunning(false)
@@ -142,7 +142,7 @@ export default function Workflow() {
         setNextStepIndex(3)
       }, 500)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       handleError(error, '去重分析失败')
       updateStepStatus('dedupe', 'error')
       setIsRunning(false)
@@ -158,7 +158,7 @@ export default function Workflow() {
         setNextStepIndex(4)
       }, 500)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       handleError(error, '重命名失败')
       updateStepStatus('rename', 'error')
       setIsRunning(false)
@@ -184,7 +184,7 @@ export default function Workflow() {
         setCurrentStepIndex(-1)
       }, 1000)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       if (cleanupEmptyDirs) {
         handleError(error, '清理空目录失败')
         updateStepStatus('cleanup', 'error')
@@ -217,7 +217,7 @@ export default function Workflow() {
         case 'scan':
           // 扫描已经在运行，等待完成（通过WebSocket监听）
           break
-        case 'scrape':
+        case 'scrape': {
           // 获取所有视频文件并批量刮削
           const files = await mediaApi.getFiles({ file_type: 'video', page_size: 1000 })
           if (files.files && files.files.length > 0) {
@@ -233,11 +233,13 @@ export default function Workflow() {
             runNextStep(stepIndex + 1)
           }
           break
-        case 'dedupe':
+        }
+        case 'dedupe': {
           // 去重分析（只是查找，不自动删除）
           await dedupeMutation.mutateAsync()
           break
-        case 'rename':
+        }
+        case 'rename': {
           // 获取所有已刮削的文件并重命名
           const scrapedFiles = await mediaApi.getFiles({ file_type: 'video', page_size: 1000 })
           const filesWithMetadata = scrapedFiles.files?.filter(f => f.metadata) || []
@@ -251,10 +253,12 @@ export default function Workflow() {
             runNextStep(stepIndex + 1)
           }
           break
-        case 'cleanup':
+        }
+        case 'cleanup': {
           // 清理空目录
           await cleanupMutation.mutateAsync()
           break
+        }
       }
     } catch (error) {
       console.error('Step error:', error)
@@ -262,7 +266,7 @@ export default function Workflow() {
       setIsRunning(false)
       setCurrentStepIndex(-1)
     }
-  }, [steps, scrapeMutation, dedupeMutation, renameMutation, cleanupMutation, cleanupEmptyDirs, updateStepStatus])
+  }, [steps, scrapeMutation, dedupeMutation, renameMutation, cleanupMutation, cleanupEmptyDirs, updateStepStatus, DEFAULT_DIRECTORY])
 
   // 监听 nextStepIndex 变化，触发下一步
   useEffect(() => {

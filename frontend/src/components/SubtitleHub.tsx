@@ -71,7 +71,7 @@ export default function SubtitleHub({ fileId, visible, onClose }: SubtitleHubPro
                               </td>
                             </tr>
                           ) : (
-                            (localData?.subtitles || []).map((item: any, idx: number) => (
+                            (localData?.subtitles || []).map((item: { path: string; language?: string; format?: string }, idx: number) => (
                               <tr key={idx} className="hover:bg-default-100 transition-colors">
                                 <td className="px-4 py-3 text-sm font-medium text-foreground max-w-[240px] truncate">{item.path.split('/').pop()}</td>
                                 <td className="px-4 py-3 text-sm text-muted">{item.language || '未知'}</td>

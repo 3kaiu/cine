@@ -25,7 +25,11 @@ export default function AnimatedCard({ children, className, delay = 0 }: Animate
   )
 }
 
-export function AnimatedButton({ children, className, ...props }: any) {
+export function AnimatedButton({ 
+  children, 
+  className, 
+  ...props 
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       className={`

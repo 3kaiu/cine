@@ -175,8 +175,7 @@ export default function Dashboard() {
                 <Chip
                   size="sm"
                   variant="soft"
-                  // @ts-ignore
-                  color={svc.color}
+                  color={svc.color as "success" | "default" | "accent"}
                   className="h-5 text-[9px] font-black uppercase tracking-widest px-1.5 border-none"
                 >
                   {svc.status}

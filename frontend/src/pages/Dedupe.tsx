@@ -86,7 +86,7 @@ export default function Dedupe() {
       refetch()
       showSuccess('文件已移入回收站')
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       handleError(error, '移动失败')
     },
   })
@@ -107,7 +107,7 @@ export default function Dedupe() {
       setSelectedGroups(new Set())
       showSuccess(`成功移入 ${count} 个文件到回收站`)
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       handleError(error, '批量移动失败')
     },
   })
@@ -275,7 +275,7 @@ export default function Dedupe() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedGroups, sortedData])
+  }, [selectedGroups, sortedData, handleSelectAll])
 
   const handleToggleFilter = (type: 'resolution' | 'hdrType', value: string) => {
     const current = filterOptions[type]

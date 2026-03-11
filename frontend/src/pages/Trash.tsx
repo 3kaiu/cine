@@ -8,7 +8,8 @@ import {
   Select,
   ListBox,
   Surface,
-  Tooltip
+  Tooltip,
+  Selection
 } from "@heroui/react";
 import { Icon } from '@iconify/react'
 import { ArrowRotateLeft, TrashBin } from '@gravity-ui/icons'
@@ -35,7 +36,7 @@ interface TrashItem {
 
 export default function Trash() {
   const queryClient = useQueryClient()
-  const [selectedKeys, setSelectedKeys] = useState<any>(new Set([]))
+  const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set([]))
   const [searchTerm, setSearchTerm] = useState('')
   const [fileTypeFilter, setFileTypeFilter] = useState('all')
   const [sortBy, setSortBy] = useState('deleted_at_desc')
@@ -50,7 +51,7 @@ export default function Trash() {
   const selectedItems = useMemo(() => {
     return selectedKeys === 'all'
       ? new Set(data?.items.map(f => f.id) || [])
-      : (selectedKeys as Set<string>)
+      : (selectedKeys as any as Set<string>)
   }, [selectedKeys, data])
 
   const filteredFiles = useMemo(() => {
@@ -249,7 +250,7 @@ export default function Trash() {
             <VirtualizedTable
               dataSource={filteredFiles}
               rowHeight={72}
-              onSelectionChange={setSelectedKeys}
+              onSelectionChange={(keys) => setSelectedKeys(keys as any)}
               selectedKeys={selectedKeys}
               selectionMode="multiple"
               columns={[
@@ -257,7 +258,7 @@ export default function Trash() {
                   title: '文件名',
                   dataIndex: 'original_name',
                   width: 400,
-                  render: (_: any, file: TrashItem) => (
+                  render: (_: any, file: any) => (
                     <div className="flex flex-col gap-1 py-1">
                       <div className="flex items-center gap-2">
                         <Icon
@@ -284,7 +285,7 @@ export default function Trash() {
                   title: '删除时间',
                   dataIndex: 'deleted_at',
                   width: 160,
-                  render: (_: any, file: TrashItem) => (
+                  render: (_: any, file: any) => (
                     <div className="flex flex-col">
                       <span className="text-[11px] font-bold text-default-600">
                         {dayjs(file.deleted_at).fromNow()}
@@ -299,7 +300,7 @@ export default function Trash() {
                   title: '',
                   dataIndex: 'id',
                   width: 120,
-                  render: (_: any, file: TrashItem) => (
+                  render: (_: any, file: any) => (
                     <div className="flex justify-end pr-4">
                       <Tooltip closeDelay={0}>
                         <Button

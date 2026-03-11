@@ -34,7 +34,7 @@ export default function OperationLogs() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (_ids: string[]) => {
+    mutationFn: () => {
       return Promise.resolve()
     },
     onSuccess: () => {
@@ -82,7 +82,7 @@ export default function OperationLogs() {
   }
 
   const getActionLabel = (action: string) => {
-    const labels: Record<string, { color: "primary" | "warning" | "success" | "danger" | "default" | "accent", text: string }> = {
+    const labels: Record<string, { color: "warning" | "success" | "danger" | "default" | "accent", text: string }> = {
       rename: { color: "accent", text: "重命名" },
       trash: { color: "warning", text: "移入回收站" },
       restore: { color: "success", text: "还原" },
@@ -93,7 +93,7 @@ export default function OperationLogs() {
       <Chip
         size="sm"
         variant="soft"
-        color={config.color as any}
+        color={config.color}
         className="h-5 rounded border-none text-[9px] font-black uppercase tracking-tighter px-1.5"
       >
         {config.text}
@@ -119,7 +119,7 @@ export default function OperationLogs() {
     {
       title: '路径变更',
       dataIndex: 'old_path',
-      render: (_: any, record: OperationLog) => (
+      render: (_: unknown, record: OperationLog) => (
         <div className="flex flex-col gap-1 max-w-[400px]">
           <div className="flex gap-2 items-center text-[10px] text-default-400/80 font-mono">
             <span className="w-6 shrink-0 font-black opacity-50 text-[8px] tracking-tighter uppercase">FROM</span>
@@ -144,9 +144,9 @@ export default function OperationLogs() {
     },
     {
       title: '操作',
-      dataIndex: 'id',
+      key: 'actions',
       width: 80,
-      render: (_: any, record: OperationLog) => (
+      render: (_: unknown, record: OperationLog) => (
         <div className="flex gap-1">
           <Button
             isIconOnly
@@ -304,6 +304,11 @@ export default function OperationLogs() {
               height={400}
               rowHeight={60}
               loading={isPending}
+              selectionMode="multiple"
+              selectedKeys={new Set(selectedLogs)}
+              onSelectionChange={(keys) => {
+                setSelectedLogs(Array.from(keys as any))
+              }}
             />
           )}
         </Surface>

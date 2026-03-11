@@ -11,7 +11,7 @@ export interface MediaFile {
   tmdb_id?: number
   quality_score?: number
   video_info?: VideoInfo
-  metadata?: any
+  metadata?: Record<string, unknown>
   created_at: string
   updated_at: string
   last_modified: string
@@ -115,7 +115,7 @@ export const mediaApi = {
 
   // 获取视频信息
   getVideoInfo: (fileId: string) =>
-    api.get<{ info?: any; error?: string }>(`/files/${fileId}/info`),
+    api.get<{ info?: Record<string, unknown>; error?: string }>(`/files/${fileId}/info`),
 
   // 刮削元数据
   scrapeMetadata: (data: {
@@ -127,7 +127,7 @@ export const mediaApi = {
     tmdb_id?: string
     douban_id?: string
   }) => api.post<{
-    metadata?: any
+    metadata?: Record<string, unknown> | Array<Record<string, unknown>>
     error?: string
     poster_path?: string
     backdrop_path?: string

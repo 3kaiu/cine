@@ -6,7 +6,8 @@ import {
   InputGroup,
   Surface,
   SearchField,
-  Label
+  Label,
+  Selection
 } from '@heroui/react'
 import { Icon } from '@iconify/react'
 import VirtualizedTable from '@/components/VirtualizedTable'
@@ -47,7 +48,7 @@ const isTVShow = (file: MediaFile): boolean => {
 export default function Renamer() {
   const [movieTemplate, setMovieTemplate] = useState('{title} ({year}) [{quality}].{ext}')
   const [tvTemplate, setTvTemplate] = useState('{title}.S{season:02d}E{episode:02d}.{ext}')
-  const [selectedKeys, setSelectedKeys] = useState<any>(new Set([]))
+  const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set([] as string[]))
   const [previewMap, setPreviewMap] = useState<Record<string, string>>({})
   const [lastExecuted, setLastExecuted] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -95,13 +96,13 @@ export default function Renamer() {
   const filesWithMetadata = useMemo(() => [...movies, ...tvShows], [movies, tvShows])
 
   const selectedIds = useMemo(() => {
-    if (selectedKeys === 'all') return filesWithMetadata.map(f => f.id)
-    return Array.from(selectedKeys as Set<string>)
+    if (String(selectedKeys) === 'all') return filesWithMetadata.map(f => f.id)
+    return Array.from(selectedKeys as any) as string[]
   }, [selectedKeys, filesWithMetadata])
 
   const handleSelectAll = () => {
     if (selectedIds.length === filesWithMetadata.length) {
-      setSelectedKeys(new Set([]))
+      setSelectedKeys(new Set([] as string[]))
     } else {
       setSelectedKeys(new Set(filesWithMetadata.map(f => f.id)))
     }
@@ -155,7 +156,7 @@ export default function Renamer() {
     onSuccess: () => {
       showSuccess('重命名任务已启动')
       setLastExecuted(true)
-      setSelectedKeys(new Set([]))
+      setSelectedKeys(new Set([] as string[]))
       setPreviewMap({})
       refetchFiles()
     },
@@ -345,7 +346,7 @@ export default function Renamer() {
               <VirtualizedTable
                 dataSource={filesWithMetadata}
                 rowHeight={72}
-                onSelectionChange={setSelectedKeys}
+                onSelectionChange={(keys) => setSelectedKeys(keys as any)}
                 selectionMode="multiple"
                 selectedKeys={selectedKeys}
                 columns={[
@@ -353,7 +354,7 @@ export default function Renamer() {
                     title: '文件信息',
                     dataIndex: 'name',
                     width: 400,
-                    render: (_: any, file: MediaFile) => (
+                    render: (_: any, file: any) => (
                       <div className="flex flex-col gap-1 py-1">
                         <div className="flex items-center gap-2">
                           {isTVShow(file) ? (
@@ -371,7 +372,7 @@ export default function Renamer() {
                     title: '预览结果',
                     dataIndex: 'id',
                     width: 280,
-                    render: (_: any, file: MediaFile) => {
+                    render: (_: any, file: any) => {
                       const previewName = previewMap[file.id]
                       return (
                         <div className="flex flex-col gap-1">

@@ -183,8 +183,8 @@ class WebSocketConnection {
 
       // 处理批量消息
       if (data.type === 'batch' && Array.isArray(data.messages)) {
-        data.messages.forEach((msg: any) => {
-          const message: ProgressMessage = typeof msg === 'string' ? JSON.parse(msg) : msg
+        data.messages.forEach((msg: unknown) => {
+          const message: ProgressMessage = typeof msg === 'string' ? JSON.parse(msg) : (msg as ProgressMessage)
           this.messageHandlers.forEach(handler => handler(message))
         })
       } else {

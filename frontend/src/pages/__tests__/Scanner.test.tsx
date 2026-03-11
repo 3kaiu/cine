@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '../../test/utils'
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest'
+import render, { screen } from '../../test/utils'
 import Scanner from '../Scanner'
 import { mediaApi } from '../../api/media'
 
@@ -15,13 +15,13 @@ vi.mock('../../api/media', () => ({
 describe('Scanner Page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ; (mediaApi.getFiles as any).mockResolvedValue({
+    ;(mediaApi.getFiles as Mock).mockResolvedValue({
       files: [],
       total: 0,
       page: 1,
       page_size: 50,
     })
-    ; (mediaApi.listScanHistory as any).mockResolvedValue([])
+    ;(mediaApi.listScanHistory as Mock).mockResolvedValue([])
   })
 
   it('应该渲染扫描页面', () => {
