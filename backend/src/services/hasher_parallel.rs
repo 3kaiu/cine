@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-use crate::services::cache::FileHashCache;
 use crate::services::hasher;
+use crate::services::smart_cache::SmartCacheManager;
 
 /// 批量并行计算文件哈希
 ///
@@ -36,7 +36,7 @@ pub async fn batch_calculate_hash_parallel(
     file_ids: &[String],
     max_concurrent: usize,
     ctx: crate::services::task_queue::TaskContext,
-    hash_cache: Option<Arc<FileHashCache>>,
+    hash_cache: Option<Arc<SmartCacheManager>>,
 ) -> anyhow::Result<()> {
     let total = file_ids.len();
     if total == 0 {

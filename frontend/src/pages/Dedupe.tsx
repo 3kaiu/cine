@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react'
 import { Button, Chip, Surface, SearchField, Select, Popover, ListBox, Tabs } from "@heroui/react";
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Icon } from '@iconify/react'
@@ -10,19 +10,13 @@ import {
   Check,
 } from '@gravity-ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { handleError } from '@/utils/errorHandler'
 import { showSuccess } from '@/utils/toast'
 import clsx from 'clsx'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
-
-interface DedupeGroup {
-  id: string
-  title: string
-  files: MediaFile[]
-  similarity?: number
-}
+import { useDuplicates, type DedupeGroup, type DedupeMode } from '@/hooks/useDuplicates'
 
 type FlatItem =
   | { type: 'header'; group: DedupeGroup; isExpanded: boolean; isSelected: boolean }
@@ -31,7 +25,6 @@ type FlatItem =
 
 
 type ViewMode = 'list' | 'grid' | 'compact'
-type DedupeMode = 'hash' | 'fuzzy'
 type SortBy = 'space' | 'count' | 'quality'
 type SortOrder = 'asc' | 'desc'
 
@@ -42,6 +35,7 @@ interface FilterOptions {
 }
 
 export default function Dedupe() {
+  // 容器组件：负责数据与状态
   const [dedupeMode, setDedupeMode] = useState<DedupeMode>('hash')
   const [similarityThreshold, setSimilarityThreshold] = useState(0.8)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
@@ -57,26 +51,9 @@ export default function Dedupe() {
   })
   const [showFilterPopover, setShowFilterPopover] = useState(false)
 
-  const { data, refetch, isPending } = useQuery({
-    queryKey: ['duplicates', dedupeMode, similarityThreshold],
-    queryFn: async () => {
-      if (dedupeMode === 'hash') {
-        const res = await mediaApi.findDuplicateMovies()
-        return res.map(g => ({
-          id: String(g.tmdb_id),
-          title: g.title,
-          files: g.files
-        })) as DedupeGroup[]
-      } else {
-        const res = await mediaApi.findSimilarFiles({ threshold: similarityThreshold })
-        return res.groups.map((g, idx) => ({
-          id: `fuzzy-${idx}`,
-          title: g.representative_name,
-          files: g.files,
-          similarity: g.similarity
-        })) as DedupeGroup[]
-      }
-    },
+  const { data, refetch, isPending } = useDuplicates({
+    mode: dedupeMode,
+    similarityThreshold,
     enabled: false,
   })
 
@@ -198,36 +175,91 @@ export default function Dedupe() {
     return result
   }, [filteredData, sortBy, sortOrder])
 
-  // 计算统计信息
-  const stats = useMemo(() => {
-    if (!sortedData || sortedData.length === 0) return null
+  // 预计算每个重复组的统计信息，避免在多处重复排序和累加
+  const groupStats = useMemo(() => {
+    if (!sortedData) {
+      return {
+        list: [] as {
+          group: DedupeGroup
+          bestFile: MediaFile
+          redundantFiles: MediaFile[]
+          redundantCount: number
+          wastedSpace: number
+        }[],
+        map: new Map<string, {
+          bestFile: MediaFile
+          redundantFiles: MediaFile[]
+          redundantCount: number
+          wastedSpace: number
+        }>(),
+      }
+    }
 
-    const groups = sortedData.length
-    const totalDuplicates = sortedData.reduce((acc: number, group: DedupeGroup) =>
-      acc + Math.max(0, group.files.length - 1), 0
-    )
-    const totalWastedSpace = sortedData.reduce((acc: number, group: DedupeGroup) => {
-      if (group.files.length <= 1) return acc
-      const sorted = [...group.files].sort((a, b) =>
-        (b.quality_score || 0) - (a.quality_score || 0)
+    const list = sortedData.map((group) => {
+      const sortedFiles = [...group.files].sort(
+        (a, b) => (b.quality_score || 0) - (a.quality_score || 0),
       )
-      const wasted = sorted.slice(1).reduce((sum, f) => sum + f.size, 0)
-      return acc + wasted
-    }, 0)
+      const bestFile = sortedFiles[0]
+      const redundantFiles = sortedFiles.slice(1)
+      const redundantCount = Math.max(0, redundantFiles.length)
+      const wastedSpace = redundantFiles.reduce((sum, f) => sum + f.size, 0)
 
-    return { groups, totalDuplicates, totalWastedSpace }
+      return {
+        group,
+        bestFile,
+        redundantFiles,
+        redundantCount,
+        wastedSpace,
+      }
+    })
+
+    const map = new Map<
+      string,
+      {
+        bestFile: MediaFile
+        redundantFiles: MediaFile[]
+        redundantCount: number
+        wastedSpace: number
+      }
+    >()
+
+    for (const item of list) {
+      map.set(item.group.id, {
+        bestFile: item.bestFile,
+        redundantFiles: item.redundantFiles,
+        redundantCount: item.redundantCount,
+        wastedSpace: item.wastedSpace,
+      })
+    }
+
+    return { list, map }
   }, [sortedData])
 
-  // 获取选中组的所有冗余文件
+  // 计算统计信息（基于预计算结果）
+  const stats = useMemo(() => {
+    if (!groupStats.list.length) return null
+
+    const groups = groupStats.list.length
+    const totalDuplicates = groupStats.list.reduce(
+      (acc, item) => acc + item.redundantCount,
+      0,
+    )
+    const totalWastedSpace = groupStats.list.reduce(
+      (acc, item) => acc + item.wastedSpace,
+      0,
+    )
+
+    return { groups, totalDuplicates, totalWastedSpace }
+  }, [groupStats.list])
+
+  // 获取选中组的所有冗余文件（基于预计算结果）
   const getSelectedRedundantFiles = () => {
     const files: string[] = []
     sortedData?.forEach((group: DedupeGroup) => {
-      if (selectedGroups.has(group.id)) {
-        const sorted = [...group.files].sort((a, b) =>
-          (b.quality_score || 0) - (a.quality_score || 0)
-        )
-        files.push(...sorted.slice(1).map(f => f.id))
-      }
+      if (!selectedGroups.has(group.id)) return
+      const statsForGroup = groupStats.map.get(group.id)
+      if (!statsForGroup) return
+      files.push(...statsForGroup.redundantFiles.map(f => f.id))
     })
     return files
   }
@@ -298,61 +330,6 @@ export default function Dedupe() {
     filterOptions.hasChineseSubtitle !== null
 
 
-  /* ------------------ Virtualization Logic ------------------ */
-
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const flatData = useMemo<FlatItem[]>(() => {
-    if (!sortedData) return [];
-
-    const items: FlatItem[] = [];
-
-    sortedData.forEach((group: DedupeGroup) => {
-      const groupKey = group.id;
-      const isExpanded = expandedKeys.has(groupKey);
-      const isSelected = selectedGroups.has(group.id);
-
-      items.push({
-        type: 'header',
-        group,
-        isExpanded,
-        isSelected
-      });
-
-      if (isExpanded) {
-        // Sort files by quality score
-        const sortedFiles = [...group.files].sort((a, b) =>
-          (b.quality_score || 0) - (a.quality_score || 0)
-        );
-        const bestFile = sortedFiles[0];
-        const redundantFiles = sortedFiles.slice(1);
-
-        // Add best file
-        items.push({ type: 'best', file: bestFile });
-
-        // Add redundant files
-        redundantFiles.forEach(f => {
-          items.push({ type: 'redundant', file: f, bestFile });
-        });
-      }
-    });
-
-    return items;
-  }, [sortedData, expandedKeys, selectedGroups]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: flatData.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: (index) => {
-      const item = flatData[index];
-      if (item.type === 'header') return 64;
-      if (item.type === 'best') return 140;
-      if (item.type === 'redundant') return 160;
-      return 60;
-    },
-    overscan: 10,
-  });
-
   return (
     <div className="flex flex-col gap-4 h-full animate-in fade-in slide-in-from-bottom-4 duration-700">
       <PageHeader
@@ -402,94 +379,132 @@ export default function Dedupe() {
         }
       />
 
-      {/* 顶部控制栏 */}
-      <div className="flex flex-col gap-4 bg-surface p-4 rounded-xl border border-divider/50 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <Tabs
-            aria-label="去重模式"
-            selectedKey={dedupeMode}
-            onSelectionChange={(key) => setDedupeMode(key as DedupeMode)}
-            className="w-full sm:w-auto"
-          >
-            <Tabs.ListContainer>
-              <Tabs.List>
-                <Tabs.Tab id="hash">
-                  <div className="flex items-center gap-2 px-1">
-                    <Icon icon="mdi:file-certificate-outline" className="w-[14px] h-[14px]" />
-                    <span>精确匹配</span>
-                  </div>
-                </Tabs.Tab>
-                <Tabs.Tab id="fuzzy">
-                  <div className="flex items-center gap-2 px-1">
-                    <Icon icon="mdi:text-search" className="w-[14px] h-[14px]" />
-                    <span>文件名匹配</span>
-                  </div>
-                </Tabs.Tab>
-              </Tabs.List>
-            </Tabs.ListContainer>
-          </Tabs>
+      <DedupeControls
+        dedupeMode={dedupeMode}
+        onModeChange={setDedupeMode}
+        similarityThreshold={similarityThreshold}
+        onSimilarityChange={setSimilarityThreshold}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortByChange={setSortBy}
+        onSortOrderChange={setSortOrder}
+        filterOptions={filterOptions}
+        hasActiveFilters={hasActiveFilters}
+        showFilterPopover={showFilterPopover}
+        setShowFilterPopover={setShowFilterPopover}
+        onToggleFilter={handleToggleFilter}
+        onClearFilters={clearFilters}
+      />
 
-          <div className="flex items-center gap-3">
-            {dedupeMode === 'fuzzy' && (
-              <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
-                <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">相似度阈值</span>
-                <Select
-                  selectedKey={String(similarityThreshold)}
-                  onSelectionChange={(keys) => {
-                    if (!keys) return
-                    const selected = Array.from(keys as Iterable<unknown>)[0] as string
-                    setSimilarityThreshold(parseFloat(selected))
-                  }}
-                  className="w-[120px]"
-                >
-                  <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
-                    <Select.Value />
-                    <Select.Indicator />
-                  </Select.Trigger>
-                  <Select.Popover>
-                    <ListBox className="text-xs">
-                      <ListBox.Item key="0.95">0.95 (极高)</ListBox.Item>
-                      <ListBox.Item key="0.9">0.90 (高)</ListBox.Item>
-                      <ListBox.Item key="0.8">0.80 (标准)</ListBox.Item>
-                      <ListBox.Item key="0.7">0.70 (宽松)</ListBox.Item>
-                      <ListBox.Item key="0.6">0.60 (非常宽松)</ListBox.Item>
-                    </ListBox>
-                  </Select.Popover>
-                </Select>
-              </div>
-            )}
-          </div>
-        </div>
+      {stats && (
+        <DedupeStats stats={stats} />
+      )}
 
-        <div className="h-px bg-divider/10 w-full" />
+      <DedupeToolbar
+        sortedData={sortedData}
+        expandedKeys={expandedKeys}
+        onSmartSelect={handleSmartSelect}
+        onToggleExpandAll={handleExpandAll}
+      />
 
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <SearchField
-              className="w-full sm:w-[320px]"
-              value={searchTerm}
-              onChange={setSearchTerm}
-            >
-              <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
-                <SearchField.SearchIcon className="text-default-400" />
-                <SearchField.Input placeholder="搜索影片名称..." className="text-sm" />
-                <SearchField.ClearButton />
-              </SearchField.Group>
-            </SearchField>
-          </div>
+      <DedupeGroupsList
+        sortedData={sortedData}
+        groupStatsMap={groupStats.map}
+        dedupeMode={dedupeMode}
+        expandedKeys={expandedKeys}
+        selectedGroups={selectedGroups}
+        setExpandedKeys={setExpandedKeys}
+        setSelectedGroups={setSelectedGroups}
+        trashMutation={trashMutation}
+      />
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-default-100/50 p-1 rounded-lg border border-divider/20">
+      <DedupeBottomBar
+        selectedGroups={selectedGroups}
+        getSelectedRedundantFiles={getSelectedRedundantFiles}
+        onClearSelection={() => setSelectedGroups(new Set())}
+        onBatchDelete={handleBatchDelete}
+        batchTrashMutation={batchTrashMutation}
+      />
+    </div>
+  )
+}
+
+interface DedupeControlsProps {
+  dedupeMode: DedupeMode
+  onModeChange: (mode: DedupeMode) => void
+  similarityThreshold: number
+  onSimilarityChange: (value: number) => void
+  searchTerm: string
+  onSearchChange: (value: string) => void
+  sortBy: SortBy
+  sortOrder: SortOrder
+  onSortByChange: (value: SortBy) => void
+  onSortOrderChange: (value: SortOrder) => void
+  filterOptions: FilterOptions
+  hasActiveFilters: boolean
+  showFilterPopover: boolean
+  setShowFilterPopover: (open: boolean) => void
+  onToggleFilter: (type: 'resolution' | 'hdrType', value: string) => void
+  onClearFilters: () => void
+}
+
+function DedupeControls({
+  dedupeMode,
+  onModeChange,
+  similarityThreshold,
+  onSimilarityChange,
+  searchTerm,
+  onSearchChange,
+  sortBy,
+  sortOrder,
+  onSortByChange,
+  onSortOrderChange,
+  filterOptions,
+  hasActiveFilters,
+  showFilterPopover,
+  setShowFilterPopover,
+  onToggleFilter,
+  onClearFilters,
+}: DedupeControlsProps) {
+  return (
+    <div className="flex flex-col gap-4 bg-surface p-4 rounded-xl border border-divider/50 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <Tabs
+          aria-label="去重模式"
+          selectedKey={dedupeMode}
+          onSelectionChange={(key) => onModeChange(key as DedupeMode)}
+          className="w-full sm:w-auto"
+        >
+          <Tabs.ListContainer>
+            <Tabs.List>
+              <Tabs.Tab id="hash">
+                <div className="flex items-center gap-2 px-1">
+                  <Icon icon="mdi:file-certificate-outline" className="w-[14px] h-[14px]" />
+                  <span>精确匹配</span>
+                </div>
+              </Tabs.Tab>
+              <Tabs.Tab id="fuzzy">
+                <div className="flex items-center gap-2 px-1">
+                  <Icon icon="mdi:text-search" className="w-[14px] h-[14px]" />
+                  <span>文件名匹配</span>
+                </div>
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.ListContainer>
+        </Tabs>
+
+        <div className="flex items-center gap-3">
+          {dedupeMode === 'fuzzy' && (
+            <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
+              <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">相似度阈值</span>
               <Select
-                selectedKey={sortBy}
+                selectedKey={String(similarityThreshold)}
                 onSelectionChange={(keys) => {
                   if (!keys) return
-                  const selected = Array.isArray(Array.from(keys as Iterable<unknown>))
-                    ? Array.from(keys as Iterable<unknown>)[0] as SortBy
-                    : keys as SortBy
-                  if (selected) {
-                    setSortBy(selected)
-                  }
+                  const selected = Array.from(keys as Iterable<unknown>)[0] as string
+                  onSimilarityChange(parseFloat(selected))
                 }}
                 className="w-[120px]"
               >
@@ -499,369 +514,543 @@ export default function Dedupe() {
                 </Select.Trigger>
                 <Select.Popover>
                   <ListBox className="text-xs">
-                    <ListBox.Item key="space">可释放空间</ListBox.Item>
-                    <ListBox.Item key="count">冗余数量</ListBox.Item>
-                    <ListBox.Item key="quality">质量分数</ListBox.Item>
+                    <ListBox.Item key="0.95">0.95 (极高)</ListBox.Item>
+                    <ListBox.Item key="0.9">0.90 (高)</ListBox.Item>
+                    <ListBox.Item key="0.8">0.80 (标准)</ListBox.Item>
+                    <ListBox.Item key="0.7">0.70 (宽松)</ListBox.Item>
+                    <ListBox.Item key="0.6">0.60 (非常宽松)</ListBox.Item>
                   </ListBox>
                 </Select.Popover>
               </Select>
-              <Button
-                isIconOnly
-                size="sm"
-                variant="ghost"
-                onPress={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="w-7 h-7"
-              >
-                <Icon
-                  icon={sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'}
-                  className="w-4 h-4 text-default-500"
-                />
-              </Button>
             </div>
-
-            <Popover
-              isOpen={showFilterPopover}
-              onOpenChange={setShowFilterPopover}
-            >
-              <Popover.Trigger>
-                <Button
-                  size="sm"
-                  variant={hasActiveFilters ? 'primary' : 'ghost'}
-                  className="h-9 gap-2 font-bold px-3"
-                >
-                  <Icon icon="mdi:filter-outline" className="w-[14px] h-[14px]" />
-                  筛选
-                  {hasActiveFilters && (
-                    <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] ml-1">
-                      活跃
-                    </span>
-                  )}
-                </Button>
-              </Popover.Trigger>
-              <Popover.Content className="p-4 w-[280px] shadow-2xl border border-divider/50">
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-widest text-default-400">高级筛选</span>
-                    {hasActiveFilters && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onPress={clearFilters}
-                        className="text-[10px] h-6 px-2"
-                      >
-                        重置所有
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* 分辨率筛选 */}
-                  <div>
-                    <p className="text-[10px] font-bold text-default-500 uppercase mb-3 tracking-wider">分辨率</p>
-                    <div className="flex flex-wrap gap-2">
-                      {['4K', '1080p', '720p'].map(res => (
-                        <Button
-                          key={res}
-                          size="sm"
-                          variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
-                          onPress={() => handleToggleFilter('resolution', res)}
-                          className="text-xs h-8"
-                        >
-                          {res}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </Popover.Content>
-            </Popover>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* 统计卡片 */}
-      {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard
-            label="重复组数"
-            value={stats.groups}
-            icon={<Icon icon="mdi:file-multiple" className="w-6 h-6" />}
-            color="warning"
-            description="检测到的重复影片组"
-          />
-          <StatCard
-            label="冗余文件"
-            value={stats.totalDuplicates}
-            icon={<Icon icon="mdi:file-alert" className="w-6 h-6" />}
-            color="danger"
-            description="可删除的重复文件"
-          />
-          <StatCard
-            label="可释放空间"
-            value={formatSize(stats.totalWastedSpace)}
-            icon={<Icon icon="mdi:harddisk" className="w-6 h-6" />}
-            color="success"
-            description="清理后可释放的存储"
-          />
+      <div className="h-px bg-divider/10 w-full" />
+
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <SearchField
+            className="w-full sm:w-[320px]"
+            value={searchTerm}
+            onChange={onSearchChange}
+          >
+            <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
+              <SearchField.SearchIcon className="text-default-400" />
+              <SearchField.Input placeholder="搜索影片名称..." className="text-sm" />
+              <SearchField.ClearButton />
+            </SearchField.Group>
+          </SearchField>
         </div>
-      )}
 
-
-
-      {/* 批量操作工具栏 (仅当有数据时显示) */}
-      {sortedData && sortedData.length > 0 && (
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-default-400">检测到的重复组 ({sortedData.length})</h2>
-          <div className="flex items-center gap-2 shadow-none">
-            <Button
-              size="sm"
-              variant="ghost"
-              onPress={handleSmartSelect}
-              className="text-xs font-bold h-8 px-3"
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-default-100/50 p-1 rounded-lg border border-divider/20">
+            <Select
+              selectedKey={sortBy}
+              onSelectionChange={(keys) => {
+                if (!keys) return
+                const selected = Array.isArray(Array.from(keys as Iterable<unknown>))
+                  ? Array.from(keys as Iterable<unknown>)[0] as SortBy
+                  : keys as SortBy
+                if (selected) {
+                  onSortByChange(selected)
+                }
+              }}
+              className="w-[120px]"
             >
-              <Check className="w-3 h-3 text-primary mr-1" />
-              智能选择
-            </Button>
-            <div className="w-px h-4 bg-divider/20 mx-1" />
+              <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox className="text-xs">
+                  <ListBox.Item key="space">可释放空间</ListBox.Item>
+                  <ListBox.Item key="count">冗余数量</ListBox.Item>
+                  <ListBox.Item key="quality">质量分数</ListBox.Item>
+                </ListBox>
+              </Select.Popover>
+            </Select>
             <Button
               isIconOnly
               size="sm"
               variant="ghost"
-              onPress={handleExpandAll}
-              className="w-8 h-8 rounded-full"
+              onPress={() => onSortOrderChange(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="w-7 h-7"
             >
               <Icon
-                icon={expandedKeys.size === sortedData?.length ? 'mdi:unfold-less-horizontal' : 'mdi:unfold-more-horizontal'}
+                icon={sortOrder === 'asc' ? 'mdi:sort-ascending' : 'mdi:sort-descending'}
                 className="w-4 h-4 text-default-500"
               />
             </Button>
           </div>
+
+          <Popover
+            isOpen={showFilterPopover}
+            onOpenChange={setShowFilterPopover}
+          >
+            <Popover.Trigger>
+              <Button
+                size="sm"
+                variant={hasActiveFilters ? 'primary' : 'ghost'}
+                className="h-9 gap-2 font-bold px-3"
+              >
+                <Icon icon="mdi:filter-outline" className="w-[14px] h-[14px]" />
+                筛选
+                {hasActiveFilters && (
+                  <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] ml-1">
+                    活跃
+                  </span>
+                )}
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content className="p-4 w-[280px] shadow-2xl border border-divider/50">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-widest text-default-400">高级筛选</span>
+                  {hasActiveFilters && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onPress={onClearFilters}
+                      className="text-[10px] h-6 px-2"
+                    >
+                      重置所有
+                    </Button>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-default-500 uppercase mb-3 tracking-wider">分辨率</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['4K', '1080p', '720p'].map(res => (
+                      <Button
+                        key={res}
+                        size="sm"
+                        variant={filterOptions.resolution.includes(res) ? 'primary' : 'ghost'}
+                        onPress={() => onToggleFilter('resolution', res)}
+                        className="text-xs h-8"
+                      >
+                        {res}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Popover.Content>
+          </Popover>
         </div>
-      )}
-
-      {/* 重复组列表 */}
-      <div className="flex-1 min-h-0">
-        {sortedData && sortedData.length > 0 ? (
-          <div className="flex flex-col gap-4 h-full">
-            <h2 className="text-lg font-semibold shrink-0">重复组列表</h2>
-            <div ref={parentRef} className="flex-1 overflow-auto scrollbar-hide relative bg-background/5 rounded-xl border border-divider/10">
-              <div
-                style={{
-                  height: `${rowVirtualizer.getTotalSize()}px`,
-                  width: '100%',
-                  position: 'relative',
-                }}
-              >
-                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const item = flatData[virtualRow.index];
-                  const style = {
-                    position: 'absolute' as const,
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: `${virtualRow.size}px`,
-                    transform: `translateY(${virtualRow.start}px)`,
-                  };
-
-                  if (item.type === 'header') {
-                    const { group, isExpanded, isSelected } = item;
-                    const redundantCount = group.files.length - 1;
-                    const sortedFiles = [...group.files].sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0));
-                    const redundantFiles = sortedFiles.slice(1);
-                    const wastedSpace = redundantFiles.reduce((sum, f) => sum + f.size, 0);
-
-                    return (
-                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '2px', zIndex: 10 }} className="px-2 pt-2">
-                        <Surface
-                          variant="default"
-                          className={clsx(
-                            "w-full rounded-lg border transition-all cursor-pointer h-full flex flex-col justify-center",
-                            isExpanded ? "border-primary/40 bg-default-100/50" : "border-divider/50 bg-surface hover:bg-default-50 hover:border-divider"
-                          )}
-                          onClick={() => {
-                            const newExpanded = new Set(expandedKeys);
-                            if (isExpanded) newExpanded.delete(group.id);
-                            else newExpanded.add(group.id);
-                            setExpandedKeys(newExpanded);
-                          }}
-                        >
-                          <div className="flex items-center justify-between w-full px-5 py-2.5">
-                            <div className="flex items-center gap-4 flex-1 min-w-0">
-                              <div
-                                className="shrink-0 z-20"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newSelected = new Set(selectedGroups)
-                                  if (isSelected) newSelected.delete(group.id)
-                                  else newSelected.add(group.id)
-                                  setSelectedGroups(newSelected)
-                                }}
-                              >
-                                <div className={clsx(
-                                  "w-5 h-5 flex items-center justify-center rounded transition-all border-2",
-                                  isSelected ? "bg-primary border-primary text-white" : "border-default-300 hover:border-default-500"
-                                )}>
-                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                                </div>
-                              </div>
-                              <div className="flex flex-col gap-0.5 text-left min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <Filmstrip className="w-[14px] h-[14px] text-default-400" />
-                                  <span className="text-sm font-bold truncate tracking-tight">{group.title}</span>
-                                </div>
-                                <div className="flex items-center gap-3 flex-wrap mt-0.5">
-                                  <span className="text-[10px] font-bold text-default-400 font-mono">
-                                    {dedupeMode === 'hash' ? `#${group.id}` : `MATCH: ${((group.similarity || 0) * 100).toFixed(0)}%`}
-                                  </span>
-                                  <div className="flex items-center gap-1.5 ml-1">
-                                    <Chip color="warning" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-bold">
-                                      {redundantCount} DUPLICATES
-                                    </Chip>
-                                    <Chip color="accent" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-bold">
-                                      {formatSize(wastedSpace)} WASTED
-                                    </Chip>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-default-300">
-                              <Icon icon={isExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} className="w-5 h-5" />
-                            </div>
-                          </div>
-                        </Surface>
-                      </div>
-                    )
-                  }
-                  else if (item.type === 'best') {
-                    return (
-                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '6px' }} className="pl-10 pr-2 pt-1">
-                        <Surface
-                          variant="secondary"
-                          className="rounded-lg p-4 border border-divider/40 border-l-4 border-l-success h-full flex flex-col justify-center bg-success/[0.02]"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-3">
-                                <Chip color="success" variant="primary" size="sm" className="h-5 px-1.5 text-[10px] font-black tracking-widest uppercase rounded">
-                                  BEST VERSION
-                                </Chip>
-                                <span className="text-xs font-bold text-foreground/80 truncate opacity-60 font-mono tracking-tight">{item.file.name}</span>
-                              </div>
-                              <FileInfo file={item.file} />
-                            </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                              <div className="flex items-center gap-1 bg-success/10 px-2 py-0.5 rounded text-success">
-                                <Icon icon="mdi:star" className="w-3 h-3" />
-                                <span className="text-[10px] font-black">{item.file.quality_score || 0}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </Surface>
-                      </div>
-                    )
-                  }
-                  else if (item.type === 'redundant') {
-                    return (
-                      <div key={virtualRow.key} style={{ ...style, paddingBottom: '6px' }} className="pl-10 pr-2 pt-1">
-                        <Surface
-                          variant="default"
-                          className="rounded-lg p-4 border border-divider/40 border-l-4 border-l-danger/30 h-full flex flex-col justify-center hover:bg-danger/[0.01] transition-colors"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-3">
-                                <span className="text-xs font-bold text-foreground/80 truncate font-mono tracking-tight">{item.file.name}</span>
-                                <Chip color="danger" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-black tracking-widest uppercase rounded">
-                                  REDUNDANT
-                                </Chip>
-                              </div>
-                              <FileInfo file={item.file} compareWith={item.bestFile} />
-                            </div>
-                            <div className="flex flex-col gap-2 shrink-0">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onPress={() => trashMutation.mutate(item.file.id)}
-                                isPending={trashMutation.isPending}
-                                className="text-[11px] font-bold h-7 px-2 border border-danger/20 text-danger hover:bg-danger hover:text-white transition-all shadow-none"
-                              >
-                                <TrashBin className="w-3 h-3 mr-1" />
-                                移入回收站
-                              </Button>
-                            </div>
-                          </div>
-                        </Surface>
-                      </div>
-                    )
-                  }
-                })}
-              </div>
-            </div>
-          </div>
-        ) : data && data.length === 0 ? (
-          <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
-            <div className="flex flex-col items-center gap-3">
-              <div className="p-4 bg-success/10 rounded-full">
-                <Icon icon="mdi:check-circle" className="w-8 h-8 text-success" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-semibold text-foreground">未发现重复文件</p>
-                <p className="text-xs text-default-400">您的媒体库中没有重复的影片</p>
-              </div>
-            </div>
-          </Surface>
-        ) : (
-          <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
-            <div className="flex flex-col items-center gap-3">
-              <div className="p-4 bg-default-100 rounded-full">
-                <CircleExclamation className="w-8 h-8 text-default-400" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-semibold text-foreground">开始扫描</p>
-                <p className="text-xs text-default-400">点击上方按钮开始扫描重复文件</p>
-              </div>
-            </div>
-          </Surface>
-        )}
       </div>
-
-      {/* 固定底部操作栏 */}
-      {selectedGroups.size > 0 && (
-        <Surface variant="secondary" className="fixed bottom-0 left-0 right-0 border-t border-divider p-4 z-50">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Check className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium">
-                已选择 <span className="text-primary font-semibold">{selectedGroups.size}</span> 组，
-                可删除 <span className="text-danger font-semibold">{getSelectedRedundantFiles().length}</span> 个冗余文件
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                onPress={() => setSelectedGroups(new Set())}
-              >
-                取消选择
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                onPress={handleBatchDelete}
-                isPending={batchTrashMutation.isPending}
-              >
-                <TrashBin className="w-4 h-4" />
-                批量删除 ({getSelectedRedundantFiles().length})
-              </Button>
-            </div>
-          </div>
-        </Surface>
-      )}
     </div>
   )
 }
 
+interface DedupeStatsProps {
+  stats: {
+    groups: number
+    totalDuplicates: number
+    totalWastedSpace: number
+  }
+}
+
+function DedupeStats({ stats }: DedupeStatsProps) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <StatCard
+        label="重复组数"
+        value={stats.groups}
+        icon={<Icon icon="mdi:file-multiple" className="w-6 h-6" />}
+        color="warning"
+        description="检测到的重复影片组"
+      />
+      <StatCard
+        label="冗余文件"
+        value={stats.totalDuplicates}
+        icon={<Icon icon="mdi:file-alert" className="w-6 h-6" />}
+        color="danger"
+        description="可删除的重复文件"
+      />
+      <StatCard
+        label="可释放空间"
+        value={formatSize(stats.totalWastedSpace)}
+        icon={<Icon icon="mdi:harddisk" className="w-6 h-6" />}
+        color="success"
+        description="清理后可释放的存储"
+      />
+    </div>
+  )
+}
+
+interface DedupeToolbarProps {
+  sortedData: DedupeGroup[] | undefined
+  expandedKeys: Set<string>
+  onSmartSelect: () => void
+  onToggleExpandAll: () => void
+}
+
+const DedupeToolbar = memo(function DedupeToolbar({
+  sortedData,
+  expandedKeys,
+  onSmartSelect,
+  onToggleExpandAll,
+}: DedupeToolbarProps) {
+  if (!sortedData || sortedData.length === 0) return null
+
+  return (
+    <div className="flex items-center justify-between px-1">
+      <h2 className="text-xs font-black uppercase tracking-[0.2em] text-default-400">检测到的重复组 ({sortedData.length})</h2>
+      <div className="flex items-center gap-2 shadow-none">
+        <Button
+          size="sm"
+          variant="ghost"
+          onPress={onSmartSelect}
+          className="text-xs font-bold h-8 px-3"
+        >
+          <Check className="w-3 h-3 text-primary mr-1" />
+          智能选择
+        </Button>
+        <div className="w-px h-4 bg-divider/20 mx-1" />
+        <Button
+          isIconOnly
+          size="sm"
+          variant="ghost"
+          onPress={onToggleExpandAll}
+          className="w-8 h-8 rounded-full"
+        >
+          <Icon
+            icon={expandedKeys.size === sortedData.length ? 'mdi:unfold-less-horizontal' : 'mdi:unfold-more-horizontal'}
+            className="w-4 h-4 text-default-500"
+          />
+        </Button>
+      </div>
+    </div>
+  )
+})
+
+interface DedupeGroupsListProps {
+  sortedData: DedupeGroup[] | undefined
+  groupStatsMap: Map<string, {
+    bestFile: MediaFile
+    redundantFiles: MediaFile[]
+    redundantCount: number
+    wastedSpace: number
+  }>
+  dedupeMode: DedupeMode
+  expandedKeys: Set<string>
+  selectedGroups: Set<string>
+  setExpandedKeys: (keys: Set<string>) => void
+  setSelectedGroups: (keys: Set<string>) => void
+  trashMutation: ReturnType<typeof useMutation>
+}
+
+function DedupeGroupsList({
+  sortedData,
+  groupStatsMap,
+  dedupeMode,
+  expandedKeys,
+  selectedGroups,
+  setExpandedKeys,
+  setSelectedGroups,
+  trashMutation,
+}: DedupeGroupsListProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const flatData = useMemo<FlatItem[]>(() => {
+    if (!sortedData) return [];
+
+    const items: FlatItem[] = [];
+
+    sortedData.forEach((group: DedupeGroup) => {
+      const groupKey = group.id;
+      const isExpanded = expandedKeys.has(groupKey);
+      const isSelected = selectedGroups.has(group.id);
+      const statsForGroup = groupStatsMap.get(group.id);
+
+      items.push({
+        type: 'header',
+        group,
+        isExpanded,
+        isSelected
+      });
+
+      if (isExpanded) {
+        const bestFile = statsForGroup?.bestFile ?? group.files[0];
+        const redundantFiles = statsForGroup?.redundantFiles ?? group.files.slice(1);
+
+        items.push({ type: 'best', file: bestFile });
+
+        redundantFiles.forEach(f => {
+          items.push({ type: 'redundant', file: f, bestFile });
+        });
+      }
+    });
+
+    return items;
+  }, [sortedData, expandedKeys, selectedGroups, groupStatsMap]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: flatData.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => {
+      const item = flatData[index];
+      if (item.type === 'header') return 64;
+      if (item.type === 'best') return 140;
+      if (item.type === 'redundant') return 160;
+      return 60;
+    },
+    overscan: 10,
+  });
+
+  if (!sortedData) {
+    return (
+      <div className="flex-1 min-h-0">
+        <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-4 bg-default-100 rounded-full">
+              <CircleExclamation className="w-8 h-8 text-default-400" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-foreground">开始扫描</p>
+              <p className="text-xs text-default-400">点击上方按钮开始扫描重复文件</p>
+            </div>
+          </div>
+        </Surface>
+      </div>
+    )
+  }
+
+  if (sortedData.length === 0) {
+    return (
+      <div className="flex-1 min-h-0">
+        <Surface variant="secondary" className="rounded-xl p-12 text-center border border-divider">
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-4 bg-success/10 rounded-full">
+              <Icon icon="mdi:check-circle" className="w-8 h-8 text-success" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-foreground">未发现重复文件</p>
+              <p className="text-xs text-default-400">您的媒体库中没有重复的影片</p>
+            </div>
+          </div>
+        </Surface>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 min-h-0">
+      <div className="flex flex-col gap-4 h-full">
+        <h2 className="text-lg font-semibold shrink-0">重复组列表</h2>
+        <div ref={parentRef} className="flex-1 overflow-auto scrollbar-hide relative bg-background/5 rounded-xl border border-divider/10">
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const item = flatData[virtualRow.index];
+              const style = {
+                position: 'absolute' as const,
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: `${virtualRow.size}px`,
+                transform: `translateY(${virtualRow.start}px)`,
+              };
+
+              if (item.type === 'header') {
+                const { group, isExpanded, isSelected } = item;
+                const statsForGroup = groupStatsMap.get(group.id);
+                const redundantCount = statsForGroup?.redundantCount ?? Math.max(0, group.files.length - 1);
+                const wastedSpace = statsForGroup?.wastedSpace ?? 0;
+
+                return (
+                  <div key={virtualRow.key} style={{ ...style, paddingBottom: '2px', zIndex: 10 }} className="px-2 pt-2">
+                    <Surface
+                      variant="default"
+                      className={clsx(
+                        "w-full rounded-lg border transition-all cursor-pointer h-full flex flex-col justify中心",
+                        isExpanded ? "border-primary/40 bg-default-100/50" : "border-divider/50 bg-surface hover:bg-default-50 hover:border-divider"
+                      )}
+                      onClick={() => {
+                        const newExpanded = new Set(expandedKeys);
+                        if (isExpanded) newExpanded.delete(group.id);
+                        else newExpanded.add(group.id);
+                        setExpandedKeys(newExpanded);
+                      }}
+                    >
+                      <div className="flex items-center justify-between w-full px-5 py-2.5">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <div
+                            className="shrink-0 z-20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newSelected = new Set(selectedGroups)
+                              if (isSelected) newSelected.delete(group.id)
+                              else newSelected.add(group.id)
+                              setSelectedGroups(newSelected)
+                            }}
+                          >
+                            <div className={clsx(
+                              "w-5 h-5 flex items-center justify-center rounded transition-all border-2",
+                              isSelected ? "bg-primary border-primary text-white" : "border-default-300 hover:border-default-500"
+                            )}>
+                              {isSelected && <Check className="w-3 h-3 stroke-3" />}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-0.5 text-left min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <Filmstrip className="w-[14px] h-[14px] text-default-400" />
+                              <span className="text-sm font-bold truncate tracking-tight">{group.title}</span>
+                            </div>
+                            <div className="flex items-center gap-3 flex-wrap mt-0.5">
+                              <span className="text-[10px] font-bold text-default-400 font-mono">
+                                {dedupeMode === 'hash' ? `#${group.id}` : `MATCH: ${((group.similarity || 0) * 100).toFixed(0)}%`}
+                              </span>
+                              <div className="flex items-center gap-1.5 ml-1">
+                                <Chip color="warning" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-bold">
+                                  {redundantCount} DUPLICATES
+                                </Chip>
+                                <Chip color="accent" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-bold">
+                                  {formatSize(wastedSpace)} WASTED
+                                </Chip>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-default-300">
+                          <Icon icon={isExpanded ? "mdi:chevron-up" : "mdi:chevron-down"} className="w-5 h-5" />
+                        </div>
+                      </div>
+                    </Surface>
+                  </div>
+                )
+              }
+              if (item.type === 'best') {
+                return (
+                  <div key={virtualRow.key} style={{ ...style, paddingBottom: '6px' }} className="pl-10 pr-2 pt-1">
+                    <Surface
+                      variant="secondary"
+                      className="rounded-lg p-4 border border-divider/40 border-l-4 border-l-success h-full flex flex-col justify-center bg-success/2"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Chip color="success" variant="primary" size="sm" className="h-5 px-1.5 text-[10px] font-black tracking-widest uppercase rounded">
+                              BEST VERSION
+                            </Chip>
+                            <span className="text-xs font-bold text-foreground/80 truncate opacity-60 font-mono tracking-tight">{item.file.name}</span>
+                          </div>
+                          <FileInfo file={item.file} />
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <div className="flex items-center gap-1 bg-success/10 px-2 py-0.5 rounded text-success">
+                            <Icon icon="mdi:star" className="w-3 h-3" />
+                            <span className="text-[10px] font-black">{item.file.quality_score || 0}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </Surface>
+                  </div>
+                )
+              }
+              if (item.type === 'redundant') {
+                return (
+                  <div key={virtualRow.key} style={{ ...style, paddingBottom: '6px' }} className="pl-10 pr-2 pt-1">
+                    <Surface
+                      variant="default"
+                      className="rounded-lg p-4 border border-divider/40 border-l-4 border-l-danger/30 h-full flex flex-col justify-center hover:bg-danger/1 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-xs font-bold text-foreground/80 truncate font-mono tracking-tight">{item.file.name}</span>
+                            <Chip color="danger" variant="soft" size="sm" className="h-5 px-1.5 text-[10px] font-black tracking-widest uppercase rounded">
+                              REDUNDANT
+                            </Chip>
+                          </div>
+                          <FileInfo file={item.file} compareWith={item.bestFile} />
+                        </div>
+                        <div className="flex flex-col gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onPress={() => trashMutation.mutate(item.file.id)}
+                            isPending={trashMutation.isPending}
+                            className="text-[11px] font-bold h-7 px-2 border border-danger-soft-hover text-danger hover:bg-danger hover:text-white transition-all shadow-none"
+                          >
+                            <TrashBin className="w-3 h-3 mr-1" />
+                            移入回收站
+                          </Button>
+                        </div>
+                      </div>
+                    </Surface>
+                  </div>
+                )
+              }
+              return null
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface DedupeBottomBarProps {
+  selectedGroups: Set<string>
+  getSelectedRedundantFiles: () => string[]
+  onClearSelection: () => void
+  onBatchDelete: () => void
+  batchTrashMutation: ReturnType<typeof useMutation>
+}
+
+function DedupeBottomBar({
+  selectedGroups,
+  getSelectedRedundantFiles,
+  onClearSelection,
+  onBatchDelete,
+  batchTrashMutation,
+}: DedupeBottomBarProps) {
+  if (selectedGroups.size === 0) return null
+
+  return (
+    <Surface variant="secondary" className="fixed bottom-0 left-0 right-0 border-t border-divider p-4 z-50">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Check className="w-5 h-5 text-primary" />
+          <span className="text-sm font-medium">
+            已选择 <span className="text-primary font-semibold">{selectedGroups.size}</span> 组，
+            可删除 <span className="text-danger font-semibold">{getSelectedRedundantFiles().length}</span> 个冗余文件
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={onClearSelection}
+          >
+            取消选择
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onPress={onBatchDelete}
+            isPending={batchTrashMutation.isPending}
+          >
+            <TrashBin className="w-4 h-4" />
+            批量删除 ({getSelectedRedundantFiles().length})
+          </Button>
+        </div>
+      </div>
+    </Surface>
+  )
+}
+
 // 文件信息组件
-function FileInfo({ file, compareWith }: { file: MediaFile; compareWith?: MediaFile }) {
+const FileInfo = memo(function FileInfo({ file, compareWith }: { file: MediaFile; compareWith?: MediaFile }) {
   const vInfo = file.video_info
 
   const getResolution = () => {
@@ -962,7 +1151,7 @@ function FileInfo({ file, compareWith }: { file: MediaFile; compareWith?: MediaF
       </div>
     </div>
   )
-}
+})
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'

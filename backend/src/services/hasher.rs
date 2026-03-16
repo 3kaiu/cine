@@ -6,7 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader};
 use xxhash_rust::xxh3::Xxh3;
 
 use crate::models::MediaFile;
-use crate::services::cache::FileHashCache;
+use crate::services::smart_cache::SmartCacheManager;
 
 /// 智能内存管理器
 pub struct MemoryManager {
@@ -76,7 +76,7 @@ pub async fn calculate_file_hash(
     db: &SqlitePool,
     file_id: &str,
     mut ctx: crate::services::task_queue::TaskContext,
-    hash_cache: Option<Arc<FileHashCache>>,
+    hash_cache: Option<Arc<SmartCacheManager>>,
 ) -> anyhow::Result<()> {
     // 获取文件信息
     let file: MediaFile = sqlx::query_as("SELECT * FROM media_files WHERE id = ?")
@@ -96,7 +96,7 @@ pub async fn calculate_file_hash(
         // 将现有哈希预热到缓存中，便于后续任务使用
         if let Some(ref cache) = hash_cache {
             cache
-                .set(&file.path, mtime, existing_md5.clone())
+                .set_file_hash(&file.path, mtime, existing_md5.clone())
                 .await;
         }
         tracing::debug!(
@@ -109,7 +109,7 @@ pub async fn calculate_file_hash(
 
     // 1. 分级哈希 - 第一级：缓存检查
     if let Some(ref cache) = hash_cache {
-        if let Some(cached_hash) = cache.get(&file.path, mtime).await {
+        if let Some(cached_hash) = cache.get_file_hash(&file.path, mtime).await {
             update_db_hash(db, file_id, &cached_hash, &cached_hash, true).await?;
             return Ok(());
         }
@@ -133,7 +133,9 @@ pub async fn calculate_file_hash(
     // 更新数据库和缓存
     update_db_hash(db, file_id, &md5_hash, &xxhash_hash, false).await?;
     if let Some(ref cache) = hash_cache {
-        cache.set(&file.path, mtime, md5_hash.clone()).await;
+        cache
+            .set_file_hash(&file.path, mtime, md5_hash.clone())
+            .await;
     }
 
     tracing::info!(

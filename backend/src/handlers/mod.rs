@@ -2,11 +2,10 @@ use axum::response::Json;
 use serde::Serialize;
 use std::sync::Arc;
 
-use crate::services::cache::FileHashCache;
 use crate::services::distributed::DistributedService;
 use crate::services::plugin::PluginManager;
+use crate::services::progress_hub::ProgressHub;
 use crate::services::task_queue::TaskQueue;
-use crate::websocket::ProgressBroadcaster;
 
 pub mod dedupe;
 pub mod hash;
@@ -24,9 +23,7 @@ pub mod watcher;
 pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub config: Arc<crate::config::AppConfig>,
-    pub progress_broadcaster: ProgressBroadcaster,
-    #[allow(dead_code)]
-    pub hash_cache: Arc<FileHashCache>,
+    pub progress_hub: ProgressHub,
     pub http_client: reqwest::Client, // 复用 HTTP 客户端连接池
     pub task_queue: Arc<TaskQueue>,   // 任务队列
     pub distributed: Arc<DistributedService>, // 分布式服务
@@ -49,7 +46,7 @@ pub async fn health_check() -> Json<HealthResponse> {
 // 重新导出各个 handler
 pub use dedupe::{
     delete_empty_dirs, find_duplicate_movies, find_duplicates, find_empty_dirs, find_large_files,
-    find_similar_files,
+    find_similar_files, start_similar_files_task,
 };
 pub use hash::*;
 pub use nfo::*;

@@ -14,7 +14,7 @@ use crate::handlers::AppState;
 /// WebSocket 处理器，用于实时推送进度
 #[allow(dead_code)]
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
-    let rx = state.progress_broadcaster.subscribe();
+    let rx = state.progress_hub.subscribe();
     ws.on_upgrade(|socket| handle_socket(socket, rx))
 }
 

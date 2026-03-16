@@ -4,8 +4,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use crate::services::smart_cache::SmartCacheManager;
 use crate::services::task_queue::{TaskContext, TaskExecutor};
-use crate::services::{hasher, renamer, scanner, scraper};
+use crate::services::{dedupe, hasher, renamer, scanner, scraper};
 
 /// 扫描任务执行器
 pub struct ScanExecutor {
@@ -48,7 +49,7 @@ impl TaskExecutor for ScanExecutor {
 /// 哈希计算执行器
 pub struct HashExecutor {
     pub db: SqlitePool,
-    pub hash_cache: Arc<crate::services::cache::FileHashCache>,
+    pub hash_cache: Arc<SmartCacheManager>,
 }
 
 impl TaskExecutor for HashExecutor {
@@ -212,6 +213,42 @@ impl TaskExecutor for BatchHashExecutor {
             Ok(Some(format!(
                 "Batch hash completed: {} succeeded, {} failed",
                 success_count, error_count
+            )))
+        })
+    }
+}
+
+/// 相似文件分析执行器（长任务）
+pub struct SimilarScanExecutor {
+    pub db: SqlitePool,
+}
+
+impl TaskExecutor for SimilarScanExecutor {
+    fn execute(
+        &self,
+        ctx: TaskContext,
+        payload: Value,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<Option<String>>> + Send>> {
+        let db = self.db.clone();
+        Box::pin(async move {
+            let threshold = payload["threshold"]
+                .as_f64()
+                .unwrap_or(0.8)
+                .clamp(0.0, 1.0);
+
+            ctx.report_progress(0.0, Some("Starting similar files analysis"))
+                .await;
+
+            let groups = dedupe::find_similar_files_with_ctx(&db, threshold, &ctx).await?;
+            let total_groups = groups.len();
+            let groups_json = serde_json::to_string(&groups)?;
+
+            ctx.report_progress(100.0, Some("Similar files analysis completed"))
+                .await;
+
+            Ok(Some(format!(
+                "{{\"total_groups\":{},\"groups\":{}}}",
+                total_groups, groups_json
             )))
         })
     }

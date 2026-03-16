@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
 
-    // 初始化智能缓存管理器
+    // 初始化智能缓存管理器（统一的命名空间化缓存，包括文件哈希）
     let cache_config = cine_backend::services::smart_cache::SmartCacheConfig {
         max_size: 10000,
         ttl: std::time::Duration::from_secs(3600), // 1小时
@@ -100,9 +100,6 @@ async fn main() -> anyhow::Result<()> {
         cache_for_bg.start_background_tasks().await;
     });
 
-    // 兼容性：创建传统的FileHashCache
-    let hash_cache = Arc::new(cine_backend::services::cache::FileHashCache::new());
-
     // 初始化任务队列并注册执行器
     // 使用配置化的并发控制，避免重型任务压垮系统
     let mut task_queue_config =
@@ -116,10 +113,15 @@ async fn main() -> anyhow::Result<()> {
         .per_type_limits
         .insert(cine_backend::services::task_queue::TaskType::Hash, 3);
 
-    let task_queue = Arc::new(cine_backend::services::task_queue::TaskQueue::with_config(
-        db.clone(),
-        task_queue_config,
-    ));
+    let progress_hub = Arc::new(cine_backend::services::progress_hub::ProgressHub::new());
+
+    let task_queue = Arc::new(
+        cine_backend::services::task_queue::TaskQueue::with_config(
+            db.clone(),
+            task_queue_config,
+            progress_hub.clone(),
+        ),
+    );
 
     // 初始化分布式服务
     let distributed =
@@ -150,7 +152,7 @@ async fn main() -> anyhow::Result<()> {
         cine_backend::services::task_queue::TaskType::Hash,
         Arc::new(cine_backend::services::task_executors::HashExecutor {
             db: db.clone(),
-            hash_cache: hash_cache.clone(),
+            hash_cache: smart_cache.clone(),
         }),
     );
     task_queue.register_executor(
@@ -169,6 +171,10 @@ async fn main() -> anyhow::Result<()> {
         cine_backend::services::task_queue::TaskType::Custom("batch_hash".to_string()),
         Arc::new(cine_backend::services::task_executors::BatchHashExecutor { db: db.clone() }),
     );
+    task_queue.register_executor(
+        cine_backend::services::task_queue::TaskType::Custom("similar_scan".to_string()),
+        Arc::new(cine_backend::services::task_executors::SimilarScanExecutor { db: db.clone() }),
+    );
 
     match cli.mode {
         RunMode::Master => {
@@ -176,8 +182,7 @@ async fn main() -> anyhow::Result<()> {
             let app_state = handlers::AppState {
                 db: db.clone(),
                 config: config.clone(),
-                progress_broadcaster: cine_backend::websocket::ProgressBroadcaster::new(),
-                hash_cache,
+                progress_hub: (*progress_hub).clone(),
                 http_client: reqwest::Client::new(),
                 task_queue,
                 distributed,
@@ -275,6 +280,7 @@ async fn main() -> anyhow::Result<()> {
                 .route("/api/dedupe", post(find_duplicates))
                 .route("/api/dedupe/movies", get(find_duplicate_movies))
                 .route("/api/dedupe/similar", get(find_similar_files))
+                .route("/api/dedupe/similar/task", post(start_similar_files_task))
                 .route("/api/empty-dirs", get(find_empty_dirs))
                 .route("/api/empty-dirs/delete", post(delete_empty_dirs))
                 .route("/api/large-files", get(find_large_files))

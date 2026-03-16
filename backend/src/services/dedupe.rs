@@ -1,4 +1,5 @@
 use crate::models::{DuplicateGroup, MediaFile};
+use crate::services::task_queue::TaskContext;
 use sqlx::SqlitePool;
 
 /// 查找重复文件（优化版本：使用数据库分组）
@@ -156,10 +157,11 @@ fn normalize_filename(name: &str) -> String {
     re_sep.replace_all(&normalized, " ").trim().to_lowercase()
 }
 
-/// 查找相似文件（基于文件名模糊匹配）
-pub async fn find_similar_files(
+/// 内部实现：查找相似文件（基于文件名模糊匹配），可选任务上下文用于长任务管理。
+async fn find_similar_files_internal(
     db: &SqlitePool,
     threshold: f64,
+    ctx: Option<&TaskContext>,
 ) -> anyhow::Result<Vec<SimilarFileGroup>> {
     use strsim::jaro_winkler;
 
@@ -199,8 +201,19 @@ pub async fn find_similar_files(
     }
 
     // 比较所有对（O(n^2)，对于大数据集可能需要优化）
-    for i in 0..normalized.len() {
-        for j in (i + 1)..normalized.len() {
+    let total = normalized.len();
+    for i in 0..total {
+        if let Some(ctx) = ctx {
+            // 允许取消长任务，并按行更新一次进度
+            if ctx.is_cancelled().await {
+                return Err(anyhow::anyhow!("similar files analysis cancelled"));
+            }
+
+            let progress = (i as f64 / total as f64) * 100.0;
+            ctx.report_progress(progress, Some("Analyzing similar files")).await;
+        }
+
+        for j in (i + 1)..total {
             let sim = jaro_winkler(&normalized[i].1, &normalized[j].1);
             if sim >= threshold {
                 union(&mut parent, i, j);
@@ -208,8 +221,14 @@ pub async fn find_similar_files(
         }
     }
 
+    if let Some(ctx) = ctx {
+        ctx.report_progress(100.0, Some("Similar files analysis completed"))
+            .await;
+    }
+
     // 收集分组
-    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> =
+        std::collections::HashMap::new();
     for i in 0..files.len() {
         let root = find(&mut parent, i);
         groups.entry(root).or_default().push(i);
@@ -231,7 +250,10 @@ pub async fn find_similar_files(
             let mut count = 0;
             for i in 0..indices.len() {
                 for j in (i + 1)..indices.len() {
-                    total_sim += jaro_winkler(&normalized[indices[i]].1, &normalized[indices[j]].1);
+                    total_sim += jaro_winkler(
+                        &normalized[indices[i]].1,
+                        &normalized[indices[j]].1,
+                    );
                     count += 1;
                 }
             }
@@ -250,4 +272,21 @@ pub async fn find_similar_files(
         .collect();
 
     Ok(result)
+}
+
+/// 查找相似文件（基于文件名模糊匹配）
+pub async fn find_similar_files(
+    db: &SqlitePool,
+    threshold: f64,
+) -> anyhow::Result<Vec<SimilarFileGroup>> {
+    find_similar_files_internal(db, threshold, None).await
+}
+
+/// 查找相似文件（长任务版本，带 TaskContext）。
+pub async fn find_similar_files_with_ctx(
+    db: &SqlitePool,
+    threshold: f64,
+    ctx: &TaskContext,
+) -> anyhow::Result<Vec<SimilarFileGroup>> {
+    find_similar_files_internal(db, threshold, Some(ctx)).await
 }

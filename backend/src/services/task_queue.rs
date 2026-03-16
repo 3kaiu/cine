@@ -14,9 +14,8 @@ use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::services::progress_estimator::{
-    ProgressConfig, ProgressEstimator,
-};
+use crate::services::progress_estimator::{ProgressConfig, ProgressEstimator};
+use crate::services::progress_hub::ProgressHub;
 
 /// 任务状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
@@ -193,24 +192,28 @@ pub struct TaskExecutionRecord {
 #[derive(Debug)]
 pub struct TaskContext {
     task_id: String,
+    task_type: TaskType,
     command_rx: broadcast::Receiver<TaskCommand>,
     status_tx: mpsc::Sender<TaskStatusUpdate>,
     is_paused: Arc<RwLock<bool>>,
     is_cancelled: Arc<RwLock<bool>>,
     progress_estimator: Option<Arc<ProgressEstimator>>,
     total_items: Option<u64>,
+    progress_hub: Option<Arc<ProgressHub>>,
 }
 
 impl Clone for TaskContext {
     fn clone(&self) -> Self {
         Self {
             task_id: self.task_id.clone(),
+            task_type: self.task_type.clone(),
             command_rx: self.command_rx.resubscribe(),
             status_tx: self.status_tx.clone(),
             is_paused: self.is_paused.clone(),
             is_cancelled: self.is_cancelled.clone(),
             progress_estimator: self.progress_estimator.clone(),
             total_items: self.total_items,
+            progress_hub: self.progress_hub.clone(),
         }
     }
 }
@@ -266,6 +269,23 @@ impl TaskContext {
                                 },
                             })
                             .await;
+                        // 通过 ProgressHub 广播进度
+                        if let Some(hub) = &self.progress_hub {
+                            hub.report_progress(
+                                &self.task_id,
+                                &self.task_type,
+                                state.overall_progress * 100.0,
+                                Some(format!(
+                                    "{} (剩余时间: {:.0}s, 速率: {:.1}/s)",
+                                    message.unwrap_or("Processing"),
+                                    state
+                                        .estimated_time_remaining
+                                        .map(|d| d.as_secs() as f64)
+                                        .unwrap_or(0.0),
+                                    state.current_rate
+                                )),
+                            );
+                        }
                     }
                 }
             } else {
@@ -280,6 +300,16 @@ impl TaskContext {
                         },
                     })
                     .await;
+
+            // 通过 ProgressHub 广播进度
+            if let Some(hub) = &self.progress_hub {
+                hub.report_progress(
+                    &self.task_id,
+                    &self.task_type,
+                    progress,
+                    message.map(|m| m.to_string()),
+                );
+            }
             }
         } else {
             // 如果没有进度估算器，使用传统方法
@@ -293,6 +323,16 @@ impl TaskContext {
                     },
                 })
                 .await;
+
+            // 通过 ProgressHub 广播进度
+            if let Some(hub) = &self.progress_hub {
+                hub.report_progress(
+                    &self.task_id,
+                    &self.task_type,
+                    progress,
+                    message.map(|m| m.to_string()),
+                );
+            }
         }
     }
 
@@ -345,12 +385,14 @@ impl TaskContext {
     pub fn duplicate(&self) -> Self {
         Self {
             task_id: self.task_id.clone(),
+            task_type: self.task_type.clone(),
             command_rx: self.command_rx.resubscribe(),
             status_tx: self.status_tx.clone(),
             is_paused: self.is_paused.clone(),
             is_cancelled: self.is_cancelled.clone(),
             progress_estimator: self.progress_estimator.clone(),
             total_items: self.total_items.clone(),
+            progress_hub: self.progress_hub.clone(),
         }
     }
 
@@ -362,12 +404,14 @@ impl TaskContext {
         let command_rx = command_tx.subscribe();
         Self {
             task_id: task_id.to_string(),
+            task_type: TaskType::Custom("test".to_string()),
             command_rx,
             status_tx,
             is_paused: Arc::new(RwLock::new(false)),
             is_cancelled: Arc::new(RwLock::new(false)),
             progress_estimator: None,
             total_items: None,
+            progress_hub: None,
         }
     }
 }
@@ -417,17 +461,27 @@ pub struct TaskQueue {
     progress_estimator: Arc<ProgressEstimator>,
     /// 任务队列运行时配置
     config: TaskQueueConfig,
+    /// 统一任务进度与 WebSocket 推送的中枢
+    progress_hub: Arc<ProgressHub>,
 }
 
 impl TaskQueue {
     /// 创建新的任务队列
     pub fn new(db: sqlx::SqlitePool, max_concurrent: usize) -> Self {
         let config = TaskQueueConfig::new(max_concurrent);
-        Self::with_config(db, config)
+        Self::with_config(
+            db,
+            config,
+            Arc::new(ProgressHub::new()),
+        )
     }
 
     /// 使用自定义配置创建任务队列
-    pub fn with_config(db: sqlx::SqlitePool, config: TaskQueueConfig) -> Self {
+    pub fn with_config(
+        db: sqlx::SqlitePool,
+        config: TaskQueueConfig,
+        progress_hub: Arc<ProgressHub>,
+    ) -> Self {
         Self {
             db,
             executors: DashMap::new(),
@@ -446,6 +500,7 @@ impl TaskQueue {
             // 初始化进度估算器
             progress_estimator: Arc::new(ProgressEstimator::new(ProgressConfig::default())),
             config,
+            progress_hub,
         }
     }
 
@@ -562,12 +617,14 @@ impl TaskQueue {
 
         let ctx = TaskContext {
             task_id: task_id.clone(),
+            task_type: task_type.clone(),
             command_rx: command_tx.subscribe(),
             status_tx: status_tx.clone(),
             is_paused: is_paused.clone(),
             is_cancelled: is_cancelled.clone(),
             progress_estimator: Some(self.progress_estimator.clone()),
             total_items: None,
+            progress_hub: Some(self.progress_hub.clone()),
         };
 
         let db = self.db.clone();
@@ -1313,6 +1370,7 @@ impl TaskQueue {
     pub fn create_remote_context(
         &self,
         task_id: String,
+        task_type: TaskType,
         total_items: Option<u64>,
     ) -> (TaskContext, mpsc::Receiver<TaskStatusUpdate>) {
         let (status_tx, status_rx) = mpsc::channel(100);
@@ -1321,12 +1379,14 @@ impl TaskQueue {
 
         let ctx = TaskContext {
             task_id: task_id.clone(),
+            task_type,
             command_rx,
             status_tx: status_tx.into(),
             is_paused: Arc::new(RwLock::new(false)),
             is_cancelled: Arc::new(RwLock::new(false)),
             progress_estimator: Some(self.progress_estimator.clone()),
             total_items,
+            progress_hub: Some(self.progress_hub.clone()),
         };
 
         // 初始化进度跟踪 (fire-and-forget, 不阻塞同步函数)

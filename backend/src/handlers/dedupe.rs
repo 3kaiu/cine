@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,8 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::handlers::AppState;
-use crate::services::{dedupe, empty_dirs};
+use crate::handlers::tasks::TaskActionResponse;
+use crate::services::library_service::{EmptyDirsResponse, LibraryService};
 
 #[derive(Serialize, ToSchema)]
 pub struct DuplicateResponse {
@@ -29,7 +31,9 @@ pub struct DuplicateResponse {
 pub async fn find_duplicates(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<DuplicateResponse>, (axum::http::StatusCode, String)> {
-    let groups = dedupe::find_duplicates(&state.db)
+    let service = LibraryService::new(state.db.clone(), state.task_queue.clone());
+    let groups = service
+        .find_duplicates()
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -74,33 +78,34 @@ pub struct EmptyDirsResponse {
     )
 )]
 pub async fn find_empty_dirs(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<EmptyDirsQuery>,
 ) -> Result<Json<EmptyDirsResponse>, (axum::http::StatusCode, String)> {
     let directory = query.directory.unwrap_or_else(|| ".".to_string());
     let recursive = query.recursive.unwrap_or(true);
 
-    let dirs = empty_dirs::find_empty_directories(&directory, recursive)
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let service = LibraryService::new(state.db.clone(), state.task_queue.clone());
+    let resp = service
+        .find_empty_dirs(directory, recursive)?;
 
-    // 按分类过滤
-    let filtered_dirs: Vec<empty_dirs::EmptyDirInfo> = if let Some(ref category) = query.category {
-        dirs.into_iter()
+    // 如有分类过滤则在 handler 层细化
+    let dirs = if let Some(ref category) = query.category {
+        resp.dirs
+            .into_iter()
             .filter(|d| &d.category == category)
             .collect()
     } else {
-        dirs
+        resp.dirs
     };
 
-    // 统计各分类数量
     let mut by_category = std::collections::HashMap::new();
-    for dir in &filtered_dirs {
-        *by_category.entry(dir.category.clone()).or_insert(0) += 1;
+    for dir in &dirs {
+        *by_category.entry(dir.category.clone()).or_insert(0usize) += 1;
     }
 
     Ok(Json(EmptyDirsResponse {
-        total: filtered_dirs.len(),
-        dirs: filtered_dirs,
+        total: dirs.len(),
+        dirs,
         by_category,
     }))
 }
@@ -187,7 +192,9 @@ pub async fn find_large_files(
 pub async fn find_duplicate_movies(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::models::DuplicateMovieGroup>>, (axum::http::StatusCode, String)> {
-    let groups = dedupe::find_duplicate_movies_by_tmdb(&state.db)
+    let service = LibraryService::new(state.db.clone(), state.task_queue.clone());
+    let groups = service
+        .find_duplicate_movies()
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -225,12 +232,48 @@ pub async fn find_similar_files(
 ) -> Result<Json<SimilarFilesResponse>, (axum::http::StatusCode, String)> {
     let threshold = query.threshold.unwrap_or(0.8).clamp(0.0, 1.0);
 
-    let groups = dedupe::find_similar_files(&state.db, threshold)
+    let service = LibraryService::new(state.db.clone(), state.task_queue.clone());
+    let groups = service
+        .find_similar_files(threshold)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(SimilarFilesResponse {
         total_groups: groups.len(),
         groups,
+    }))
+}
+
+/// 启动相似文件分析长任务（基于文件名模糊匹配）
+#[utoipa::path(
+    post,
+    path = "/api/dedupe/similar/task",
+    tag = "dedupe",
+    params(
+        SimilarFilesQuery
+    ),
+    responses(
+        (status = 200, description = "相似文件分析任务已提交", body = crate::handlers::tasks::TaskActionApiResponse),
+        (status = 500, description = "服务器内部错误")
+    )
+)]
+pub async fn start_similar_files_task(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SimilarFilesQuery>,
+) -> Result<Json<TaskActionResponse>, (StatusCode, String)> {
+    let threshold = query.threshold.unwrap_or(0.8).clamp(0.0, 1.0);
+
+    let service = LibraryService::new(state.db.clone(), state.task_queue.clone());
+    let description = Some(format!("相似文件分析 (阈值: {:.2})", threshold));
+
+    let task_id = service
+        .submit_similar_scan_task(threshold, description)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(TaskActionResponse {
+        task_id,
+        status: "submitted".to_string(),
+        message: "相似文件分析任务已提交".to_string(),
     }))
 }

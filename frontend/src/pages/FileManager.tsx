@@ -284,176 +284,37 @@ export default function FileManager() {
         title="文件管理器"
         description="浏览并管理您的媒体库文件"
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              onPress={() => setMoveModalVisible(true)}
-              isDisabled={selectedRowKeys.length === 0}
-              variant="primary"
-              size="md"
-              className="font-bold flex items-center gap-2 px-4 shadow-none"
-            >
-              <ArrowRight className="w-4 h-4" />
-              移动
-            </Button>
-            <Button
-              onPress={() => setCopyModalVisible(true)}
-              isDisabled={selectedRowKeys.length === 0}
-              variant="secondary"
-              size="md"
-              className="font-bold flex items-center gap-2 px-4 shadow-none"
-            >
-              <Copy className="w-4 h-4" />
-              复制
-            </Button>
-            <Button
-              onPress={() => setTrashModalVisible(true)}
-              isDisabled={selectedRowKeys.length === 0}
-              variant="danger"
-              size="md"
-              className="font-bold flex items-center gap-2 px-4 shadow-none"
-            >
-              <TrashBin className="w-4 h-4" />
-              删除
-            </Button>
-            <div className="w-px h-4 bg-divider/20 mx-1" />
-            <Button
-              onPress={() => handleExport('csv')}
-              isDisabled={filteredFiles.length === 0}
-              variant="ghost"
-              size="md"
-              className="font-bold flex items-center gap-2 px-4"
-            >
-              <ArrowDownToLine className="w-4 h-4" />
-              导出
-            </Button>
-          </div>
+          <FileManagerActions
+            hasSelection={selectedRowKeys.length > 0}
+            hasData={filteredFiles.length > 0}
+            onOpenMove={() => setMoveModalVisible(true)}
+            onOpenCopy={() => setCopyModalVisible(true)}
+            onOpenTrash={() => setTrashModalVisible(true)}
+            onExport={() => handleExport('csv')}
+          />
         }
       />
 
-      {/* 统计卡片 */}
-      {isPending ? (
-        <SkeletonCard count={4} />
-      ) : filesData && filesData.files.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          <div className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard
-              label="文件总数"
-              value={stats.total}
-              icon={<File className="w-6 h-6" />}
-              color="primary"
-              description="库中所有文件数量"
-            />
-            <StatCard
-              label="总大小"
-              value={formatSize(stats.totalSize)}
-              icon={<HardDrive className="w-6 h-6" />}
-              color="warning"
-              description="总占用存储空间"
-            />
-            <StatCard
-              label="视频文件"
-              value={stats.video}
-              icon={<Video className="w-6 h-6" />}
-              color="accent"
-              description="视频文件数量"
-            />
-            <StatCard
-              label="图片/字幕"
-              value={stats.subtitle + stats.image}
-              icon={<Picture className="w-6 h-6" />}
-              color="success"
-              description="图片和字幕文件"
-            />
-          </div>
-          <StorageChart
-            total={stats.totalSize * 1.5}
-            used={stats.totalSize}
-            breakdown={[
-              { label: '视频', value: filesData.files.filter(f => f.file_type === 'video').reduce((sum, f) => sum + f.size, 0), color: '#8b5cf6', icon: <Video className="w-4 h-4" /> },
-              { label: '字幕', value: filesData.files.filter(f => f.file_type === 'subtitle').reduce((sum, f) => sum + f.size, 0), color: '#10b981', icon: <File className="w-4 h-4" /> },
-              { label: '图片', value: filesData.files.filter(f => f.file_type === 'image').reduce((sum, f) => sum + f.size, 0), color: '#f59e0b', icon: <Picture className="w-4 h-4" /> },
-              { label: '其他', value: filesData.files.filter(f => !['video', 'subtitle', 'image'].includes(f.file_type)).reduce((sum, f) => sum + f.size, 0), color: '#6b7280', icon: <File className="w-4 h-4" /> },
-            ]}
-          />
-        </div>
-      ) : null}
+      <FileManagerStats
+        isPending={isPending}
+        filesData={filesData}
+        stats={stats}
+      />
 
-      <div className="flex flex-col gap-4 border-t border-divider/10 pt-4">
-        <Surface variant="default" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-divider/50 shadow-sm">
-          <div className="flex flex-wrap gap-4 items-center w-full sm:w-auto">
-            <SearchField
-              className="w-full sm:w-[320px]"
-              value={searchTerm}
-              onChange={setSearchTerm}
-            >
-              <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
-                <SearchField.SearchIcon className="text-default-400" />
-                <SearchField.Input placeholder="搜索文件名..." className="text-sm" />
-                <SearchField.ClearButton />
-              </SearchField.Group>
-            </SearchField>
+      <FileManagerToolbar
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        fileTypeFilter={fileTypeFilter}
+        onFileTypeFilterChange={setFileTypeFilter}
+      />
 
-            <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
-              <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">类型</span>
-              <Select
-                selectedKey={fileTypeFilter}
-                onSelectionChange={(keys) => {
-                  if (!keys) return
-                  const selected = Array.from(keys as Iterable<unknown>)[0] as string
-                  if (selected) {
-                    setFileTypeFilter(selected)
-                  }
-                }}
-                className="w-[120px]"
-              >
-                <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
-                  <Select.Value />
-                  <Select.Indicator />
-                </Select.Trigger>
-                <Select.Popover>
-                  <ListBox className="text-xs">
-                    <ListBox.Item key="all">全部文件</ListBox.Item>
-                    <ListBox.Item key="video">视频文件</ListBox.Item>
-                    <ListBox.Item key="subtitle">字幕文件</ListBox.Item>
-                    <ListBox.Item key="image">图片文件</ListBox.Item>
-                    <ListBox.Item key="nfo">信息文件</ListBox.Item>
-                  </ListBox>
-                </Select.Popover>
-              </Select>
-            </div>
-          </div>
-        </Surface>
-
-        <Surface variant="secondary" className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
-          {filteredFiles.length === 0 ? (
-            <div className="py-20 text-center flex flex-col items-center gap-3">
-              <div className="p-4 bg-default-100 rounded-full">
-                <File className="w-8 h-8 text-default-400" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-semibold text-foreground">未找到文件</p>
-                <p className="text-xs text-default-400">请尝试更改搜索词或筛选条件</p>
-              </div>
-            </div>
-          ) : (
-            <VirtualizedTable<MediaFile>
-              dataSource={filteredFiles}
-              columns={columns}
-              height={500}
-              loading={isPending}
-              selectionMode="multiple"
-              selectedKeys={new Set(selectedRowKeys)}
-              onSelectionChange={(keys) => {
-                if (keys === 'all') {
-                  setSelectedRowKeys(filteredFiles.map(f => f.id))
-                } else {
-                  setSelectedRowKeys(Array.from(keys as Iterable<unknown>) as string[])
-                }
-              }}
-            />
-          )}
-        </Surface>
-      </div>
+      <FileManagerTable
+        filteredFiles={filteredFiles}
+        isPending={isPending}
+        columns={columns}
+        selectedRowKeys={selectedRowKeys}
+        setSelectedRowKeys={setSelectedRowKeys}
+      />
 
       {/* Move/Copy Modal */}
       <Modal isOpen={moveModalVisible || copyModalVisible} onOpenChange={(open) => { if (!open) { setMoveModalVisible(false); setCopyModalVisible(false) } }}>
@@ -594,6 +455,252 @@ export default function FileManager() {
         ]}
       />
     </div>
+  )
+}
+
+interface FileManagerActionsProps {
+  hasSelection: boolean
+  hasData: boolean
+  onOpenMove: () => void
+  onOpenCopy: () => void
+  onOpenTrash: () => void
+  onExport: () => void
+}
+
+function FileManagerActions({
+  hasSelection,
+  hasData,
+  onOpenMove,
+  onOpenCopy,
+  onOpenTrash,
+  onExport,
+}: FileManagerActionsProps) {
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        onPress={onOpenMove}
+        isDisabled={!hasSelection}
+        variant="primary"
+        size="md"
+        className="font-bold flex items-center gap-2 px-4 shadow-none"
+      >
+        <ArrowRight className="w-4 h-4" />
+        移动
+      </Button>
+      <Button
+        onPress={onOpenCopy}
+        isDisabled={!hasSelection}
+        variant="secondary"
+        size="md"
+        className="font-bold flex items-center gap-2 px-4 shadow-none"
+      >
+        <Copy className="w-4 h-4" />
+        复制
+      </Button>
+      <Button
+        onPress={onOpenTrash}
+        isDisabled={!hasSelection}
+        variant="danger"
+        size="md"
+        className="font-bold flex items-center gap-2 px-4 shadow-none"
+      >
+        <TrashBin className="w-4 h-4" />
+        删除
+      </Button>
+      <div className="w-px h-4 bg-divider/20 mx-1" />
+      <Button
+        onPress={onExport}
+        isDisabled={!hasData}
+        variant="ghost"
+        size="md"
+        className="font-bold flex items-center gap-2 px-4"
+      >
+        <ArrowDownToLine className="w-4 h-4" />
+        导出
+      </Button>
+    </div>
+  )
+}
+
+interface FileManagerStatsProps {
+  isPending: boolean
+  filesData: { files: MediaFile[] } | undefined
+  stats: {
+    total: number
+    totalSize: number
+    video: number
+    subtitle: number
+    image: number
+  }
+}
+
+function FileManagerStats({
+  isPending,
+  filesData,
+  stats,
+}: FileManagerStatsProps) {
+  if (isPending) {
+    return <SkeletonCard count={4} />
+  }
+
+  if (!filesData || filesData.files.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="文件总数"
+          value={stats.total}
+          icon={<File className="w-6 h-6" />}
+          color="primary"
+          description="库中所有文件数量"
+        />
+        <StatCard
+          label="总大小"
+          value={formatSize(stats.totalSize)}
+          icon={<HardDrive className="w-6 h-6" />}
+          color="warning"
+          description="总占用存储空间"
+        />
+        <StatCard
+          label="视频文件"
+          value={stats.video}
+          icon={<Video className="w-6 h-6" />}
+          color="accent"
+          description="视频文件数量"
+        />
+        <StatCard
+          label="图片/字幕"
+          value={stats.subtitle + stats.image}
+          icon={<Picture className="w-6 h-6" />}
+          color="success"
+          description="图片和字幕文件"
+        />
+      </div>
+      <StorageChart
+        total={stats.totalSize * 1.5}
+        used={stats.totalSize}
+        breakdown={[
+          { label: '视频', value: filesData.files.filter(f => f.file_type === 'video').reduce((sum, f) => sum + f.size, 0), color: '#8b5cf6', icon: <Video className="w-4 h-4" /> },
+          { label: '字幕', value: filesData.files.filter(f => f.file_type === 'subtitle').reduce((sum, f) => sum + f.size, 0), color: '#10b981', icon: <File className="w-4 h-4" /> },
+          { label: '图片', value: filesData.files.filter(f => f.file_type === 'image').reduce((sum, f) => sum + f.size, 0), color: '#f59e0b', icon: <Picture className="w-4 h-4" /> },
+          { label: '其他', value: filesData.files.filter(f => !['video', 'subtitle', 'image'].includes(f.file_type)).reduce((sum, f) => sum + f.size, 0), color: '#6b7280', icon: <File className="w-4 h-4" /> },
+        ]}
+      />
+    </div>
+  )
+}
+
+interface FileManagerToolbarProps {
+  searchTerm: string
+  onSearchChange: (value: string) => void
+  fileTypeFilter: string
+  onFileTypeFilterChange: (value: string) => void
+}
+
+function FileManagerToolbar({
+  searchTerm,
+  onSearchChange,
+  fileTypeFilter,
+  onFileTypeFilterChange,
+}: FileManagerToolbarProps) {
+  return (
+    <div className="flex flex-col gap-4 border-t border-divider/10 pt-4">
+      <Surface variant="default" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border border-divider/50 shadow-sm">
+        <div className="flex flex-wrap gap-4 items-center w-full sm:w-auto">
+          <SearchField
+            className="w-full sm:w-[320px]"
+            value={searchTerm}
+            onChange={onSearchChange}
+          >
+            <SearchField.Group className="bg-default-100/50 border border-divider/20 focus-within:border-primary/50 transition-colors h-9">
+              <SearchField.SearchIcon className="text-default-400" />
+              <SearchField.Input placeholder="搜索文件名..." className="text-sm" />
+              <SearchField.ClearButton />
+            </SearchField.Group>
+          </SearchField>
+
+          <div className="flex items-center gap-2 bg-default-100/50 px-2 py-1 rounded-md border border-divider/20">
+            <span className="text-[11px] font-bold text-default-500 uppercase tracking-wider">类型</span>
+            <Select
+              selectedKey={fileTypeFilter}
+              onSelectionChange={(keys) => {
+                if (!keys) return
+                const selected = Array.from(keys as Iterable<unknown>)[0] as string
+                if (selected) {
+                  onFileTypeFilterChange(selected)
+                }
+              }}
+              className="w-[120px]"
+            >
+              <Select.Trigger className="h-7 min-h-0 bg-transparent border-none shadow-none text-xs font-bold">
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox className="text-xs">
+                  <ListBox.Item key="all">全部文件</ListBox.Item>
+                  <ListBox.Item key="video">视频文件</ListBox.Item>
+                  <ListBox.Item key="subtitle">字幕文件</ListBox.Item>
+                  <ListBox.Item key="image">图片文件</ListBox.Item>
+                  <ListBox.Item key="nfo">信息文件</ListBox.Item>
+                </ListBox>
+              </Select.Popover>
+            </Select>
+          </div>
+        </div>
+      </Surface>
+    </div>
+  )
+}
+
+interface FileManagerTableProps {
+  filteredFiles: MediaFile[]
+  isPending: boolean
+  columns: ReturnType<typeof useMemo>
+  selectedRowKeys: string[]
+  setSelectedRowKeys: (keys: string[]) => void
+}
+
+function FileManagerTable({
+  filteredFiles,
+  isPending,
+  columns,
+  selectedRowKeys,
+  setSelectedRowKeys,
+}: FileManagerTableProps) {
+  return (
+    <Surface variant="secondary" className="rounded-2xl border border-divider/10 overflow-hidden bg-background/5">
+      {filteredFiles.length === 0 ? (
+        <div className="py-20 text-center flex flex-col items-center gap-3">
+          <div className="p-4 bg-default-100 rounded-full">
+            <File className="w-8 h-8 text-default-400" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-semibold text-foreground">未找到文件</p>
+            <p className="text-xs text-default-400">请尝试更改搜索词或筛选条件</p>
+          </div>
+        </div>
+      ) : (
+        <VirtualizedTable<MediaFile>
+          dataSource={filteredFiles}
+          columns={columns as any}
+          height={500}
+          loading={isPending}
+          selectionMode="multiple"
+          selectedKeys={new Set(selectedRowKeys)}
+          onSelectionChange={(keys) => {
+            if (keys === 'all') {
+              setSelectedRowKeys(filteredFiles.map(f => f.id))
+            } else {
+              setSelectedRowKeys(Array.from(keys as Iterable<unknown>) as string[])
+            }
+          }}
+        />
+      )}
+    </Surface>
   )
 }
 

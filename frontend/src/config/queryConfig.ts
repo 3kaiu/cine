@@ -44,7 +44,7 @@ export const queryClient = new QueryClient({
  */
 export const queryKeys = {
   files: (params?: Record<string, unknown>) => ['files', params],
-  duplicates: () => ['duplicates'],
+  duplicates: (params?: Record<string, unknown>) => (params ? ['duplicates', params] : ['duplicates']),
   trash: () => ['trash'],
   emptyDirs: (params?: Record<string, unknown>) => params ? ['empty-dirs', params] : ['empty-dirs'],
   largeFiles: (params?: Record<string, unknown>) => ['large-files', params],

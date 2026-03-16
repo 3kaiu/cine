@@ -14,8 +14,7 @@ use tokio::sync::mpsc;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, info, warn};
 
-// use crate::models::MediaFile;
-use crate::services::cache::{FileHashCache, MemoryCache};
+use crate::services::cache::MemoryCache;
 
 /// 缓存同步消息类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,7 +105,6 @@ pub struct SmartCacheConfig {
 /// 智能缓存管理器
 pub struct SmartCacheManager {
     config: SmartCacheConfig,
-    file_hash_cache: Arc<FileHashCache>,
     memory_cache: Arc<MemoryCache<serde_json::Value>>,
     metrics: Arc<RwLock<HashMap<String, CacheMetrics>>>,
     sync_tx: broadcast::Sender<CacheSyncMessage>,
@@ -219,7 +217,6 @@ impl SmartCacheManager {
 
         Self {
             config: config.clone(),
-            file_hash_cache: Arc::new(FileHashCache::with_capacity(config.max_size)),
             memory_cache: Arc::new(MemoryCache::new(config.max_size)),
             metrics: Arc::new(RwLock::new(HashMap::new())),
             sync_tx,
@@ -227,6 +224,33 @@ impl SmartCacheManager {
             access_patterns,
             access_record_tx,
         }
+    }
+
+    /// 生成文件哈希缓存键（命名空间 + 路径 + 修改时间）
+    fn file_hash_cache_key(path: &str, mtime: i64) -> String {
+        format!("file_hash:{}:{}", path, mtime)
+    }
+
+    /// 获取文件哈希（使用命名空间化 SmartCache）
+    pub async fn get_file_hash(&self, path: &str, mtime: i64) -> Option<String> {
+        let key = Self::file_hash_cache_key(path, mtime);
+        if let Some(value) = self.get("file_hash", &key).await {
+            return value.as_str().map(|s| s.to_string());
+        }
+        None
+    }
+
+    /// 设置文件哈希（使用命名空间化 SmartCache；不设置 TTL，依赖 mtime 变化失效）
+    pub async fn set_file_hash<S: AsRef<str>>(&self, path: &str, mtime: i64, hash: S) {
+        let key = Self::file_hash_cache_key(path, mtime);
+        // 对于文件哈希，不设置过期时间，保持与原 FileHashCache 一致的语义
+        self.memory_cache
+            .set(
+                key,
+                serde_json::Value::String(hash.as_ref().to_string()),
+                None,
+            )
+            .await;
     }
 
     /// 预热缓存
@@ -349,8 +373,7 @@ impl SmartCacheManager {
 
         for (_id, path, hash_md5, hash_xxhash, last_modified) in files {
             if let Some(hash) = hash_md5.or(hash_xxhash) {
-                self.file_hash_cache
-                    .set(&path, last_modified.timestamp(), hash)
+                self.set_file_hash(&path, last_modified.timestamp(), hash)
                     .await;
             }
 
@@ -419,8 +442,7 @@ impl SmartCacheManager {
 
         for (_id, file_path, hash_md5, hash_xxhash, last_modified) in files {
             if let Some(hash) = hash_md5.or(hash_xxhash) {
-                self.file_hash_cache
-                    .set(&file_path, last_modified.timestamp(), hash)
+                self.set_file_hash(&file_path, last_modified.timestamp(), hash)
                     .await;
             }
 
@@ -584,7 +606,6 @@ impl Clone for SmartCacheManager {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
-            file_hash_cache: self.file_hash_cache.clone(),
             memory_cache: self.memory_cache.clone(),
             metrics: self.metrics.clone(),
             sync_tx: self.sync_tx.clone(),
