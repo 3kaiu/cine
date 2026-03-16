@@ -1,5 +1,5 @@
-use cine_backend::services::cache::FileHashCache;
 use cine_backend::services::hasher;
+use cine_backend::services::smart_cache::{SmartCacheConfig, SmartCacheManager};
 use cine_backend::services::task_queue::TaskContext;
 #[path = "../common/mod.rs"]
 mod common;
@@ -74,14 +74,12 @@ async fn test_calculate_file_hash_with_cache() {
     .await
     .unwrap();
 
-    let cache = Arc::new(FileHashCache::new());
-    let _cache_key = FileHashCache::cache_key(&file_path.to_string_lossy(), mtime);
+    let cache = Arc::new(SmartCacheManager::new(SmartCacheConfig {
+        node_id: "test".to_string(),
+        ..SmartCacheConfig::default()
+    }));
     cache
-        .set(
-            &file_path.to_string_lossy(),
-            mtime,
-            "cached_hash_value".to_string(),
-        )
+        .set_file_hash(&file_path.to_string_lossy(), mtime, "cached_hash_value")
         .await;
 
     // 第一次计算（应该使用缓存）
@@ -96,7 +94,9 @@ async fn test_calculate_file_hash_with_cache() {
     assert!(result1.is_ok());
 
     // 验证缓存被使用
-    let cached = cache.get(&file_path.to_string_lossy(), mtime).await;
+    let cached = cache
+        .get_file_hash(&file_path.to_string_lossy(), mtime)
+        .await;
     assert!(cached.is_some());
 }
 

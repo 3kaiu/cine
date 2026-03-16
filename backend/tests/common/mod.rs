@@ -3,6 +3,7 @@
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use std::path::PathBuf;
 use tempfile::TempDir;
+use std::sync::Arc;
 
 /// 创建测试数据库连接池
 pub async fn create_test_db() -> (SqlitePool, TempDir) {
@@ -23,6 +24,48 @@ pub async fn create_test_db() -> (SqlitePool, TempDir) {
         .expect("Failed to run migrations");
 
     (pool, temp_dir)
+}
+
+/// 创建测试应用状态（尽量集中管理，避免 AppState 字段变更导致测试到处报错）
+#[allow(dead_code)]
+pub async fn create_test_app_state() -> (Arc<cine_backend::handlers::AppState>, TempDir) {
+    let (pool, temp_dir) = create_test_db().await;
+
+    let config = Arc::new(cine_backend::config::AppConfig {
+        database_url: "sqlite:test.db".to_string(),
+        port: 3000,
+        tmdb_api_key: None,
+        hash_cache_dir: temp_dir.path().join("hash_cache"),
+        trash_dir: temp_dir.path().join("trash"),
+        max_file_size: 200_000_000_000,
+        chunk_size: 64 * 1024 * 1024,
+        media_directories: vec![],
+        log_level: "info".to_string(),
+        log_format: "pretty".to_string(),
+        enable_plugins: false,
+        enable_cache_warmup: false,
+    });
+
+    let task_queue = Arc::new(cine_backend::services::task_queue::TaskQueue::new(
+        pool.clone(),
+        4,
+    ));
+
+    let app_state = Arc::new(cine_backend::handlers::AppState {
+        db: pool,
+        config,
+        progress_hub: cine_backend::services::progress_hub::ProgressHub::new(),
+        http_client: reqwest::Client::new(),
+        task_queue: task_queue.clone(),
+        distributed: Arc::new(cine_backend::services::distributed::DistributedService::new(
+            task_queue,
+        )),
+        plugin_manager: Arc::new(cine_backend::services::plugin::PluginManager::new(
+            temp_dir.path().join("plugins"),
+        )),
+    });
+
+    (app_state, temp_dir)
 }
 
 /// 创建测试文件

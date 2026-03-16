@@ -1,7 +1,7 @@
 //! 哈希计算服务扩展测试
 
-use cine_backend::services::cache::FileHashCache;
 use cine_backend::services::hasher;
+use cine_backend::services::smart_cache::{SmartCacheConfig, SmartCacheManager};
 use cine_backend::services::task_queue::TaskContext;
 #[path = "../common/mod.rs"]
 mod common;
@@ -235,7 +235,10 @@ async fn test_calculate_file_hash_cache_invalidation() {
     .await
     .unwrap();
 
-    let cache = Arc::new(FileHashCache::new());
+    let cache = Arc::new(SmartCacheManager::new(SmartCacheConfig {
+        node_id: "test".to_string(),
+        ..SmartCacheConfig::default()
+    }));
 
     // 第一次计算
     hasher::calculate_file_hash(
@@ -274,8 +277,12 @@ async fn test_calculate_file_hash_cache_invalidation() {
     .unwrap();
 
     // 验证缓存键不同
-    let _cached1 = cache.get(&file_path.to_string_lossy(), mtime1).await;
-    let cached2 = cache.get(&file_path.to_string_lossy(), mtime2).await;
+    let _cached1 = cache
+        .get_file_hash(&file_path.to_string_lossy(), mtime1)
+        .await;
+    let cached2 = cache
+        .get_file_hash(&file_path.to_string_lossy(), mtime2)
+        .await;
 
     // 旧缓存可能还在，但新缓存应该不同
     assert!(cached2.is_some());
