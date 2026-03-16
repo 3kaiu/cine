@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use tokio::sync::broadcast;
 
 use crate::services::task_queue::TaskType;
@@ -9,7 +7,7 @@ use crate::websocket::{ProgressBroadcaster, ProgressMessage};
 ///
 /// - 对内：供 TaskQueue / TaskContext / 其他服务调用 `report_progress`。
 /// - 对外：对 WebSocket handler 暴露订阅接口。
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ProgressHub {
     broadcaster: ProgressBroadcaster,
 }

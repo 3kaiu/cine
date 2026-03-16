@@ -9,7 +9,8 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::handlers::AppState;
 use crate::handlers::tasks::TaskActionResponse;
-use crate::services::library_service::{EmptyDirsResponse, LibraryService};
+use crate::services::library_service::LibraryService;
+use crate::services::{dedupe, empty_dirs};
 
 #[derive(Serialize, ToSchema)]
 pub struct DuplicateResponse {
