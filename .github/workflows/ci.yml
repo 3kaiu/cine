@@ -35,22 +35,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Check & Benches
-        working-directory: backend
-        run: cargo check --all-targets --workspace
-
       - name: Run Tests
         working-directory: backend
-        run: cargo test --workspace -- --nocapture
+        run: cargo test --profile ci --workspace -- --nocapture
 
       - name: Install cargo-tarpaulin
         uses: taiki-e/install-action@cargo-tarpaulin
 
       - name: Generate Coverage
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: backend
         run: cargo tarpaulin --out Xml --output-dir coverage
 
       - name: Upload Coverage
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

@@ -38,7 +38,7 @@ jobs:
 
       - name: Build backend
         working-directory: ./backend
-        run: cargo build --release
+        run: cargo build --release --bin cine-backend
 
       - name: Get version for package
         id: package_version
