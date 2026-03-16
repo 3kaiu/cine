@@ -786,7 +786,7 @@ function MediaLibrarySection({
         {viewMode === 'list' ? (
           <Surface className="rounded-xl overflow-hidden" variant="default">
             <VirtualizedTable<MediaFile>
-              columns={columns as any}
+              columns={columns}
               dataSource={data?.files || []}
               height={600}
               rowHeight={52}

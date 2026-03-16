@@ -686,7 +686,7 @@ function FileManagerTable({
       ) : (
         <VirtualizedTable<MediaFile>
           dataSource={filteredFiles}
-          columns={columns as any}
+          columns={columns}
           height={500}
           loading={isPending}
           selectionMode="multiple"

@@ -57,19 +57,23 @@ export default function Dedupe() {
     enabled: false,
   })
 
-  const trashMutation = useMutation<unknown, unknown, string, unknown>({
-    mutationFn: (id: string) => mediaApi.moveToTrash(id),
+  const trashMutation = useMutation<unknown, unknown, unknown, unknown>({
+    mutationFn: async (variable) => {
+      const id = variable as string
+      return mediaApi.moveToTrash(id)
+    },
     onSuccess: () => {
       refetch()
       showSuccess('文件已移入回收站')
     },
-    onError: (error: Error) => {
-      handleError(error, '移动失败')
+    onError: (error) => {
+      handleError(error as Error, '移动失败')
     },
   })
 
-  const batchTrashMutation = useMutation<unknown, unknown, string[], unknown>({
-    mutationFn: async (ids: string[]) => {
+  const batchTrashMutation = useMutation<unknown, unknown, unknown, unknown>({
+    mutationFn: async (variable) => {
+      const ids = variable as string[]
       const results = await Promise.allSettled(
         ids.map(id => mediaApi.moveToTrash(id))
       )
@@ -79,13 +83,14 @@ export default function Dedupe() {
       }
       return ids.length
     },
-    onSuccess: (count: number) => {
+    onSuccess: (data) => {
+      const count = (data as number) ?? 0
       refetch()
       setSelectedGroups(new Set())
       showSuccess(`成功移入 ${count} 个文件到回收站`)
     },
-    onError: (error: Error) => {
-      handleError(error, '批量移动失败')
+    onError: (error) => {
+      handleError(error as Error, '批量移动失败')
     },
   })
 
