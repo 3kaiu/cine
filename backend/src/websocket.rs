@@ -61,7 +61,7 @@ async fn handle_socket(socket: WebSocket, mut rx: broadcast::Receiver<ProgressMe
 }
 
 /// 任务进度广播器
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ProgressBroadcaster {
     tx: broadcast::Sender<ProgressMessage>,
 }
