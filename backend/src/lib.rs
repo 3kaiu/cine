@@ -12,6 +12,8 @@ pub mod openapi;
 pub mod services;
 pub mod utils;
 pub mod websocket;
+pub mod routes;
+pub mod bootstrap;
 
 // 重新导出常用类型
 pub use config::AppConfig;

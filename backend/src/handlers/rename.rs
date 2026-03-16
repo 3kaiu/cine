@@ -68,7 +68,7 @@ pub async fn batch_rename(
     let preview_list: Vec<RenamePreview> = files
         .iter()
         .filter_map(|file| {
-            renamer::generate_new_name(&file, &req.template).map(|new_name| RenamePreview {
+            renamer::generate_new_name(file, &req.template).map(|new_name| RenamePreview {
                 file_id: file.id.clone(),
                 old_name: file.name.clone(),
                 new_name,

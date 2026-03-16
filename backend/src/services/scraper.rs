@@ -263,19 +263,33 @@ pub async fn scrape_metadata(
 /// 批量刮削元数据（并行版本，使用共享 HTTP 客户端）
 #[allow(dead_code)]
 /// 批量刮削元数据（并行版本，支持数据库更新）
+pub struct BatchScrapeMetadataParams<'a> {
+    pub source: &'a str,
+    pub auto_match: bool,
+    pub config: &'a AppConfig,
+    pub download_images: bool,
+    pub generate_nfo: bool,
+    pub max_concurrent: usize,
+    pub ctx: crate::services::task_queue::TaskContext,
+}
+
 pub async fn batch_scrape_metadata(
     db: &SqlitePool,
     client: &Client,
     file_ids: &[String],
-    source: &str,
-    auto_match: bool,
-    config: &AppConfig,
-    download_images: bool,
-    generate_nfo: bool,
-    max_concurrent: usize,
-    ctx: crate::services::task_queue::TaskContext,
+    params: BatchScrapeMetadataParams<'_>,
 ) -> anyhow::Result<Vec<(String, Result<Value, String>)>> {
     use futures::stream::{self, StreamExt};
+
+    let BatchScrapeMetadataParams {
+        source,
+        auto_match,
+        config,
+        download_images,
+        generate_nfo,
+        max_concurrent,
+        ctx,
+    } = params;
 
     // 1. 获取文件列表
     let mut files = Vec::new();
@@ -341,7 +355,7 @@ pub async fn batch_scrape_metadata(
 
                         // 2. 执行视频质量分析
                         let video_info = crate::services::video::extract_video_info(&file.path).await.ok();
-                        let quality_score = video_info.as_ref().map(|info| crate::services::quality::calculate_quality_score(info));
+                        let quality_score = video_info.as_ref().map(crate::services::quality::calculate_quality_score);
 
                         // 3. 更新数据库
                         let tmdb_id = metadata.get("tmdb_id").and_then(|v| v.as_u64()).map(|v| v as u32);

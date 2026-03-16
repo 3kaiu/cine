@@ -17,6 +17,17 @@ use uuid::Uuid;
 use crate::services::progress_estimator::{ProgressConfig, ProgressEstimator};
 use crate::services::progress_hub::ProgressHub;
 
+/// 任务幂等等级，用于决定重试与安全策略
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdempotencyLevel {
+    /// 纯函数/只读类操作（可放心重试）
+    Pure,
+    /// 幂等操作（重复执行等价）
+    Idempotent,
+    /// 存在文件系统/外部副作用（重试需谨慎）
+    SideEffectful,
+}
+
 /// 任务状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -70,6 +81,21 @@ impl std::fmt::Display for TaskType {
     }
 }
 
+impl TaskType {
+    pub fn idempotency(&self) -> IdempotencyLevel {
+        match self {
+            TaskType::Cleanup => IdempotencyLevel::Pure,
+            TaskType::Hash => IdempotencyLevel::Idempotent,
+            TaskType::Scan
+            | TaskType::Scrape
+            | TaskType::Rename
+            | TaskType::BatchMove
+            | TaskType::BatchCopy
+            | TaskType::Custom(_) => IdempotencyLevel::SideEffectful,
+        }
+    }
+}
+
 /// 任务队列配置
 #[derive(Debug, Clone)]
 pub struct TaskQueueConfig {
@@ -81,6 +107,16 @@ pub struct TaskQueueConfig {
     pub progress_db_interval: Duration,
     /// 触发进度写入数据库的最小进度变化（百分比，例如 1.0 表示 1%）
     pub progress_db_min_delta: f64,
+    /// Worker 任务租约时长（用于掉线回收）
+    pub lease_duration: Duration,
+    /// 后台 dispatch 间隔（用于持续调度 pending 任务）
+    pub dispatch_interval: Duration,
+    /// 可重试任务（Pure）最大重试次数
+    pub retries_pure: u8,
+    /// 可重试任务（Idempotent）最大重试次数
+    pub retries_idempotent: u8,
+    /// 可重试任务（SideEffectful）最大重试次数
+    pub retries_side_effectful: u8,
 }
 
 impl TaskQueueConfig {
@@ -92,6 +128,12 @@ impl TaskQueueConfig {
             progress_db_interval: Duration::from_millis(300),
             // 只有当进度变化 >= 1% 时才写库
             progress_db_min_delta: 1.0,
+            // 默认 5 分钟租约
+            lease_duration: Duration::from_secs(300),
+            dispatch_interval: Duration::from_secs(1),
+            retries_pure: 3,
+            retries_idempotent: 2,
+            retries_side_effectful: 0,
         }
     }
 }
@@ -113,6 +155,9 @@ pub struct TaskInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub description: Option<String>,
+    pub retry_count: i64,
+    pub lease_until: Option<chrono::DateTime<chrono::Utc>>,
+    pub lease_renewed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// 任务队列统计信息
@@ -391,7 +436,7 @@ impl TaskContext {
             is_paused: self.is_paused.clone(),
             is_cancelled: self.is_cancelled.clone(),
             progress_estimator: self.progress_estimator.clone(),
-            total_items: self.total_items.clone(),
+            total_items: self.total_items,
             progress_hub: self.progress_hub.clone(),
         }
     }
@@ -466,6 +511,11 @@ pub struct TaskQueue {
 }
 
 impl TaskQueue {
+    fn lease_until(&self, now: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<chrono::Utc> {
+        let cdur = chrono::Duration::from_std(self.config.lease_duration)
+            .unwrap_or_else(|_| chrono::Duration::seconds(300));
+        now + cdur
+    }
     /// 创建新的任务队列
     pub fn new(db: sqlx::SqlitePool, max_concurrent: usize) -> Self {
         let config = TaskQueueConfig::new(max_concurrent);
@@ -502,6 +552,33 @@ impl TaskQueue {
             config,
             progress_hub,
         }
+    }
+
+    /// 后台调度器：周期性将 pending 任务分发到执行器
+    /// - 解决“重试回到 pending 但无人触发 dispatch”的问题
+    pub fn start_background_dispatcher(self: Arc<Self>) {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(self.config.dispatch_interval);
+            loop {
+                interval.tick().await;
+                // 尽量填满并发槽位
+                if self.active_count().await >= self.max_concurrent {
+                    continue;
+                }
+
+                let pending: Option<(String,)> = sqlx::query_as(
+                    "SELECT id FROM tasks WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
+                )
+                .fetch_optional(&self.db)
+                .await
+                .ok()
+                .flatten();
+
+                if let Some((task_id,)) = pending {
+                    let _ = self.dispatch(task_id).await;
+                }
+            }
+        });
     }
 
     /// 注册任务执行器
@@ -603,6 +680,9 @@ impl TaskQueue {
             created_at: task.created_at,
             updated_at: task.updated_at,
             description: task.description.clone(),
+            retry_count: task.retry_count,
+            lease_until: task.lease_until,
+            lease_renewed_at: task.lease_renewed_at,
         };
 
         let info_arc = Arc::new(RwLock::new(info));
@@ -780,8 +860,8 @@ impl TaskQueue {
             let duration = start_time.elapsed().as_secs_f64();
             let now = chrono::Utc::now();
 
-            // 更新最终状态
-            let (final_status, final_status_str, error, success) = match result {
+            // 更新最终状态 / 自动重试
+            let (final_status, final_status_str, error, success, requeued) = match result {
                 Ok(msg) => (
                     TaskStatus::Completed {
                         duration_secs: duration,
@@ -790,12 +870,67 @@ impl TaskQueue {
                     "completed",
                     None,
                     Some(true),
+                    false,
                 ),
                 Err(e) => {
                     let err_msg = e.to_string();
                     if err_msg.contains("cancelled") || err_msg.contains("取消") {
-                        (TaskStatus::Cancelled, "cancelled", None, None)
+                        (TaskStatus::Cancelled, "cancelled", None, None, false)
                     } else {
+                        let retryable = err_msg.contains("timeout")
+                            || err_msg.contains("timed out")
+                            || err_msg.contains("locked")
+                            || err_msg.contains("temporarily")
+                            || err_msg.contains("connection");
+
+                        let max_retries = match task_type_for_counters.idempotency() {
+                            IdempotencyLevel::Pure => config.retries_pure,
+                            IdempotencyLevel::Idempotent => config.retries_idempotent,
+                            IdempotencyLevel::SideEffectful => config.retries_side_effectful,
+                        };
+
+                        let current_retry = task.retry_count.max(0) as u8;
+                        if retryable && current_retry < max_retries {
+                            let next_retry = current_retry.saturating_add(1) as i64;
+                            let _ = sqlx::query(
+                                "UPDATE tasks
+                                 SET status = 'pending',
+                                     retry_count = ?,
+                                     node_id = NULL,
+                                     lease_until = NULL,
+                                     lease_renewed_at = NULL,
+                                     error = ?,
+                                     updated_at = ?
+                                 WHERE id = ?",
+                            )
+                            .bind(next_retry)
+                            .bind(err_msg.clone())
+                            .bind(now)
+                            .bind(&task_id_clone)
+                            .execute(&db)
+                            .await;
+
+                            tracing::warn!(
+                                task_id = %task_id_clone,
+                                task_type = %task.task_type,
+                                retry = next_retry,
+                                "Task failed, requeued for retry"
+                            );
+
+                            #[cfg(not(test))]
+                            crate::services::metrics::METRICS
+                                .tasks_retry_total
+                                .with_label_values(&[task.task_type.as_str()])
+                                .inc();
+
+                            (
+                                TaskStatus::Pending,
+                                "pending",
+                                Some(err_msg.clone()),
+                                None,
+                                true,
+                            )
+                        } else {
                         (
                             TaskStatus::Failed {
                                 error: err_msg.clone(),
@@ -803,7 +938,9 @@ impl TaskQueue {
                             "failed",
                             Some(err_msg.clone()),
                             Some(false),
+                            false,
                         )
+                        }
                     }
                 }
             };
@@ -818,12 +955,14 @@ impl TaskQueue {
                 }
 
                 // 更新全局统计
-                let mut total_processed = total_tasks_processed.write().await;
-                *total_processed += 1;
+                if !requeued {
+                    let mut total_processed = total_tasks_processed.write().await;
+                    *total_processed += 1;
 
-                if success == Some(false) {
-                    let mut total_failed = total_tasks_failed.write().await;
-                    *total_failed += 1;
+                    if success == Some(false) {
+                        let mut total_failed = total_tasks_failed.write().await;
+                        *total_failed += 1;
+                    }
                 }
             }
 
@@ -840,17 +979,19 @@ impl TaskQueue {
             }
 
             // 更新 DB
-            let _ = sqlx::query(
-                "UPDATE tasks SET status = ?, error = ?, duration_secs = ?, finished_at = ?, updated_at = ? WHERE id = ?"
-            )
-            .bind(final_status_str)
-            .bind(error)
-            .bind(duration)
-            .bind(now)
-            .bind(now)
-            .bind(&task_id_clone)
-            .execute(&db)
-            .await;
+            if !requeued {
+                let _ = sqlx::query(
+                    "UPDATE tasks SET status = ?, error = ?, duration_secs = ?, finished_at = ?, updated_at = ? WHERE id = ?"
+                )
+                .bind(final_status_str)
+                .bind(error)
+                .bind(duration)
+                .bind(now)
+                .bind(now)
+                .bind(&task_id_clone)
+                .execute(&db)
+                .await;
+            }
 
             tracing::info!(
                 task_id = %task_id_clone,
@@ -970,6 +1111,54 @@ impl TaskQueue {
         Ok(())
     }
 
+    /// 将失败/取消的任务重新放回队列（保持原 task_id）
+    pub async fn requeue(&self, task_id: &str) -> anyhow::Result<()> {
+        let now = chrono::Utc::now();
+        sqlx::query(
+            "UPDATE tasks
+             SET status = 'pending',
+                 progress = 0.0,
+                 node_id = NULL,
+                 lease_until = NULL,
+                 lease_renewed_at = NULL,
+                 updated_at = ?
+             WHERE id = ? AND status IN ('failed', 'cancelled')",
+        )
+        .bind(now)
+        .bind(task_id)
+        .execute(&self.db)
+        .await?;
+
+        Ok(())
+    }
+
+    /// 重新执行任务（创建新任务 ID，复制 payload 与类型）
+    pub async fn rerun(&self, task_id: &str) -> anyhow::Result<String> {
+        let task: crate::models::DbTask =
+            sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+                .bind(task_id)
+                .fetch_one(&self.db)
+                .await?;
+
+        let new_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now();
+
+        sqlx::query(
+            "INSERT INTO tasks (id, task_type, status, description, payload, progress, retry_count, created_at, updated_at)
+             VALUES (?, ?, 'pending', ?, ?, 0.0, 0, ?, ?)",
+        )
+        .bind(&new_id)
+        .bind(&task.task_type)
+        .bind(task.description.clone())
+        .bind(task.payload.clone().unwrap_or_else(|| "{}".to_string()))
+        .bind(now)
+        .bind(now)
+        .execute(&self.db)
+        .await?;
+
+        Ok(new_id)
+    }
+
     /// 获取任务状态
     pub async fn get_status(&self, task_id: &str) -> Option<TaskInfo> {
         // 优先从内存获取实时状态 (如果在本机运行)
@@ -1025,6 +1214,9 @@ impl TaskQueue {
                 created_at: t.created_at,
                 updated_at: t.updated_at,
                 description: t.description,
+                retry_count: t.retry_count,
+                lease_until: t.lease_until,
+                lease_renewed_at: t.lease_renewed_at,
             }
         })
     }
@@ -1033,8 +1225,7 @@ impl TaskQueue {
     /// - limit: 每页数量，默认 50，最大 200
     /// - offset: 偏移量
     pub async fn list_tasks(&self, limit: usize, offset: usize) -> (Vec<TaskInfo>, u64) {
-        let limit = limit.min(200).max(1);
-        let offset = offset;
+        let limit = limit.clamp(1, 200);
 
         let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tasks")
             .fetch_one(&self.db)
@@ -1088,6 +1279,9 @@ impl TaskQueue {
                     created_at: t.created_at,
                     updated_at: t.updated_at,
                     description: t.description,
+                    retry_count: t.retry_count,
+                    lease_until: t.lease_until,
+                    lease_renewed_at: t.lease_renewed_at,
                 }
             })
             .collect();
@@ -1106,12 +1300,10 @@ impl TaskQueue {
         self.tasks.retain(|_, handle| {
             // 仅保留活跃任务
             let info = futures::executor::block_on(handle.info.read());
-            match info.status {
-                TaskStatus::Pending | TaskStatus::Running { .. } | TaskStatus::Paused { .. } => {
-                    true
-                }
-                _ => false,
-            }
+            matches!(
+                info.status,
+                TaskStatus::Pending | TaskStatus::Running { .. } | TaskStatus::Paused { .. }
+            )
         });
     }
 
@@ -1135,15 +1327,55 @@ impl TaskQueue {
         };
         let result_json = result.map(|r| r.to_string());
 
+        let now = chrono::Utc::now();
+        let lease_until = if status_str == "running" || status_str == "paused" {
+            Some(self.lease_until(now))
+        } else {
+            None
+        };
+
         sqlx::query(
-            "UPDATE tasks SET status = ?, progress = ?, description = COALESCE(?, description), result = ?, error = ?, updated_at = ? WHERE id = ?"
+            "UPDATE tasks
+             SET status = ?,
+                 progress = ?,
+                 description = COALESCE(?, description),
+                 result = ?,
+                 error = ?,
+                 updated_at = ?,
+                 lease_renewed_at = ?,
+                 lease_until = COALESCE(?, lease_until)
+             WHERE id = ?"
         )
         .bind(status_str)
         .bind(progress)
         .bind(message)
         .bind(result_json)
         .bind(error)
-        .bind(chrono::Utc::now())
+        .bind(now)
+        .bind(now)
+        .bind(lease_until)
+        .bind(task_id)
+        .execute(&self.db)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Worker 任务心跳：仅用于续租，不改变业务状态与进度
+    pub async fn heartbeat_task(&self, task_id: &str) -> anyhow::Result<()> {
+        let now = chrono::Utc::now();
+        let lease_until = self.lease_until(now);
+
+        sqlx::query(
+            "UPDATE tasks
+             SET lease_renewed_at = ?,
+                 lease_until = ?,
+                 updated_at = ?
+             WHERE id = ? AND status = 'running'",
+        )
+        .bind(now)
+        .bind(lease_until)
+        .bind(now)
         .bind(task_id)
         .execute(&self.db)
         .await?;
@@ -1182,11 +1414,20 @@ impl TaskQueue {
 
         // 尝试更新为已分配
         let res = sqlx::query(
-            "UPDATE tasks SET status = 'running', node_id = ?, started_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'"
+            "UPDATE tasks
+             SET status = 'running',
+                 node_id = ?,
+                 started_at = COALESCE(started_at, ?),
+                 updated_at = ?,
+                 lease_renewed_at = ?,
+                 lease_until = ?
+             WHERE id = ? AND status = 'pending'"
         )
         .bind(node_id)
         .bind(chrono::Utc::now())
         .bind(chrono::Utc::now())
+        .bind(chrono::Utc::now())
+        .bind(self.lease_until(chrono::Utc::now()))
         .bind(&task.id)
         .execute(&self.db)
         .await
@@ -1357,13 +1598,45 @@ impl TaskQueue {
         records.retain(|_, record| {
             record
                 .completed_at
-                .map_or(true, |completed| completed > cutoff)
+                .map(|completed| completed > cutoff)
+                .unwrap_or(true)
         });
 
         info!(
             "Cleaned up old execution records, remaining: {}",
             records.len()
         );
+    }
+
+    /// 回收租约过期的 running 任务（用于分布式 Worker 异常掉线/卡死）
+    pub async fn reclaim_expired_leases(&self) -> anyhow::Result<u64> {
+        let res = sqlx::query(
+            r#"
+            UPDATE tasks
+            SET status = 'pending',
+                node_id = NULL,
+                updated_at = ?,
+                lease_until = NULL,
+                lease_renewed_at = NULL,
+                error = COALESCE(error, 'lease expired; returned to pending')
+            WHERE status = 'running'
+              AND lease_until IS NOT NULL
+              AND lease_until < ?
+            "#,
+        )
+        .bind(chrono::Utc::now())
+        .bind(chrono::Utc::now())
+        .execute(&self.db)
+        .await?;
+
+        #[cfg(not(test))]
+        if res.rows_affected() > 0 {
+            crate::services::metrics::METRICS
+                .tasks_lease_reclaimed_total
+                .inc_by(res.rows_affected() as f64);
+        }
+
+        Ok(res.rows_affected())
     }
 
     /// 创建一个用于远程任务的上下文
@@ -1381,7 +1654,7 @@ impl TaskQueue {
             task_id: task_id.clone(),
             task_type,
             command_rx,
-            status_tx: status_tx.into(),
+            status_tx,
             is_paused: Arc::new(RwLock::new(false)),
             is_cancelled: Arc::new(RwLock::new(false)),
             progress_estimator: Some(self.progress_estimator.clone()),
@@ -1458,6 +1731,9 @@ mod tests {
                 result TEXT,
                 progress REAL NOT NULL DEFAULT 0.0,
                 node_id TEXT,
+                lease_until DATETIME,
+                lease_renewed_at DATETIME,
+                retry_count INTEGER NOT NULL DEFAULT 0,
                 error TEXT,
                 duration_secs REAL,
                 created_at DATETIME NOT NULL,

@@ -48,7 +48,7 @@ export default function Tasks() {
   })
 
   const { data, refetch, isPending } = useTasksQuery()
-  const { pauseMutation, resumeMutation, cancelMutation, cleanupMutation } = useTaskMutations()
+  const { pauseMutation, resumeMutation, cancelMutation, cleanupMutation, requeueMutation, rerunMutation } = useTaskMutations()
 
   const tasks = data?.data?.tasks || []
   const activeCount = data?.data?.active || 0
@@ -79,6 +79,16 @@ export default function Tasks() {
       error: 'error' in status ? status.error : undefined,
       duration: 'duration_secs' in status ? status.duration_secs : undefined,
     }
+  }, [])
+
+  const getLeaseStatus = useCallback((task: TaskInfo) => {
+    if (!task.lease_until) return { label: '-', color: 'default' as const }
+    const until = new Date(task.lease_until).getTime()
+    const now = Date.now()
+    const deltaMs = until - now
+    if (deltaMs <= 0) return { label: '已过期', color: 'danger' as const }
+    if (deltaMs <= 60_000) return { label: '即将超时', color: 'warning' as const }
+    return { label: '正常', color: 'success' as const }
   }, [])
 
   const columns = useMemo(() => [
@@ -158,6 +168,34 @@ export default function Tasks() {
       },
     },
     {
+      title: '重试',
+      dataIndex: 'retry_count',
+      width: 80,
+      render: (n: unknown) => (
+        <span className="text-[11px] text-default-500 font-mono">
+          {typeof n === 'number' ? n : 0}
+        </span>
+      ),
+    },
+    {
+      title: '租约',
+      dataIndex: 'lease_until',
+      width: 110,
+      render: (_: unknown, task: TaskInfo) => {
+        const ls = getLeaseStatus(task)
+        return (
+          <Chip
+            size="sm"
+            variant="soft"
+            color={ls.color as "default" | "success" | "warning" | "danger" | undefined}
+            className="h-5 text-[10px] font-black uppercase tracking-tighter px-1.5 border-none"
+          >
+            {ls.label}
+          </Chip>
+        )
+      },
+    },
+    {
       title: '创建时间',
       dataIndex: 'created_at',
       width: 160,
@@ -170,12 +208,14 @@ export default function Tasks() {
     {
       title: '操作',
       dataIndex: 'id',
-      width: 100,
+      width: 160,
       render: (_: unknown, task: TaskInfo) => {
         const status = task.status.status
         const canPause = status === 'running'
         const canResume = status === 'paused'
         const canCancel = status === 'running' || status === 'paused' || status === 'pending'
+        const canRequeue = status === 'failed' || status === 'cancelled'
+        const canRerun = status === 'failed' || status === 'cancelled' || status === 'completed'
 
         return (
           <div className="flex gap-2">
@@ -185,7 +225,7 @@ export default function Tasks() {
                 size="sm"
                 variant="secondary"
                 onPress={() => pauseMutation.mutate(task.id)}
-                className="h-7 w-7 min-w-0 bg-warning/10 text-warning hover:bg-warning/20 border-none shadow-none"
+                className="h-7 w-7 min-w-0 bg-warning/10 text-warning hover:bg-warning-soft-hover border-none shadow-none"
               >
                 <Pause className="w-3.5 h-3.5" />
               </Button>
@@ -196,7 +236,7 @@ export default function Tasks() {
                 size="sm"
                 variant="secondary"
                 onPress={() => resumeMutation.mutate(task.id)}
-                className="h-7 w-7 min-w-0 bg-success/10 text-success hover:bg-success/20 border-none shadow-none"
+                className="h-7 w-7 min-w-0 bg-success/10 text-success hover:bg-success-soft-hover border-none shadow-none"
               >
                 <Play className="w-3.5 h-3.5" />
               </Button>
@@ -207,16 +247,38 @@ export default function Tasks() {
                 size="sm"
                 variant="secondary"
                 onPress={() => setConfirmModal({ isOpen: true, taskId: task.id, action: 'cancel' })}
-                className="h-7 w-7 min-w-0 bg-danger/10 text-danger hover:bg-danger/20 border-none shadow-none"
+                className="h-7 w-7 min-w-0 bg-danger/10 text-danger hover:bg-danger-soft-hover border-none shadow-none"
               >
                 <Xmark className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            {canRequeue && (
+              <Button
+                isIconOnly
+                size="sm"
+                variant="secondary"
+                onPress={() => requeueMutation.mutate(task.id)}
+                className="h-7 w-7 min-w-0 bg-default-200/10 text-default-600 hover:bg-default-200/20 border-none shadow-none"
+              >
+                <ArrowsRotateRight className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            {canRerun && (
+              <Button
+                isIconOnly
+                size="sm"
+                variant="secondary"
+                onPress={() => rerunMutation.mutate(task.id)}
+                className="h-7 w-7 min-w-0 bg-primary/10 text-primary hover:bg-primary/20 border-none shadow-none"
+              >
+                <Play className="w-3.5 h-3.5" />
               </Button>
             )}
           </div>
         )
       },
     },
-  ], [getStatusInfo, pauseMutation, resumeMutation])
+  ], [getStatusInfo, getLeaseStatus, pauseMutation, resumeMutation, requeueMutation, rerunMutation])
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700">

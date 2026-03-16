@@ -15,6 +15,9 @@ export interface TaskInfo {
   created_at: string
   updated_at: string
   description: string | null
+  retry_count: number
+  lease_until?: string | null
+  lease_renewed_at?: string | null
 }
 
 export interface TaskListResponse {
@@ -53,4 +56,10 @@ export const tasksApi = {
 
   cleanup: () =>
     api.post<ApiResponse<string>>('/tasks/cleanup'),
+
+  requeue: (id: string) =>
+    api.post<ApiResponse<string>>(`/tasks/${id}/requeue`),
+
+  rerun: (id: string) =>
+    api.post<ApiResponse<{ task_id: string; status: string; message: string }>>(`/tasks/${id}/rerun`),
 }

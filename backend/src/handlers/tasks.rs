@@ -83,7 +83,7 @@ pub async fn list_tasks(
     Query(query): Query<TaskListQuery>,
 ) -> impl IntoResponse {
     let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(50).min(200).max(1);
+    let page_size = query.page_size.unwrap_or(50).clamp(1, 200);
     let offset = ((page - 1) * page_size) as usize;
     let limit = page_size as usize;
 
@@ -221,6 +221,65 @@ pub async fn cleanup_tasks(State(state): State<Arc<AppState>>) -> impl IntoRespo
     Json(ApiResponse::ok("已清理完成的任务"))
 }
 
+/// 重新排队任务（failed/cancelled -> pending）
+#[utoipa::path(
+    post,
+    path = "/api/tasks/{id}/requeue",
+    tag = "tasks",
+    params(
+        ("id" = String, Path, description = "任务 ID")
+    ),
+    responses(
+        (status = 200, description = "重新排队成功", body = StringApiResponse),
+        (status = 400, description = "请求失败")
+    )
+)]
+pub async fn requeue_task(
+    State(state): State<Arc<AppState>>,
+    Path(task_id): Path<String>,
+) -> impl IntoResponse {
+    match state.task_queue.requeue(&task_id).await {
+        Ok(()) => Json(ApiResponse::ok("任务已重新排队")).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(e.to_string())),
+        )
+            .into_response(),
+    }
+}
+
+/// 重新执行任务（创建新任务 ID）
+#[utoipa::path(
+    post,
+    path = "/api/tasks/{id}/rerun",
+    tag = "tasks",
+    params(
+        ("id" = String, Path, description = "任务 ID")
+    ),
+    responses(
+        (status = 200, description = "重新执行成功", body = TaskActionApiResponse),
+        (status = 400, description = "请求失败")
+    )
+)]
+pub async fn rerun_task(
+    State(state): State<Arc<AppState>>,
+    Path(task_id): Path<String>,
+) -> impl IntoResponse {
+    match state.task_queue.rerun(&task_id).await {
+        Ok(new_id) => Json(ApiResponse::ok(TaskActionResponse {
+            task_id: new_id,
+            status: "pending".to_string(),
+            message: "任务已重新创建并排队".to_string(),
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<()>::err(e.to_string())),
+        )
+            .into_response(),
+    }
+}
+
 /// 创建任务路由
 pub fn task_routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -230,4 +289,6 @@ pub fn task_routes() -> Router<Arc<AppState>> {
         .route("/:id/resume", post(resume_task))
         .route("/:id", delete(cancel_task))
         .route("/cleanup", post(cleanup_tasks))
+        .route("/:id/requeue", post(requeue_task))
+        .route("/:id/rerun", post(rerun_task))
 }

@@ -125,6 +125,23 @@ pub async fn get_system_health(
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // 租约过期但尚未回收的任务数（running 且 lease_until < now）
+    let expired_leases: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE status = 'running' AND lease_until IS NOT NULL AND lease_until < ?",
+    )
+    .bind(chrono::Utc::now())
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
+    // 高重试任务数（用于发现反复失败/抖动的任务）
+    let high_retry_tasks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tasks WHERE status IN ('pending','running','failed') AND retry_count >= 2",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
     // 计算健康分数 (0.0-1.0, 1.0为最佳)
     let mut health_score = 1.0;
 
@@ -148,6 +165,16 @@ pub async fn get_system_health(
     // 队列积压影响健康分数
     if queue_stats.pending_tasks > 10 {
         health_score *= 0.7; // 队列积压
+    }
+
+    // 租约过期影响健康分数
+    if expired_leases > 0 {
+        health_score *= 0.8;
+    }
+
+    // 高重试任务影响健康分数
+    if high_retry_tasks > 0 {
+        health_score *= 0.9;
     }
 
     // 失败率影响健康分数
@@ -177,7 +204,8 @@ pub async fn get_system_health(
             name: "CPU Usage".to_string(),
             status: if resource_stats
                 .as_ref()
-                .map_or(true, |s| s.cpu_usage_percent < 80.0)
+                .map(|s| s.cpu_usage_percent < 80.0)
+                .unwrap_or(true)
             {
                 HealthStatus::Healthy
             } else {
@@ -191,10 +219,14 @@ pub async fn get_system_health(
         },
         HealthCheck {
             name: "Memory Usage".to_string(),
-            status: if resource_stats.as_ref().map_or(true, |s| {
-                let ratio = s.memory_usage_bytes as f64 / s.memory_total_bytes as f64;
-                ratio < 0.85
-            }) {
+            status: if resource_stats
+                .as_ref()
+                .map(|s| {
+                    let ratio = s.memory_usage_bytes as f64 / s.memory_total_bytes as f64;
+                    ratio < 0.85
+                })
+                .unwrap_or(true)
+            {
                 HealthStatus::Healthy
             } else {
                 HealthStatus::Warning
@@ -216,6 +248,24 @@ pub async fn get_system_health(
                 HealthStatus::Warning
             },
             message: format!("Pending tasks: {}", queue_stats.pending_tasks),
+        },
+        HealthCheck {
+            name: "Task Leases".to_string(),
+            status: if expired_leases == 0 {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Warning
+            },
+            message: format!("Expired leases: {}", expired_leases),
+        },
+        HealthCheck {
+            name: "Task Retries".to_string(),
+            status: if high_retry_tasks == 0 {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Warning
+            },
+            message: format!("High-retry tasks: {}", high_retry_tasks),
         },
     ];
 

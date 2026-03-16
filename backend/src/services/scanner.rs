@@ -126,7 +126,7 @@ pub async fn scan_directory(
         }
 
         // 进度报告（略微调整频率以提高性能）
-        if file_count % 100 == 0 || file_count == 1 {
+        if file_count.is_multiple_of(100) || file_count == 1 {
             ctx.report_progress(
                 50.0, // 扫描过程中显示 50%，实际由入库决定最终进度（或更复杂的估算）
                 Some(&format!("Scanning: {} files found", file_count)),

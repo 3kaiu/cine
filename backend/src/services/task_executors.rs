@@ -103,13 +103,15 @@ impl TaskExecutor for ScrapeExecutor {
                 &db,
                 &client,
                 &file_ids,
-                &source,
-                auto_match,
-                &config,
-                download_images,
-                generate_nfo,
-                5,
-                ctx,
+                scraper::BatchScrapeMetadataParams {
+                    source: &source,
+                    auto_match,
+                    config: &config,
+                    download_images,
+                    generate_nfo,
+                    max_concurrent: 5,
+                    ctx,
+                },
             )
             .await?;
 

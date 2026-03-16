@@ -44,6 +44,13 @@ pub async fn create_test_app_state() -> (Arc<cine_backend::handlers::AppState>, 
         log_format: "pretty".to_string(),
         enable_plugins: false,
         enable_cache_warmup: false,
+        task_lease_seconds: 60,
+        task_dispatch_interval_ms: 100,
+        task_retries_pure: 1,
+        task_retries_idempotent: 1,
+        task_retries_side_effectful: 0,
+        worker_heartbeat_interval_secs: 1,
+        worker_task_heartbeat_interval_secs: 1,
     });
 
     let task_queue = Arc::new(cine_backend::services::task_queue::TaskQueue::new(
@@ -53,12 +60,13 @@ pub async fn create_test_app_state() -> (Arc<cine_backend::handlers::AppState>, 
 
     let app_state = Arc::new(cine_backend::handlers::AppState {
         db: pool,
-        config,
+        config: config.clone(),
         progress_hub: cine_backend::services::progress_hub::ProgressHub::new(),
         http_client: reqwest::Client::new(),
         task_queue: task_queue.clone(),
         distributed: Arc::new(cine_backend::services::distributed::DistributedService::new(
             task_queue,
+            config.clone(),
         )),
         plugin_manager: Arc::new(cine_backend::services::plugin::PluginManager::new(
             temp_dir.path().join("plugins"),

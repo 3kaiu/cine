@@ -23,6 +23,20 @@ pub struct AppConfig {
     pub enable_plugins: bool,
     /// 是否启用缓存预热。设为 false 时跳过启动时的 cache warmup，减少启动时间
     pub enable_cache_warmup: bool,
+
+    /// 分布式任务租约（秒）。Worker 续租间隔应远小于此值
+    pub task_lease_seconds: u64,
+    /// 任务队列后台 dispatch 间隔（毫秒）
+    pub task_dispatch_interval_ms: u64,
+    /// 任务重试（纯/幂等/副作用）上限
+    pub task_retries_pure: u8,
+    pub task_retries_idempotent: u8,
+    pub task_retries_side_effectful: u8,
+
+    /// Worker 节点心跳间隔（秒），用于 Master 侧判定在线状态 & Worker 上报负载频率
+    pub worker_heartbeat_interval_secs: u64,
+    /// Worker 执行任务心跳间隔（秒），用于续租 running 任务
+    pub worker_task_heartbeat_interval_secs: u64,
 }
 
 // FileConfig struct removed
@@ -51,6 +65,13 @@ impl AppConfig {
             .set_default("log_format", "pretty")?
             .set_default("enable_plugins", true)?
             .set_default("enable_cache_warmup", true)?
+            .set_default("task_lease_seconds", 300_u64)?
+            .set_default("task_dispatch_interval_ms", 1000_u64)?
+            .set_default("task_retries_pure", 3_u8)?
+            .set_default("task_retries_idempotent", 2_u8)?
+            .set_default("task_retries_side_effectful", 0_u8)?
+            .set_default("worker_heartbeat_interval_secs", 10_u64)?
+            .set_default("worker_task_heartbeat_interval_secs", 10_u64)?
             // 2. 加载配置文件 (如果存在)
             .add_source(config::File::with_name(&config_path).required(false))
             // 3. 加载环境变量 (CINE_ 前缀，例如 CINE_PORT=8080)
@@ -78,6 +99,13 @@ impl AppConfig {
             log_format: config.log_format,
             enable_plugins: config.enable_plugins,
             enable_cache_warmup: config.enable_cache_warmup,
+            task_lease_seconds: config.task_lease_seconds,
+            task_dispatch_interval_ms: config.task_dispatch_interval_ms,
+            task_retries_pure: config.task_retries_pure,
+            task_retries_idempotent: config.task_retries_idempotent,
+            task_retries_side_effectful: config.task_retries_side_effectful,
+            worker_heartbeat_interval_secs: config.worker_heartbeat_interval_secs,
+            worker_task_heartbeat_interval_secs: config.worker_task_heartbeat_interval_secs,
         };
 
         // 确保目录存在
@@ -105,6 +133,13 @@ struct Dictionary {
     enable_plugins: bool,
     #[serde(default = "default_true")]
     enable_cache_warmup: bool,
+    task_lease_seconds: u64,
+    task_dispatch_interval_ms: u64,
+    task_retries_pure: u8,
+    task_retries_idempotent: u8,
+    task_retries_side_effectful: u8,
+    worker_heartbeat_interval_secs: u64,
+    worker_task_heartbeat_interval_secs: u64,
 }
 
 fn default_true() -> bool {

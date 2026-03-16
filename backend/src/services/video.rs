@@ -6,7 +6,7 @@ use std::process::Command;
 pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
     // 检查 ffprobe 是否可用
     let ffprobe_output = Command::new("ffprobe")
-        .args(&[
+        .args([
             "-v",
             "quiet",
             "-print_format",
@@ -213,7 +213,7 @@ pub async fn generate_thumbnail(
     let offset = time_offset.unwrap_or(10.0); // 默认第10秒
 
     let output = Command::new("ffmpeg")
-        .args(&[
+        .args([
             "-i",
             file_path,
             "-ss",

@@ -1,22 +1,18 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, useRoutes } from 'react-router-dom'
+import { Suspense } from 'react'
 import Sidebar from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import LoadingWrapper from './components/LoadingWrapper'
 import { Toaster } from 'sonner'
+import { operationsRoutes } from './routes/operationsRoutes'
+import { managementRoutes } from './routes/managementRoutes'
 
-// Lazy load page components
-const Workflow = lazy(() => import('./pages/Workflow'))
-const Scanner = lazy(() => import('./pages/Scanner'))
-const Scraper = lazy(() => import('./pages/Scraper'))
-const Dedupe = lazy(() => import('./pages/Dedupe'))
-const Renamer = lazy(() => import('./pages/Renamer'))
-const FileManager = lazy(() => import('./pages/FileManager'))
-const Trash = lazy(() => import('./pages/Trash'))
-const OperationLogs = lazy(() => import('./pages/OperationLogs'))
-const Tasks = lazy(() => import('./pages/Tasks'))
-const Settings = lazy(() => import('./pages/Settings'))
-const Dashboard = lazy(() => import('./pages/Dashboard'))
+const allRoutes = [...operationsRoutes, ...managementRoutes]
+
+function AppRoutes() {
+  const element = useRoutes(allRoutes)
+  return element
+}
 
 function App() {
   return (
@@ -30,17 +26,7 @@ function App() {
               <div className="w-full space-y-4">
                 <Suspense fallback={<LoadingWrapper loading={true} />}>
                   <Routes>
-                    <Route path="/" element={<Workflow />} />
-                    <Route path="/scanner" element={<Scanner />} />
-                    <Route path="/scraper" element={<Scraper />} />
-                    <Route path="/dedupe" element={<Dedupe />} />
-                    <Route path="/renamer" element={<Renamer />} />
-                    <Route path="/file-manager" element={<FileManager />} />
-                    <Route path="/trash" element={<Trash />} />
-                    <Route path="/logs" element={<OperationLogs />} />
-                    <Route path="/tasks" element={<Tasks />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/*" element={<AppRoutes />} />
                   </Routes>
                 </Suspense>
               </div>

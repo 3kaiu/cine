@@ -61,11 +61,11 @@ async fn watch_directory(path_str: &str, tx: mpsc::Sender<String>) -> anyhow::Re
     tracing::info!("Started watching directory: {}", path_str);
 
     // Debounce loop
-    while let Some(_) = notif_rx.recv().await {
+    while notif_rx.recv().await.is_some() {
         // 等待一段时间确保文件操作完成（尤其是从网络驱动器复制时）
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         // 清理后续短时间内的重复信号
-        while let Ok(_) = notif_rx.try_recv() {}
+        while notif_rx.try_recv().is_ok() {}
 
         tracing::info!("Change detected in {}, triggering auto-scan", path_str);
         let _ = tx.send(path_str.to_string()).await;

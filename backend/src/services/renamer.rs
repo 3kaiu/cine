@@ -317,7 +317,7 @@ pub async fn rename_file(db: &SqlitePool, file_id: &str, new_name: &str) -> anyh
         "rename",
         Some(file_id),
         &file.path,
-        Some(&new_path.to_string_lossy().to_string()),
+        Some(new_path.to_string_lossy().as_ref()),
     )
     .await;
 

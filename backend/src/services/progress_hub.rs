@@ -57,3 +57,9 @@ impl ProgressHub {
     }
 }
 
+impl Default for ProgressHub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+

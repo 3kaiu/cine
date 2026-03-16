@@ -8,21 +8,23 @@ use axum::{
     middleware::Next,
     response::Response,
 };
+use std::str::FromStr;
 
 /// API版本头
 pub const API_VERSION_HEADER: &str = "x-api-version";
 
 /// 支持的API版本
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ApiVersion {
     V1,
     V2,
+    #[default]
     Latest,
 }
 
 impl ApiVersion {
     /// 从字符串解析版本
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "1" | "v1" | "1.0" => Some(ApiVersion::V1),
             "2" | "v2" | "2.0" => Some(ApiVersion::V2),
@@ -41,9 +43,11 @@ impl ApiVersion {
     }
 }
 
-impl Default for ApiVersion {
-    fn default() -> Self {
-        ApiVersion::Latest
+impl FromStr for ApiVersion {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s).ok_or(())
     }
 }
 
@@ -95,7 +99,7 @@ fn extract_api_version(headers: &HeaderMap) -> ApiVersion {
     // 优先检查自定义版本头
     if let Some(version_header) = headers.get(API_VERSION_HEADER) {
         if let Ok(version_str) = version_header.to_str() {
-            if let Some(version) = ApiVersion::from_str(version_str) {
+            if let Some(version) = ApiVersion::parse(version_str) {
                 return version;
             }
         }
@@ -108,7 +112,7 @@ fn extract_api_version(headers: &HeaderMap) -> ApiVersion {
                 let parts: Vec<&str> = accept_str.split("vnd.cine.").collect();
                 if parts.len() > 1 {
                     let version_part = parts[1].split('+').next().unwrap_or("");
-                    if let Some(version) = ApiVersion::from_str(version_part) {
+                    if let Some(version) = ApiVersion::parse(version_part) {
                         return version;
                     }
                 }
@@ -126,10 +130,10 @@ mod tests {
 
     #[test]
     fn test_api_version_parsing() {
-        assert_eq!(ApiVersion::from_str("v1"), Some(ApiVersion::V1));
-        assert_eq!(ApiVersion::from_str("v2"), Some(ApiVersion::V2));
-        assert_eq!(ApiVersion::from_str("latest"), Some(ApiVersion::Latest));
-        assert_eq!(ApiVersion::from_str("invalid"), None);
+        assert_eq!(ApiVersion::parse("v1"), Some(ApiVersion::V1));
+        assert_eq!(ApiVersion::parse("v2"), Some(ApiVersion::V2));
+        assert_eq!(ApiVersion::parse("latest"), Some(ApiVersion::Latest));
+        assert_eq!(ApiVersion::parse("invalid"), None);
     }
 
     #[test]

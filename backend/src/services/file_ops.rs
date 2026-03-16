@@ -38,13 +38,41 @@ pub async fn move_file(
         .ok_or_else(|| anyhow::anyhow!("Invalid file name"))?;
     let target_path = target_dir_path.join(file_name);
 
-    // 检查目标文件是否已存在
+    // 幂等保护：如果目标已存在且源不存在，视为“已移动完成”
+    if target_path.exists() && !source_path.exists() {
+        let new_path_str = target_path.to_string_lossy().to_string();
+        let _ = sqlx::query("UPDATE media_files SET path = ?, updated_at = ? WHERE id = ?")
+            .bind(&new_path_str)
+            .bind(chrono::Utc::now().to_rfc3339())
+            .bind(file_id)
+            .execute(db)
+            .await;
+
+        return Ok(FileOperationResult {
+            file_id: file_id.to_string(),
+            success: true,
+            new_path: Some(new_path_str),
+            error: None,
+        });
+    }
+
+    // 检查目标文件是否已存在（源仍存在时，判定为冲突）
     if target_path.exists() {
         return Ok(FileOperationResult {
             file_id: file_id.to_string(),
             success: false,
             new_path: None,
             error: Some("Target file already exists".to_string()),
+        });
+    }
+
+    // 源文件不存在：无法移动
+    if !source_path.exists() {
+        return Ok(FileOperationResult {
+            file_id: file_id.to_string(),
+            success: false,
+            new_path: None,
+            error: Some("Source file is missing".to_string()),
         });
     }
 
@@ -95,13 +123,23 @@ pub async fn copy_file(
         .ok_or_else(|| anyhow::anyhow!("Invalid file name"))?;
     let target_path = target_dir_path.join(file_name);
 
-    // 检查目标文件是否已存在
+    // 幂等保护：目标已存在则视为“已复制完成”
     if target_path.exists() {
+        return Ok(FileOperationResult {
+            file_id: file_id.to_string(),
+            success: true,
+            new_path: Some(target_path.to_string_lossy().to_string()),
+            error: None,
+        });
+    }
+
+    // 源文件不存在：无法复制
+    if !source_path.exists() {
         return Ok(FileOperationResult {
             file_id: file_id.to_string(),
             success: false,
             new_path: None,
-            error: Some("Target file already exists".to_string()),
+            error: Some("Source file is missing".to_string()),
         });
     }
 

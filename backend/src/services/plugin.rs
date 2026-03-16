@@ -73,7 +73,7 @@ impl PluginManager {
 
         while let Some(entry) = read_dir.next_entry().await? {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "wasm") {
+            if path.extension().is_some_and(|ext| ext == "wasm") {
                 match self.load_single_plugin(&path).await {
                     Ok(plugin) => {
                         tracing::info!("Loaded plugin: {} ({})", plugin.info.name, plugin.info.id);

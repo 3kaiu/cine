@@ -61,5 +61,23 @@ export function useTaskMutations() {
     onError: (e: unknown) => handleError(e, '清理失败'),
   })
 
-  return { pauseMutation, resumeMutation, cancelMutation, cleanupMutation }
+  const requeueMutation = useMutation({
+    mutationFn: (id: string) => tasksApi.requeue(id),
+    onSuccess: () => {
+      showSuccess('任务已重新排队')
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+    onError: (e: unknown) => handleError(e, '重新排队失败'),
+  })
+
+  const rerunMutation = useMutation({
+    mutationFn: (id: string) => tasksApi.rerun(id),
+    onSuccess: () => {
+      showSuccess('任务已重新创建')
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+    onError: (e: unknown) => handleError(e, '重新执行失败'),
+  })
+
+  return { pauseMutation, resumeMutation, cancelMutation, cleanupMutation, requeueMutation, rerunMutation }
 }

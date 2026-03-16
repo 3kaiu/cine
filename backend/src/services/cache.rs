@@ -160,7 +160,7 @@ impl FileHashCache {
         let mut sys = System::new_all();
         sys.refresh_all();
 
-        let available_memory = sys.available_memory() as u64;
+        let available_memory = sys.available_memory();
 
         // 为哈希缓存分配可用内存的5%，每个缓存项大约200字节
         let cache_memory_mb = (available_memory / 1024 / 1024) as usize / 20; // 5%

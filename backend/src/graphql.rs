@@ -130,7 +130,7 @@ impl QueryRoot {
 
         // 获取总数（简化实现）
         let total_count = files.len() as i64;
-        let has_more = params.limit.map_or(false, |limit| total_count > limit);
+        let has_more = params.limit.is_some_and(|limit| total_count > limit);
 
         // 转换为GraphQL对象
         let gql_files = files
@@ -382,6 +382,6 @@ mod tests {
         let response = schema.execute(request).await;
 
         // 由于没有提供AppState，查询会失败，但schema创建应该成功
-        assert!(response.is_ok() || response.errors.len() > 0);
+        assert!(response.is_ok() || !response.errors.is_empty());
     }
 }

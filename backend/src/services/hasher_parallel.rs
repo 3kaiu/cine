@@ -76,7 +76,6 @@ pub async fn batch_calculate_hash_parallel(
             let completed_count = completed_count.clone();
             let error_count = error_count.clone();
             let last_reported = last_reported.clone();
-            let progress_report_interval = progress_report_interval;
             let mut ctx_item = ctx.clone();
 
             async move {
@@ -103,7 +102,8 @@ pub async fn batch_calculate_hash_parallel(
                     let last = last_reported.load(Ordering::SeqCst);
                     let should_report_interval =
                         current_completed - last >= progress_report_interval;
-                    let should_report_percentage = (current_completed * 100 / total) % 5 == 0;
+                    let should_report_percentage =
+                        (current_completed * 100 / total).is_multiple_of(5);
 
                     if should_report_interval || should_report_percentage {
                         last_reported

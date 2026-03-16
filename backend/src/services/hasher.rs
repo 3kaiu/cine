@@ -20,8 +20,8 @@ impl MemoryManager {
         let mut sys = System::new_all();
         sys.refresh_all();
 
-        let _total_memory = sys.total_memory() as u64;
-        let available_memory = sys.available_memory() as u64;
+        let _total_memory = sys.total_memory();
+        let available_memory = sys.available_memory();
 
         // 为系统保留20%的内存
         let usable_memory = (available_memory as f64 * 0.8) as u64;
@@ -31,7 +31,7 @@ impl MemoryManager {
             m if m > 8 * 1024 * 1024 * 1024 => 128 * 1024 * 1024, // 8GB+ -> 128MB
             m if m > 4 * 1024 * 1024 * 1024 => 64 * 1024 * 1024,  // 4GB+ -> 64MB
             m if m > 2 * 1024 * 1024 * 1024 => 32 * 1024 * 1024,  // 2GB+ -> 32MB
-            m if m > 1 * 1024 * 1024 * 1024 => 16 * 1024 * 1024,  // 1GB+ -> 16MB
+            m if m > 1024 * 1024 * 1024 => 16 * 1024 * 1024,      // 1GB+ -> 16MB
             _ => 8 * 1024 * 1024,                                 // <1GB -> 8MB
         };
 

@@ -70,9 +70,7 @@ pub async fn scrape_metadata(
 
             // 执行视频质量分析
             let video_info = video::extract_video_info(&file.path).await.ok();
-            let quality_score = video_info
-                .as_ref()
-                .map(|info| quality::calculate_quality_score(info));
+            let quality_score = video_info.as_ref().map(quality::calculate_quality_score);
 
             // 保存到数据库
             let metadata_json = serde_json::to_string(&metadata).unwrap_or_default();

@@ -91,11 +91,21 @@ pub async fn get_files_paginated_optimized(
     file_type: Option<&str>,
     options: QueryOptions
 ) -> anyhow::Result<Vec<MediaFile>> {
-    let fields = vec![
-        "id", "path", "name", "size", "file_type",
-        "hash_xxhash", "hash_md5", "tmdb_id", "quality_score",
-        "created_at", "updated_at", "last_modified"
-    ].join(", ");
+    let fields = [
+        "id",
+        "path",
+        "name",
+        "size",
+        "file_type",
+        "hash_xxhash",
+        "hash_md5",
+        "tmdb_id",
+        "quality_score",
+        "created_at",
+        "updated_at",
+        "last_modified",
+    ]
+    .join(", ");
 
     let mut query = format!("SELECT {} FROM media_files WHERE 1=1", fields);
     let mut bindings = Vec::new();

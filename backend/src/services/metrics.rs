@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
+use prometheus::{Counter, CounterVec, Gauge, Histogram, HistogramOpts, Opts, Registry};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -202,7 +202,8 @@ impl EnhancedMetricsCollector {
         labels: &[&str],
     ) -> anyhow::Result<()> {
         let counter = Counter::with_opts(Opts::new(name, help))?;
-        let labeled_counter = if labels.is_empty() { counter } else { counter };
+        let _ = labels;
+        let labeled_counter = counter;
 
         self.registry.register(Box::new(labeled_counter.clone()))?;
         self.metrics
@@ -221,7 +222,8 @@ impl EnhancedMetricsCollector {
         labels: &[&str],
     ) -> anyhow::Result<()> {
         let gauge = Gauge::with_opts(Opts::new(name, help))?;
-        let labeled_gauge = if labels.is_empty() { gauge } else { gauge };
+        let _ = labels;
+        let labeled_gauge = gauge;
 
         self.registry.register(Box::new(labeled_gauge.clone()))?;
         self.metrics
@@ -573,9 +575,11 @@ pub struct Metrics {
     pub hash_throughput_bytes: Counter,
     pub scan_duration_seconds: Histogram,
     pub scrape_requests_total: Counter,
+    pub tasks_lease_reclaimed_total: Counter,
+    pub tasks_retry_total: CounterVec,
 }
 
-pub static REGISTRY: Lazy<Registry> = Lazy::new(|| Registry::new());
+pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
 
 pub static METRICS: Lazy<Metrics> = Lazy::new(|| {
     // 初始化增强指标收集器
@@ -606,6 +610,21 @@ pub static METRICS: Lazy<Metrics> = Lazy::new(|| {
     ))
     .unwrap();
 
+    let tasks_lease_reclaimed_total = Counter::with_opts(Opts::new(
+        "cine_tasks_lease_expired_total",
+        "Total number of tasks reclaimed due to expired leases",
+    ))
+    .unwrap();
+
+    let tasks_retry_total = CounterVec::new(
+        Opts::new(
+            "cine_tasks_retry_total",
+            "Total number of task retries by task_type",
+        ),
+        &["task_type"],
+    )
+    .unwrap();
+
     REGISTRY.register(Box::new(active_tasks.clone())).unwrap();
     REGISTRY
         .register(Box::new(hash_throughput_bytes.clone()))
@@ -616,11 +635,17 @@ pub static METRICS: Lazy<Metrics> = Lazy::new(|| {
     REGISTRY
         .register(Box::new(scrape_requests_total.clone()))
         .unwrap();
+    REGISTRY
+        .register(Box::new(tasks_lease_reclaimed_total.clone()))
+        .unwrap();
+    REGISTRY.register(Box::new(tasks_retry_total.clone())).unwrap();
 
     Metrics {
         active_tasks,
         hash_throughput_bytes,
         scan_duration_seconds,
         scrape_requests_total,
+        tasks_lease_reclaimed_total,
+        tasks_retry_total,
     }
 });
