@@ -11,7 +11,7 @@ import {
 import { mediaApi, MediaFile, ScanHistory } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import ProgressMonitor from '@/components/ProgressMonitor'
-import VirtualizedTable from '@/components/VirtualizedTable'
+import VirtualizedTable, { type TableColumn } from '@/components/VirtualizedTable'
 import { handleError } from '@/utils/errorHandler'
 import { debounce } from 'lodash-es'
 import SubtitleHub from '@/components/SubtitleHub'
@@ -179,7 +179,7 @@ export default function Scanner() {
     }
   }, [messages, taskId, scanning, refetch, refetchHistory])
 
-  const columns = useMemo(() => [
+  const columns = useMemo<TableColumn<MediaFile>[]>(() => [
     {
       title: '文件名',
       dataIndex: 'name',
@@ -551,7 +551,7 @@ interface MediaLibrarySectionProps {
   }>>
   selectedDirectory: string | null
   onClearDirectory: () => void
-  columns: ReturnType<typeof useMemo>
+  columns: TableColumn<MediaFile>[]
   onRefetch: () => void
   onOpenSubtitle: (fileId: string) => void
 }

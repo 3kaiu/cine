@@ -8,7 +8,7 @@ import ContextMenu from '@/components/ContextMenu'
 import StorageChart from '@/components/StorageChart'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
-import VirtualizedTable from '@/components/VirtualizedTable'
+import VirtualizedTable, { type TableColumn } from '@/components/VirtualizedTable'
 import { handleError } from '@/utils/errorHandler'
 import { showSuccess } from '@/utils/toast'
 import { exportTableData } from '@/utils/export'
@@ -76,7 +76,7 @@ export default function FileManager() {
   }, [filesData])
 
   // 表格列定义
-  const columns = useMemo(() => [
+  const columns = useMemo<TableColumn<MediaFile>[]>(() => [
     {
       title: '名称',
       dataIndex: 'name',
@@ -659,7 +659,7 @@ function FileManagerToolbar({
 interface FileManagerTableProps {
   filteredFiles: MediaFile[]
   isPending: boolean
-  columns: ReturnType<typeof useMemo>
+  columns: TableColumn<MediaFile>[]
   selectedRowKeys: string[]
   setSelectedRowKeys: (keys: string[]) => void
 }

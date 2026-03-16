@@ -10,7 +10,7 @@ import {
   Check,
 } from '@gravity-ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, type UseMutationResult } from '@tanstack/react-query'
 import { handleError } from '@/utils/errorHandler'
 import { showSuccess } from '@/utils/toast'
 import clsx from 'clsx'
@@ -57,7 +57,7 @@ export default function Dedupe() {
     enabled: false,
   })
 
-  const trashMutation = useMutation({
+  const trashMutation = useMutation<unknown, unknown, string, unknown>({
     mutationFn: (id: string) => mediaApi.moveToTrash(id),
     onSuccess: () => {
       refetch()
@@ -68,7 +68,7 @@ export default function Dedupe() {
     },
   })
 
-  const batchTrashMutation = useMutation({
+  const batchTrashMutation = useMutation<unknown, unknown, string[], unknown>({
     mutationFn: async (ids: string[]) => {
       const results = await Promise.allSettled(
         ids.map(id => mediaApi.moveToTrash(id))
@@ -1004,7 +1004,7 @@ interface DedupeBottomBarProps {
   getSelectedRedundantFiles: () => string[]
   onClearSelection: () => void
   onBatchDelete: () => void
-  batchTrashMutation: ReturnType<typeof useMutation>
+  batchTrashMutation: UseMutationResult<unknown, unknown, unknown, unknown>
 }
 
 function DedupeBottomBar({
