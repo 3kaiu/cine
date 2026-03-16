@@ -1,7 +1,8 @@
 # 多阶段构建 Dockerfile
 
-# 阶段1: 构建 Rust 后端（需要支持 edition 2024 的 nightly Cargo）
-FROM rust:nightly AS rust-builder
+# 阶段1: 构建 Rust 后端（edition 2024 已稳定，使用固定版本避免 nightly tag 波动）
+# Rust 1.85+ 支持 edition 2024；这里选择 bookworm 变体便于依赖兼容。
+FROM rust:1.85-bookworm AS rust-builder
 
 WORKDIR /app
 
