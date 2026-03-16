@@ -1,7 +1,7 @@
 # 多阶段构建 Dockerfile
 
 # 阶段1: 构建 Rust 后端
-FROM rust:1.70 AS rust-builder
+FROM rust:1.82 AS rust-builder
 
 WORKDIR /app
 
@@ -58,7 +58,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # 从构建阶段复制文件
-COPY --from=rust-builder /app/backend/target/release/cine-backend ./backend/
+COPY --from=rust-builder /app/target/release/cine-backend ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # 创建数据目录
