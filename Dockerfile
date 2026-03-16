@@ -1,7 +1,7 @@
 # 多阶段构建 Dockerfile
 
-# 阶段1: 构建 Rust 后端
-FROM rust:1.82 AS rust-builder
+# 阶段1: 构建 Rust 后端（需要支持 edition 2024 的 nightly Cargo）
+FROM rust:nightly AS rust-builder
 
 WORKDIR /app
 
