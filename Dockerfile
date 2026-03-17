@@ -9,12 +9,14 @@ WORKDIR /app
 # 复制依赖文件
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
-# 创建虚拟项目以缓存依赖（只构建后端 crate，避免多余 bench 代码参与依赖解析）
-RUN mkdir src && \
+# 创建虚拟项目以缓存依赖（包含 bench 占位文件，避免 Cargo 报错）
+RUN mkdir -p src benches && \
     echo "fn main() {}" > src/main.rs && \
     touch src/lib.rs && \
+    echo "fn main() {}" > benches/hash_bench.rs && \
+    echo "fn main() {}" > benches/performance_bench.rs && \
     cargo build --release --bin cine-backend && \
-    rm -rf src
+    rm -rf src benches
 
 # 复制源代码（仅后端 crate）
 COPY backend/src ./src

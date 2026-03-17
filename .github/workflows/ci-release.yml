@@ -1,0 +1,411 @@
+name: Cine CI + Docker + fnOS Release
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+
+jobs:
+  backend:
+    name: Backend CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend -> target
+
+      - name: Install FFmpeg (Test Dependency)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Run Tests (CI profile)
+        working-directory: backend
+        run: cargo test --profile ci --workspace -- --nocapture
+
+      - name: Build backend binary for artifacts
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        working-directory: backend
+        run: cargo build --release --bin cine-backend
+
+      - name: Upload Backend Executable (for release)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-backend-bin
+          path: backend/target/release/cine-backend
+
+      - name: Install cargo-tarpaulin
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: taiki-e/install-action@cargo-tarpaulin
+
+      - name: Generate Coverage
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: backend
+        run: cargo tarpaulin --out Xml --output-dir coverage
+
+      - name: Upload Coverage
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          file: ./backend/coverage/cobertura.xml
+          flags: backend
+
+  frontend:
+    name: Frontend CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        working-directory: frontend
+        run: pnpm run lint
+
+      - name: Test & Coverage
+        working-directory: frontend
+        run: pnpm run test:coverage
+
+      - name: Build
+        working-directory: frontend
+        run: pnpm run build
+
+      - name: Upload Coverage
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          file: ./frontend/coverage/coverage-final.json
+          flags: frontend
+
+      - name: Upload Frontend Static Files (for release)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-frontend-dist
+          path: frontend/dist/
+
+      - name: Ensure Public Icon Exists
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: touch frontend/public/icon.svg
+
+      - name: Upload Frontend Icon
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: cine-frontend-icon
+          path: frontend/public/icon.svg
+
+  e2e:
+    name: Frontend E2E
+    runs-on: ubuntu-latest
+    needs: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Get Playwright version
+        working-directory: frontend
+        id: playwright-version
+        run: echo "version=$(pnpm ls @playwright/test --depth=0 --json | jq -r '.[0].dependencies[\"@playwright/test\"].version')" >> $GITHUB_OUTPUT
+
+      - name: Cache Playwright
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright
+        working-directory: frontend
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm dlx playwright install --with-deps
+
+      - name: Install Playwright system dependencies
+        working-directory: frontend
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm dlx playwright install-deps
+
+      - name: Build
+        working-directory: frontend
+        run: pnpm run build
+
+      - name: Run E2E
+        working-directory: frontend
+        run: pnpm run test:e2e
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+  docker:
+    name: Build Docker Image
+    needs: [backend, frontend, e2e]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: media-toolbox:latest,media-toolbox:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  package-and-release:
+    name: Package fnOS FPK and GitHub Release
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Prepare Workspace
+        run: |
+          mkdir -p app/backend app/frontend config cmd
+
+      - name: Download Backend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-backend-bin
+          path: app/backend/
+
+      - name: Download Frontend Dist
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-frontend-dist
+          path: app/frontend/
+
+      - name: Download Frontend Icon
+        uses: actions/download-artifact@v4
+        with:
+          name: cine-frontend-icon
+          path: /tmp/icons/
+
+      - name: Ensure Correct Backend Permissions
+        run: chmod +x app/backend/cine-backend
+
+      - name: Get version from Cargo.toml
+        id: package_version
+        run: |
+          VERSION=$(grep -m1 '^version' backend/Cargo.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate Config and Manifests
+        run: |
+          VERSION="${{ steps.package_version.outputs.version }}"
+
+          # 处理图标
+          if [ -s "/tmp/icons/icon.svg" ]; then
+             cp /tmp/icons/icon.svg ICON.PNG
+             cp /tmp/icons/icon.svg ICON_256.PNG
+          else
+             touch ICON.PNG ICON_256.PNG
+          fi
+
+          # 创建配置文件
+          mkdir -p config app/config
+          cat > config/privilege <<EOF
+          {
+              "defaults": {
+                  "run-as": "root"
+              },
+              "filesystem": {
+                  "read": ["/"],
+                  "write": ["/data/cine"]
+              }
+          }
+          EOF
+
+          cat > app/config/config.json <<EOF
+          {
+              "port": 3000,
+              "database_url": "sqlite:/data/cine.db",
+              "hash_cache_dir": "/data/cine/hash_cache",
+              "trash_dir": "/data/cine/trash"
+          }
+          EOF
+
+          cat > manifest <<EOF
+          {
+              "app": "cine",
+              "version": "$VERSION",
+              "description": "Cine - 专为NAS用户打造的高性能影视文件管理工具",
+              "main": "app/backend/cine-backend",
+              "author": "Cine Team",
+              "license": "MIT"
+          }
+          EOF
+
+      - name: Install fnpack
+        run: |
+          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.0-linux-amd64"
+          echo "从 $FNPACK_URL 下载 fnpack..."
+
+          if curl -L -o /tmp/fnpack "$FNPACK_URL"; then
+            chmod +x /tmp/fnpack
+            sudo mv /tmp/fnpack /usr/local/bin/fnpack
+            if fnpack --version || true; then
+              echo "✅ fnpack 安装成功"
+              echo "FPK_BUILD=true" >> $GITHUB_ENV
+            else
+              echo "⚠️ fnpack 运行失败，回退到 tar.gz"
+              echo "FPK_BUILD=false" >> $GITHUB_ENV
+            fi
+          else
+            echo "❌ fnpack 下载失败，将创建 tar.gz 包"
+            echo "FPK_BUILD=false" >> $GITHUB_ENV
+          fi
+
+      - name: Build FPK file
+        id: build_fpk
+        run: |
+          VERSION="${{ steps.package_version.outputs.version }}"
+
+          if [ "${{ env.FPK_BUILD }}" = "true" ]; then
+            fnpack build
+            if [ -f "cine.fpk" ]; then
+              mv cine.fpk cine-$VERSION.fpk
+              echo "FPK_FILE=cine-$VERSION.fpk" >> $GITHUB_ENV
+            else
+              echo "FPK_BUILD=false" >> $GITHUB_ENV
+            fi
+          fi
+
+          if [ "${{ env.FPK_BUILD }}" != "true" ]; then
+            tar -czf cine-$VERSION.tar.gz app/ config/ cmd/ manifest ICON.PNG ICON_256.PNG
+            echo "FPK_FILE=cine-$VERSION.tar.gz" >> $GITHUB_ENV
+          fi
+
+          cat > INSTALL.md <<EOF
+          # Cine 安装说明
+
+          ## 方式一：直接安装 fpk 文件（推荐）
+
+          1. 下载 \`cine-$VERSION.fpk\` 文件
+          2. 在飞牛OS管理界面中上传并安装
+
+          ## 方式二：使用 tar.gz 包
+
+          1. 下载并解压 \`cine-$VERSION.tar.gz\`
+          2. 在解压后的目录中运行 \`fnpack build\` 生成 fpk 文件
+          3. 在飞牛OS管理界面中上传并安装生成的 fpk 文件
+          EOF
+
+      - name: Get Tag Output
+        id: get_version
+        run: |
+          VERSION="${{ steps.package_version.outputs.version }}"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+          else
+            TAG_NAME="v$VERSION"
+          fi
+          echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Delete existing release
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ${{ steps.get_version.outputs.tag }} --cleanup-tag --yes || true
+          sleep 2
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          body: |
+            ## Cine ${{ steps.get_version.outputs.version }}
+
+            ### 📦 下载安装包
+
+            - **FPK 文件**: `cine-${{ steps.get_version.outputs.version }}.fpk` - 可直接安装的 fpk 文件（如果可用）
+            - **FPK 包**: `cine-${{ steps.get_version.outputs.version }}.tar.gz` - 包含完整应用文件的压缩包
+            - **后端二进制**: `cine-backend-${{ steps.get_version.outputs.version }}-linux-x86_64` - 仅后端可执行文件
+            - **安装说明**: `INSTALL.md` - 详细的安装指南
+
+            ### 🚀 快速安装
+
+            1. 下载 `cine-${{ steps.get_version.outputs.version }}.fpk` 文件（如果可用）
+            2. 在飞牛OS管理界面中上传并安装
+
+            如果没有 fpk 文件，请下载 tar.gz 包，解压后运行 \`fnpack build\` 生成 fpk 文件。
+
+            ### 📝 变更内容
+
+            查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详细变更。
+          files: |
+            ${{ env.FPK_FILE }}
+            INSTALL.md
+            app/backend/cine-backend
+          draft: false
+          prerelease: false
+
