@@ -2,7 +2,7 @@
 
 # 阶段1: 构建 Rust 后端（edition 2024 已稳定，使用固定版本避免 nightly tag 波动）
 # Rust 1.85+ 支持 edition 2024；这里选择 bookworm 变体便于依赖兼容。
-FROM rust:1.85-bookworm AS rust-builder
+FROM rust:1.87-bookworm AS rust-builder
 
 WORKDIR /app
 
