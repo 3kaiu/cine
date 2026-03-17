@@ -1,7 +1,6 @@
 # 多阶段构建 Dockerfile
 
-# 阶段1: 构建 Rust 后端（edition 2024 已稳定，使用固定版本避免 nightly tag 波动）
-# Rust 1.85+ 支持 edition 2024；这里选择 bookworm 变体便于依赖兼容。
+# 阶段1: 构建 Rust 后端
 FROM rust:1.87-bookworm AS rust-builder
 
 WORKDIR /app
@@ -18,12 +17,13 @@ RUN mkdir -p src benches && \
     cargo build --release --bin cine-backend && \
     rm -rf src benches
 
-# 复制源代码（仅后端 crate）
+# 复制源代码
 COPY backend/src ./src
 COPY backend/migrations ./migrations
+COPY backend/benches ./benches
 COPY backend/build.rs ./
 
-# 构建应用（仅后端二进制，使用 release 配置以获得运行时性能）
+# 构建应用
 RUN cargo build --release --bin cine-backend
 
 # 阶段2: 构建前端
