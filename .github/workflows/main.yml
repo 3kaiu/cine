@@ -310,16 +310,8 @@ jobs:
           if curl -L -o /tmp/fnpack "$FNPACK_URL"; then
             chmod +x /tmp/fnpack
             sudo mv /tmp/fnpack /usr/local/bin/fnpack
-            if fnpack --version || true; then
-              echo "✅ fnpack 安装成功"
-              echo "FPK_BUILD=true" >> $GITHUB_ENV
-            else
-              echo "⚠️ fnpack 运行失败，回退到 tar.gz"
-              echo "FPK_BUILD=false" >> $GITHUB_ENV
-            fi
           else
             echo "❌ fnpack 下载失败，将创建 tar.gz 包"
-            echo "FPK_BUILD=false" >> $GITHUB_ENV
           fi
 
       - name: Build FPK file
@@ -327,20 +319,25 @@ jobs:
         run: |
           VERSION="${{ steps.package_version.outputs.version }}"
 
-          if [ "${{ env.FPK_BUILD }}" = "true" ]; then
-            fnpack build
-            if [ -f "cine.fpk" ]; then
-              mv cine.fpk cine-$VERSION.fpk
-              echo "FPK_FILE=cine-$VERSION.fpk" >> $GITHUB_ENV
+          # 优先尝试生成 fpk（如果 fnpack 可用）
+          if command -v fnpack >/dev/null 2>&1; then
+            echo "检测到 fnpack，尝试生成 fpk 包..."
+            if fnpack build; then
+              if [ -f "cine.fpk" ]; then
+                mv cine.fpk cine-$VERSION.fpk
+                echo "生成 fpk 成功: cine-$VERSION.fpk"
+              else
+                echo "fnpack 运行成功但未找到 cine.fpk，跳过 fpk 重命名。"
+              fi
             else
-              echo "FPK_BUILD=false" >> $GITHUB_ENV
+              echo "fnpack 运行失败，将仅生成 tar.gz 包。"
             fi
+          else
+            echo "未检测到 fnpack，将仅生成 tar.gz 包。"
           fi
 
-          if [ "${{ env.FPK_BUILD }}" != "true" ]; then
-            tar -czf cine-$VERSION.tar.gz app/ config/ cmd/ manifest ICON.PNG ICON_256.PNG
-            echo "FPK_FILE=cine-$VERSION.tar.gz" >> $GITHUB_ENV
-          fi
+          # 无论是否有 fpk，始终生成 tar.gz 作为通用安装包
+          tar -czf cine-$VERSION.tar.gz app/ config/ cmd/ manifest ICON.PNG ICON_256.PNG
 
           cat > INSTALL.md <<EOF
           # Cine 安装说明
@@ -394,7 +391,7 @@ jobs:
 
             ### 🚀 快速安装
 
-            1. 下载 `cine-${{ steps.get_version.outputs.version }}.fpk` 文件（如果可用）
+            1. 优先下载 `cine-${{ steps.get_version.outputs.version }}.fpk` 文件（如果存在）
             2. 在飞牛OS管理界面中上传并安装
 
             如果没有 fpk 文件，请下载 tar.gz 包，解压后运行 \`fnpack build\` 生成 fpk 文件。
@@ -403,9 +400,11 @@ jobs:
 
             查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详细变更。
           files: |
-            ${{ env.FPK_FILE }}
+            cine-${{ steps.get_version.outputs.version }}.fpk
+            cine-${{ steps.get_version.outputs.version }}.tar.gz
             INSTALL.md
             app/backend/cine-backend
+          fail_on_unmatched_files: false
           draft: false
           prerelease: false
 
