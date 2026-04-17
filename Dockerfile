@@ -34,19 +34,16 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:22-alpine A
 WORKDIR /app/frontend
 
 # 复制依赖文件
-COPY frontend/package.json frontend/pnpm-lock.yaml* ./
-
-# 安装 pnpm
-RUN npm install -g pnpm
+COPY frontend/package.json frontend/package-lock.json ./
 
 # 安装依赖
-RUN pnpm install --frozen-lockfile
+RUN npm ci
 
 # 复制源代码
 COPY frontend ./
 
 # 构建前端
-RUN pnpm run build
+RUN npm run build
 
 # 阶段3: 运行镜像
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim
