@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Button, Checkbox, Chip, Card, Modal, Surface, Label, SearchField, ListBox, Select } from "@heroui/react";
+import { Button, Checkbox, Chip, Card, Modal, Surface, Label, SearchField, ListBox, Select } from "@/ui/heroui";
 import { Icon } from '@iconify/react'
 import {
   Filmstrip,
   MagicWand,
   Pencil,
   Check,
-} from '@gravity-ui/icons'
+} from '@/ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import VirtualizedTable from '@/components/VirtualizedTable'
@@ -30,7 +30,13 @@ export default function Scraper() {
 
   const { data: files, refetch, isPending } = useQuery({
     queryKey: ['files'],
-    queryFn: () => mediaApi.getFiles({ file_type: 'video', page_size: 100 })
+    queryFn: () =>
+      mediaApi.getFiles({
+        file_type: 'video',
+        page_size: 100,
+        include_video_info: false,
+        include_metadata: true,
+      })
   })
 
   // 过滤和搜索
@@ -112,7 +118,6 @@ export default function Scraper() {
       try {
         const result = await mediaApi.scrapeMetadata({
           file_id: fileId,
-          source: 'tmdb',
           auto_match: false,
           download_images: false,
           generate_nfo: false,
@@ -130,7 +135,6 @@ export default function Scraper() {
     // 自动匹配模式：直接应用
     scrapeMutation.mutate({
       file_id: fileId,
-      source: 'tmdb',
       auto_match: autoMatch,
       download_images: downloadImages,
       generate_nfo: generateNfo,
@@ -143,11 +147,10 @@ export default function Scraper() {
 
     scrapeMutation.mutate({
       file_id: selectedFile,
-      source: 'tmdb',
       auto_match: !metadata,
       download_images: downloadImages,
       generate_nfo: generateNfo,
-      tmdb_id: metadata?.tmdb_id as string | undefined,
+      tmdb_id: metadata?.tmdb_id as number | undefined,
     })
     setPreviewVisible(false)
   }
@@ -161,7 +164,6 @@ export default function Scraper() {
       try {
         await mediaApi.scrapeMetadata({
           file_id: selectedFiles[i],
-          source: 'tmdb',
           auto_match: true,
           download_images: downloadImages,
           generate_nfo: generateNfo,

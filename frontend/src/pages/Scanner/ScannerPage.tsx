@@ -55,7 +55,12 @@ export default function ScannerPage() {
       },
     ],
     queryFn: () => {
-      const params: Record<string, unknown> = { page: currentPage, page_size: pageSize }
+      const params: Record<string, unknown> = {
+        page: currentPage,
+        page_size: pageSize,
+        include_video_info: true,
+        include_metadata: false,
+      }
       if (searchTerm) params.name = searchTerm
       if (fileTypeFilter !== 'all') params.file_type = fileTypeFilter
       return mediaApi.getFiles(params)
@@ -230,4 +235,3 @@ export default function ScannerPage() {
     </div>
   )
 }
-

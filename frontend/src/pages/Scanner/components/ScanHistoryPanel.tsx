@@ -1,9 +1,9 @@
 import clsx from 'clsx'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import { Button, Chip, Surface } from '@heroui/react'
+import { Button, Chip, Surface } from '@/ui/heroui'
 import { Icon } from '@iconify/react'
-import { ArrowRotateLeft, Clock } from '@gravity-ui/icons'
+import { ArrowRotateLeft, Clock } from '@/ui/icons'
 import type { ScanHistory } from '@/api/media'
 
 dayjs.extend(relativeTime)
@@ -168,4 +168,3 @@ function formatFileSize(bytes: number) {
 
   return `${size.toFixed(2)} ${units[unitIndex]}`
 }
-

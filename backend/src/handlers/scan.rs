@@ -78,6 +78,8 @@ pub struct FileListQuery {
     pub name: Option<String>,
     pub min_size: Option<i64>,
     pub max_size: Option<i64>,
+    pub include_video_info: Option<bool>,
+    pub include_metadata: Option<bool>,
 }
 
 /// 获取文件列表
@@ -106,6 +108,8 @@ pub async fn list_files(
             name: query.name,
             min_size: query.min_size,
             max_size: query.max_size,
+            include_video_info: query.include_video_info,
+            include_metadata: query.include_metadata,
         })
         .await?;
 

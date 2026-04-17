@@ -8,7 +8,10 @@ use common::create_test_file;
 // use sqlx::SqlitePool;
 
 /// 创建测试应用状态
-async fn create_test_app_state() -> (std::sync::Arc<cine_backend::handlers::AppState>, tempfile::TempDir) {
+async fn create_test_app_state() -> (
+    std::sync::Arc<cine_backend::handlers::AppState>,
+    tempfile::TempDir,
+) {
     common::create_test_app_state().await
 }
 

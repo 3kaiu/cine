@@ -60,9 +60,9 @@ impl BootstrapContext {
         let cache_config = SmartCacheConfig {
             max_size: 10000,
             ttl: std::time::Duration::from_secs(3600),
-            warmup_strategy: config.enable_cache_warmup.then_some(WarmupStrategy::MostFrequent {
-                top_n: 1000,
-            }),
+            warmup_strategy: config
+                .enable_cache_warmup
+                .then_some(WarmupStrategy::MostFrequent { top_n: 1000 }),
             sync_interval: std::time::Duration::from_secs(30),
             metrics_interval: std::time::Duration::from_secs(60),
             enable_distributed_sync: false,
@@ -80,18 +80,15 @@ impl BootstrapContext {
         let progress_hub = Arc::new(ProgressHub::new());
 
         let mut task_queue_config = TaskQueueConfig::new(4);
-        task_queue_config.lease_duration = std::time::Duration::from_secs(config.task_lease_seconds);
+        task_queue_config.lease_duration =
+            std::time::Duration::from_secs(config.task_lease_seconds);
         task_queue_config.dispatch_interval =
             std::time::Duration::from_millis(config.task_dispatch_interval_ms);
         task_queue_config.retries_pure = config.task_retries_pure;
         task_queue_config.retries_idempotent = config.task_retries_idempotent;
         task_queue_config.retries_side_effectful = config.task_retries_side_effectful;
-        task_queue_config
-            .per_type_limits
-            .insert(TaskType::Scan, 1);
-        task_queue_config
-            .per_type_limits
-            .insert(TaskType::Hash, 3);
+        task_queue_config.per_type_limits.insert(TaskType::Scan, 1);
+        task_queue_config.per_type_limits.insert(TaskType::Hash, 3);
 
         let task_queue = Arc::new(TaskQueue::with_config(
             db.clone(),
@@ -115,10 +112,7 @@ impl BootstrapContext {
             tracing::info!("Plugins disabled by config (enable_plugins = false)");
         }
 
-        task_queue.register_executor(
-            TaskType::Scan,
-            Arc::new(ScanExecutor { db: db.clone() }),
-        );
+        task_queue.register_executor(TaskType::Scan, Arc::new(ScanExecutor { db: db.clone() }));
         task_queue.register_executor(
             TaskType::Hash,
             Arc::new(HashExecutor {
@@ -189,7 +183,12 @@ pub async fn run_master(ctx: BootstrapContext) -> anyhow::Result<()> {
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::PUT, axum::http::Method::DELETE])
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+        ])
         .allow_headers(Any);
 
     let graphql_schema: CineSchema = create_schema();
@@ -288,4 +287,3 @@ async fn start_background_services(
 
     Ok(())
 }
-

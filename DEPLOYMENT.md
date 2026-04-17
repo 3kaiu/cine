@@ -24,7 +24,7 @@
   ```
 
 #### 前端
-- **Node.js** 18+ ([下载](https://nodejs.org/))
+- **Node.js** 20+ ([下载](https://nodejs.org/))
 - **npm** 或 **pnpm**
 
 ## 开发环境部署
@@ -46,7 +46,7 @@ cargo build
 
 # 配置环境变量
 cp ../.env.example .env
-# 编辑 .env 文件，设置 TMDB_API_KEY 等配置
+# 编辑 .env 文件，设置 TMDb API Key 等配置
 
 # 运行开发服务器
 cargo run
@@ -117,7 +117,7 @@ export TMDB_API_KEY=your_api_key
 
 #### 方式二：使用 systemd (Linux)
 
-创建服务文件 `/etc/systemd/system/media-toolbox.service`:
+创建服务文件 `/etc/systemd/system/cine.service`:
 
 ```ini
 [Unit]
@@ -141,8 +141,8 @@ WantedBy=multi-user.target
 启用并启动服务：
 
 ```bash
-sudo systemctl enable media-toolbox
-sudo systemctl start media-toolbox
+sudo systemctl enable cine
+sudo systemctl start cine
 ```
 
 #### 方式三：使用 Docker
@@ -162,20 +162,20 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /app/target/release/media-toolbox-backend .
-CMD ["./media-toolbox-backend"]
+COPY --from=builder /app/target/release/cine-backend .
+CMD ["./cine-backend"]
 ```
 
 构建和运行：
 
 ```bash
-docker build -t media-toolbox .
+docker build -t cine .
 docker run -d \
   -p 3000:3000 \
   -v /path/to/data:/app/data \
   -v /path/to/media:/app/media \
   -e TMDB_API_KEY=your_api_key \
-  media-toolbox
+  cine
 ```
 
 ### 4. Nginx 配置（前端）
@@ -210,6 +210,12 @@ server {
 
 ## 飞牛OS (fnOS) 部署
 
+当前仓库仅包含实验性 `fpk` 打包脚本，尚未形成已经验证的 FNOS 安装闭环。尤其需要注意：
+
+- 后端当前不负责托管前端静态资源，FNOS 安装后仍需要额外提供 `frontend/dist` 的访问入口。
+- 打包脚本会生成 `manifest`、生命周期脚本和前后端产物，但未在真实 FNOS 设备上完成端到端安装验证。
+- 如果要在 FNOS 上实际落地，建议先在 Linux/Docker 模式下验证后端、数据库路径、媒体目录权限和前端反向代理。
+
 ### 1. 准备 fpk 包
 
 ```bash
@@ -217,7 +223,7 @@ server {
 mkdir -p app/{frontend,backend,config}
 
 # 复制后端可执行文件
-cp backend/target/release/media-toolbox-backend app/backend/
+cp backend/target/release/cine-backend app/backend/
 
 # 复制前端构建产物
 cp -r frontend/dist/* app/frontend/
@@ -230,7 +236,7 @@ cat > app/config/privilege <<EOF
     },
     "filesystem": {
         "read": ["/"],
-        "write": ["/data/media-toolbox"]
+        "write": ["/data/cine"]
     }
 }
 EOF
@@ -272,15 +278,15 @@ fnpack build
 |------|------|--------|
 | `PORT` | 服务器端口 | 3000 |
 | `DATABASE_URL` | 数据库连接字符串 | `sqlite:./data/cine.db` |
-| `TMDB_API_KEY` | TMDB API 密钥 | 无（必需） |
+| `TMDB_API_KEY` | TMDb API 密钥 | 无（必需） |
 | `MAX_FILE_SIZE` | 最大文件大小（字节） | 200000000000 (200GB) |
 | `CHUNK_SIZE` | 流式处理块大小（字节） | 67108864 (64MB) |
 | `HASH_CACHE_DIR` | 哈希缓存目录 | `./data/hash_cache` |
-| `RUST_LOG` | 日志级别 | `media_toolbox=debug,axum=info` |
+| `RUST_LOG` | 日志级别 | `cine=debug,axum=info` |
 
-### 获取 TMDB API Key
+### 获取 TMDb API Key
 
-1. 访问 [TMDB](https://www.themoviedb.org/)
+1. 访问 [TMDb](https://www.themoviedb.org/)
 2. 注册/登录账号
 3. 进入 [API 设置](https://www.themoviedb.org/settings/api)
 4. 申请 API Key
@@ -342,10 +348,10 @@ CREATE INDEX IF NOT EXISTS idx_media_files_size ON media_files(size);
 
 ```bash
 # 查看实时日志
-tail -f logs/media-toolbox.log
+tail -f logs/cine.log
 
 # 查看错误日志
-grep ERROR logs/media-toolbox.log
+grep ERROR logs/cine.log
 ```
 
 ### 数据库备份

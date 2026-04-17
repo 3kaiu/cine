@@ -1,4 +1,4 @@
-import { Popover } from "@heroui/react"
+import { Popover } from "@/ui/heroui"
 
 interface ContextMenuItem {
   label: string

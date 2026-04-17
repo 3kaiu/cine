@@ -141,28 +141,37 @@ fn clean_filename(name: &str) -> String {
 
 /// 检测字幕语言
 fn detect_language(filename: &str, path: &str) -> String {
-    let lower = filename.to_lowercase() + " " + &path.to_lowercase();
+    let lower = format!("{} {}", filename.to_lowercase(), path.to_lowercase());
+    let token_re = Regex::new(r"[^a-z0-9\u4e00-\u9fff]+").unwrap();
+    let tokens: Vec<&str> = token_re
+        .split(&lower)
+        .filter(|token| !token.is_empty())
+        .collect();
 
-    // 常见语言标识
-    let languages = vec![
+    // 常见语言标识。英文缩写只接受 token 精确匹配，避免把临时目录等路径误判为语言。
+    let languages = [
         (
             "chinese",
             "zh",
-            vec!["chinese", "chs", "cht", "zh", "cn", "简体", "繁体", "中文"],
+            ["chinese", "chs", "cht", "zh", "cn", "简体", "繁体", "中文"].as_slice(),
         ),
-        ("english", "en", vec!["english", "eng", "en"]),
-        ("japanese", "ja", vec!["japanese", "jpn", "ja"]),
-        ("korean", "ko", vec!["korean", "kor", "ko"]),
-        ("spanish", "es", vec!["spanish", "spa", "es"]),
-        ("french", "fr", vec!["french", "fre", "fra", "fr"]),
-        ("german", "de", vec!["german", "ger", "de"]),
+        ("english", "en", ["english", "eng", "en"].as_slice()),
+        ("japanese", "ja", ["japanese", "jpn", "ja"].as_slice()),
+        ("korean", "ko", ["korean", "kor", "ko"].as_slice()),
+        ("spanish", "es", ["spanish", "spa", "es"].as_slice()),
+        ("french", "fr", ["french", "fre", "fra", "fr"].as_slice()),
+        ("german", "de", ["german", "ger", "de"].as_slice()),
     ];
 
     for (name, code, keywords) in languages {
-        for keyword in keywords {
-            if lower.contains(keyword) {
-                return format!("{} ({})", name, code);
+        if keywords.iter().any(|keyword| {
+            if keyword.is_ascii() {
+                tokens.iter().any(|token| token == keyword)
+            } else {
+                lower.contains(keyword)
             }
+        }) {
+            return format!("{} ({})", name, code);
         }
     }
 

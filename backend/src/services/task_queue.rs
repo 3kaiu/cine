@@ -346,15 +346,15 @@ impl TaskContext {
                     })
                     .await;
 
-            // 通过 ProgressHub 广播进度
-            if let Some(hub) = &self.progress_hub {
-                hub.report_progress(
-                    &self.task_id,
-                    &self.task_type,
-                    progress,
-                    message.map(|m| m.to_string()),
-                );
-            }
+                // 通过 ProgressHub 广播进度
+                if let Some(hub) = &self.progress_hub {
+                    hub.report_progress(
+                        &self.task_id,
+                        &self.task_type,
+                        progress,
+                        message.map(|m| m.to_string()),
+                    );
+                }
             }
         } else {
             // 如果没有进度估算器，使用传统方法
@@ -519,11 +519,7 @@ impl TaskQueue {
     /// 创建新的任务队列
     pub fn new(db: sqlx::SqlitePool, max_concurrent: usize) -> Self {
         let config = TaskQueueConfig::new(max_concurrent);
-        Self::with_config(
-            db,
-            config,
-            Arc::new(ProgressHub::new()),
-        )
+        Self::with_config(db, config, Arc::new(ProgressHub::new()))
     }
 
     /// 使用自定义配置创建任务队列
@@ -931,15 +927,15 @@ impl TaskQueue {
                                 true,
                             )
                         } else {
-                        (
-                            TaskStatus::Failed {
-                                error: err_msg.clone(),
-                            },
-                            "failed",
-                            Some(err_msg.clone()),
-                            Some(false),
-                            false,
-                        )
+                            (
+                                TaskStatus::Failed {
+                                    error: err_msg.clone(),
+                                },
+                                "failed",
+                                Some(err_msg.clone()),
+                                Some(false),
+                                false,
+                            )
                         }
                     }
                 }
@@ -1134,11 +1130,10 @@ impl TaskQueue {
 
     /// 重新执行任务（创建新任务 ID，复制 payload 与类型）
     pub async fn rerun(&self, task_id: &str) -> anyhow::Result<String> {
-        let task: crate::models::DbTask =
-            sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
-                .bind(task_id)
-                .fetch_one(&self.db)
-                .await?;
+        let task: crate::models::DbTask = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+            .bind(task_id)
+            .fetch_one(&self.db)
+            .await?;
 
         let new_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now();
@@ -1344,7 +1339,7 @@ impl TaskQueue {
                  updated_at = ?,
                  lease_renewed_at = ?,
                  lease_until = COALESCE(?, lease_until)
-             WHERE id = ?"
+             WHERE id = ?",
         )
         .bind(status_str)
         .bind(progress)
@@ -1421,7 +1416,7 @@ impl TaskQueue {
                  updated_at = ?,
                  lease_renewed_at = ?,
                  lease_until = ?
-             WHERE id = ? AND status = 'pending'"
+             WHERE id = ? AND status = 'pending'",
         )
         .bind(node_id)
         .bind(chrono::Utc::now())

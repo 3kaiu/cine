@@ -10,9 +10,9 @@ import {
   Surface,
   Tooltip,
   Selection
-} from "@heroui/react";
+} from "@/ui/heroui";
 import { Icon } from '@iconify/react'
-import { ArrowRotateLeft, TrashBin } from '@gravity-ui/icons'
+import { ArrowRotateLeft, TrashBin } from '@/ui/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { mediaApi } from '@/api/media'
 import VirtualizedTable from '@/components/VirtualizedTable'

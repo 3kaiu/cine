@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Button, Card, Chip, Popover, SearchField, Select, ListBox, Surface } from '@heroui/react'
+import { Button, Card, Chip, Popover, SearchField, Select, ListBox, Surface } from '@/ui/heroui'
 import { Icon } from '@iconify/react'
-import { Text } from '@gravity-ui/icons'
+import { Text } from '@/ui/icons'
 import VirtualizedTable from '@/components/VirtualizedTable'
 import type { MediaFile } from '@/api/media'
 import type { ScannerFilterOptions, ScannerViewMode } from '../ScannerPage'
@@ -425,4 +425,3 @@ function formatSize(bytes: number): string {
 
   return `${size.toFixed(2)} ${units[unitIndex]}`
 }
-

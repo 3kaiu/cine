@@ -1,6 +1,4 @@
 import { Component, ReactNode } from 'react'
-import { Icon } from '@iconify/react'
-import { Button, Surface } from '@heroui/react'
 
 interface Props {
   children: ReactNode
@@ -44,10 +42,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-background">
-          <Surface variant="secondary" className="w-full max-w-md rounded-xl p-6 border border-divider/10">
+          <div className="w-full max-w-md rounded-xl p-6 border border-divider/10 bg-default-50">
             <div className="flex flex-col items-center text-center space-y-4">
               <div className="w-12 h-12 rounded-lg bg-danger/10 flex items-center justify-center">
-                <Icon icon="mdi:alert-circle" className="w-6 h-6 text-danger" />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-6 h-6 text-danger">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v6" />
+                  <circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none" />
+                </svg>
               </div>
               
               <div className="space-y-2">
@@ -61,24 +63,31 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Button
-                variant="secondary"
-                size="md"
+              <button
+                type="button"
                 className="flex-1 font-medium"
-                onPress={this.handleGoHome}
+                onClick={this.handleGoHome}
               >
-                <Icon icon="mdi:arrow-left" className="w-4 h-4 mr-2" />
-                返回首页
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
+                <span className="inline-flex items-center justify-center gap-2 rounded-xl border border-divider/20 bg-default-100 px-4 py-2.5 text-sm">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                  返回首页
+                </span>
+              </button>
+              <button
+                type="button"
                 className="flex-1 font-medium"
-                onPress={this.handleReset}
+                onClick={this.handleReset}
               >
-                <Icon icon="mdi:refresh" className="w-4 h-4 mr-2" />
-                刷新重试
-              </Button>
+                <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4">
+                    <path d="M20 11a8 8 0 1 0 2 5.3" />
+                    <path d="M20 4v7h-7" />
+                  </svg>
+                  刷新重试
+                </span>
+              </button>
             </div>
 
             {this.state.error && (
@@ -93,7 +102,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 </div>
               </details>
             )}
-          </Surface>
+          </div>
         </div>
       )
     }

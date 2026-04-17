@@ -92,6 +92,9 @@ pub async fn batch_calculate_hash(
 
     Ok(Json(HashResponse {
         task_id,
-        message: format!("Batch hash calculation task created for {} files", req.file_ids.len()),
+        message: format!(
+            "Batch hash calculation task created for {} files",
+            req.file_ids.len()
+        ),
     }))
 }

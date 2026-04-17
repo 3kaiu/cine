@@ -208,7 +208,7 @@ pub async fn search_tv_tmdb(
 pub async fn scrape_metadata(
     client: &Client,
     file: &MediaFile,
-    _source: &str,
+    selected_tmdb_id: Option<u32>,
     auto_match: bool,
     config: &AppConfig,
 ) -> anyhow::Result<Value> {
@@ -231,8 +231,12 @@ pub async fn scrape_metadata(
             return Err(anyhow::anyhow!("No TV show found"));
         }
 
-        // 如果自动匹配，选择第一个结果
-        let selected = if auto_match && !shows.is_empty() {
+        let selected = if let Some(tmdb_id) = selected_tmdb_id {
+            shows
+                .iter()
+                .find(|show| show.tmdb_id == Some(tmdb_id))
+                .ok_or_else(|| anyhow::anyhow!("Selected TMDb result not found"))?
+        } else if auto_match && !shows.is_empty() {
             &shows[0]
         } else {
             // 返回所有结果供用户选择
@@ -248,8 +252,12 @@ pub async fn scrape_metadata(
             return Err(anyhow::anyhow!("No movie found"));
         }
 
-        // 如果自动匹配，选择第一个结果
-        let selected = if auto_match && !movies.is_empty() {
+        let selected = if let Some(tmdb_id) = selected_tmdb_id {
+            movies
+                .iter()
+                .find(|movie| movie.tmdb_id == Some(tmdb_id))
+                .ok_or_else(|| anyhow::anyhow!("Selected TMDb result not found"))?
+        } else if auto_match && !movies.is_empty() {
             &movies[0]
         } else {
             // 返回所有结果供用户选择
@@ -264,7 +272,6 @@ pub async fn scrape_metadata(
 #[allow(dead_code)]
 /// 批量刮削元数据（并行版本，支持数据库更新）
 pub struct BatchScrapeMetadataParams<'a> {
-    pub source: &'a str,
     pub auto_match: bool,
     pub config: &'a AppConfig,
     pub download_images: bool,
@@ -282,7 +289,6 @@ pub async fn batch_scrape_metadata(
     use futures::stream::{self, StreamExt};
 
     let BatchScrapeMetadataParams {
-        source,
         auto_match,
         config,
         download_images,
@@ -308,7 +314,6 @@ pub async fn batch_scrape_metadata(
     let results: Vec<_> = stream::iter(files.into_iter().enumerate())
         .map(|(index, file)| {
             let client = client.clone();
-            let source = source.to_string();
             let config = config.clone();
             let sub_ctx = ctx.duplicate();
             let db = db.clone();
@@ -320,7 +325,7 @@ pub async fn batch_scrape_metadata(
                     return (file.id.clone(), Err("Task cancelled".to_string()));
                 }
 
-                let result = match scrape_metadata(&client, &file, &source, auto_match, &config)
+                let result = match scrape_metadata(&client, &file, None, auto_match, &config)
                     .await
                 {
                     Ok(metadata) => {

@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::handlers::AppState;
 use crate::handlers::tasks::TaskActionResponse;
+use crate::handlers::AppState;
 use crate::services::library_service::LibraryService;
 use crate::services::{dedupe, empty_dirs};
 
@@ -86,8 +86,7 @@ pub async fn find_empty_dirs(
     let recursive = query.recursive.unwrap_or(true);
 
     let service = LibraryService::new(state.db.clone(), state.task_queue.clone());
-    let resp = service
-        .find_empty_dirs(directory, recursive)?;
+    let resp = service.find_empty_dirs(directory, recursive)?;
 
     // 如有分类过滤则在 handler 层细化
     let dirs = if let Some(ref category) = query.category {

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { Button, Tooltip, Modal, SearchField, Select, ListBox, Chip, Surface } from "@heroui/react";
-import { ArrowsRotateRight, ArrowRotateLeft, TrashBin, Pencil, File } from '@gravity-ui/icons'
+import { Button, Tooltip, Modal, SearchField, Select, ListBox, Chip, Surface } from "@/ui/heroui";
+import { ArrowsRotateRight, ArrowRotateLeft, TrashBin, Pencil, File } from '@/ui/icons'
 import { mediaApi, OperationLog } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import PageHeader from '@/components/PageHeader'

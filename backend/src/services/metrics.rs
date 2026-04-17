@@ -638,7 +638,9 @@ pub static METRICS: Lazy<Metrics> = Lazy::new(|| {
     REGISTRY
         .register(Box::new(tasks_lease_reclaimed_total.clone()))
         .unwrap();
-    REGISTRY.register(Box::new(tasks_retry_total.clone())).unwrap();
+    REGISTRY
+        .register(Box::new(tasks_retry_total.clone()))
+        .unwrap();
 
     Metrics {
         active_tasks,

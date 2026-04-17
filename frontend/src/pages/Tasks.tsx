@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback } from 'react'
 import clsx from 'clsx'
-import { Button, Chip, Modal, Surface } from "@heroui/react"
+import { Button, Chip, Modal, Surface } from "@/ui/heroui"
 import { Icon } from '@iconify/react'
-import { ArrowsRotateRight, Pause, Play, Xmark, TrashBin } from '@gravity-ui/icons'
+import { ArrowsRotateRight, Pause, Play, Xmark, TrashBin } from '@/ui/icons'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
 import VirtualizedTable from '@/components/VirtualizedTable'

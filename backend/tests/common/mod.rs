@@ -2,8 +2,8 @@
 
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use std::path::PathBuf;
-use tempfile::TempDir;
 use std::sync::Arc;
+use tempfile::TempDir;
 
 /// 创建测试数据库连接池
 pub async fn create_test_db() -> (SqlitePool, TempDir) {
@@ -62,12 +62,17 @@ pub async fn create_test_app_state() -> (Arc<cine_backend::handlers::AppState>, 
         db: pool,
         config: config.clone(),
         progress_hub: cine_backend::services::progress_hub::ProgressHub::new(),
-        http_client: reqwest::Client::new(),
+        http_client: reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .expect("Failed to create test HTTP client"),
         task_queue: task_queue.clone(),
-        distributed: Arc::new(cine_backend::services::distributed::DistributedService::new(
-            task_queue,
-            config.clone(),
-        )),
+        distributed: Arc::new(
+            cine_backend::services::distributed::DistributedService::new(
+                task_queue,
+                config.clone(),
+            ),
+        ),
         plugin_manager: Arc::new(cine_backend::services::plugin::PluginManager::new(
             temp_dir.path().join("plugins"),
         )),

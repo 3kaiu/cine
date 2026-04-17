@@ -96,7 +96,6 @@ describe('Media API', () => {
 
       const result = await mediaApi.scrapeMetadata({
         file_id: 'test-id',
-        source: 'tmdb',
         auto_match: true,
       })
 

@@ -1,4 +1,4 @@
-import { Skeleton } from "@heroui/react"
+import { Skeleton } from "@/ui/heroui"
 
 interface SkeletonCardProps {
   count?: number

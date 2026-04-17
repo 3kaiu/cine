@@ -1,20 +1,11 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
-import { mediaApi } from '@/api/media'
+import { mediaApi, type GetFilesParams } from '@/api/media'
 import { queryKeys } from '@/config/queryConfig'
-
-type FilesParams = {
-  page?: number
-  page_size?: number
-  file_type?: string
-  name?: string
-  min_size?: number
-  max_size?: number
-}
 
 type FilesResponse = Awaited<ReturnType<typeof mediaApi.getFiles>>
 
 export function useFilesQuery(
-  params?: FilesParams,
+  params?: GetFilesParams,
   options?: Omit<UseQueryOptions<FilesResponse>, 'queryKey' | 'queryFn'>
 ) {
   return useQuery({
@@ -23,4 +14,3 @@ export function useFilesQuery(
     ...(options ?? {}),
   })
 }
-

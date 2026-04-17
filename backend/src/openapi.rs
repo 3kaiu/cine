@@ -13,7 +13,7 @@ use utoipa::OpenApi;
     info(
         title = "Cine API",
         version = "1.2.0",
-        description = "Cine - 高性能影视文件管理工具 API\n\n## 功能模块\n- 文件扫描和索引\n- 元数据刮削（TMDB）\n- 文件去重\n- 批量重命名\n- 回收站管理",
+        description = "Cine - 高性能影视文件管理工具 API\n\n## 功能模块\n- 文件扫描和索引\n- 元数据刮削（TMDb）\n- 文件去重\n- 批量重命名\n- 回收站管理",
         license(name = "MIT"),
         contact(name = "Cine Team")
     ),
@@ -97,7 +97,7 @@ use utoipa::OpenApi;
         (name = "hash", description = "哈希计算 - 计算文件哈希用于去重"),
         (name = "video", description = "视频信息 - 提取视频元数据"),
         (name = "subtitle", description = "字幕管理 - 查找和匹配字幕文件"),
-        (name = "scrape", description = "元数据刮削 - 从 TMDB 获取元数据"),
+        (name = "scrape", description = "元数据刮削 - 从 TMDb 获取元数据"),
         (name = "rename", description = "批量重命名 - 按模板重命名文件"),
         (name = "dedupe", description = "文件去重 - 查找重复文件"),
         (name = "file_ops", description = "文件操作 - 移动/复制文件"),

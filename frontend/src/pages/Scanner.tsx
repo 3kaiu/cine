@@ -1,13 +1,13 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import clsx from 'clsx'
 import { useWebSocket, ProgressMessage } from '@/hooks/useWebSocket'
-import { Button, Chip, Card, SearchField, Surface, Select, ListBox, Popover } from "@heroui/react";
+import { Button, Chip, Card, SearchField, Surface, Select, ListBox, Popover } from "@/ui/heroui";
 import { Icon } from '@iconify/react'
 import {
   ArrowRotateLeft,
   Text,
   Clock,
-} from '@gravity-ui/icons'
+} from '@/ui/icons'
 import { mediaApi, MediaFile, ScanHistory } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import ProgressMonitor from '@/components/ProgressMonitor'
@@ -51,7 +51,12 @@ export default function Scanner() {
   const { data: allFiles, refetch, isPending } = useQuery({
     queryKey: ['files', { page: currentPage, page_size: pageSize, name: searchTerm, file_type: fileTypeFilter === 'all' ? undefined : fileTypeFilter }],
     queryFn: () => {
-      const params: Record<string, unknown> = { page: currentPage, page_size: pageSize }
+      const params: Record<string, unknown> = {
+        page: currentPage,
+        page_size: pageSize,
+        include_video_info: true,
+        include_metadata: false,
+      }
       if (searchTerm) params.name = searchTerm
       if (fileTypeFilter !== 'all') params.file_type = fileTypeFilter
       return mediaApi.getFiles(params)

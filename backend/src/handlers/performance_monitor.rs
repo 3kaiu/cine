@@ -7,9 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::handlers::AppState;
-use crate::services::metrics::{
-    PerformanceAnomaly, PerformanceTrend, ResourceStats,
-};
+use crate::services::metrics::{PerformanceAnomaly, PerformanceTrend, ResourceStats};
 
 /// 获取性能趋势分析
 #[utoipa::path(

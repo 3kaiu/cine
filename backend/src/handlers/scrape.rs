@@ -10,8 +10,10 @@ use chrono::Utc;
 #[derive(Deserialize, ToSchema)]
 pub struct ScrapeRequest {
     pub file_id: String,
-    pub source: Option<String>, // tmdb
+    pub tmdb_id: Option<u32>,
     pub auto_match: Option<bool>,
+    pub download_images: Option<bool>,
+    pub generate_nfo: Option<bool>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -54,14 +56,46 @@ pub async fn scrape_metadata(
         }
     };
 
-    let source = req.source.as_deref().unwrap_or("tmdb");
     let auto_match = req.auto_match.unwrap_or(true);
+    let download_images = req.download_images.unwrap_or(false);
+    let generate_nfo = req.generate_nfo.unwrap_or(false);
 
-    // 执行刮削（使用共享 HTTP 客户端）
-    match scraper::scrape_metadata(&state.http_client, &file, source, auto_match, &state.config)
-        .await
+    // 执行刮削（TMDb-only）
+    match scraper::scrape_metadata(
+        &state.http_client,
+        &file,
+        req.tmdb_id,
+        auto_match,
+        &state.config,
+    )
+    .await
     {
         Ok(metadata) => {
+            if download_images || generate_nfo {
+                let poster_url = metadata.get("poster_url").and_then(|u| u.as_str());
+                let backdrop_url = metadata.get("backdrop_url").and_then(|u| u.as_str());
+
+                if download_images {
+                    let _ = crate::services::poster::download_media_images(
+                        &file.path,
+                        poster_url,
+                        backdrop_url,
+                    )
+                    .await;
+                }
+
+                if generate_nfo {
+                    let media_type = if metadata.get("name").is_some() {
+                        "tvshow"
+                    } else {
+                        "movie"
+                    };
+                    let _ =
+                        crate::services::nfo::generate_nfo_file(&file.path, &metadata, media_type)
+                            .await;
+                }
+            }
+
             // 解析 TMDB ID
             let tmdb_id = metadata
                 .get("tmdb_id")
@@ -105,9 +139,9 @@ pub async fn scrape_metadata(
 #[derive(Deserialize, ToSchema)]
 pub struct BatchScrapeRequest {
     pub file_ids: Vec<String>,
-    pub source: Option<String>,
     pub auto_match: Option<bool>,
-    pub download_poster: Option<bool>,
+    #[serde(alias = "download_poster")]
+    pub download_images: Option<bool>,
     pub generate_nfo: Option<bool>,
 }
 
@@ -126,9 +160,8 @@ pub async fn batch_scrape_metadata(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchScrapeRequest>,
 ) -> Result<Json<crate::handlers::tasks::TaskActionResponse>, (axum::http::StatusCode, String)> {
-    let source = req.source.clone().unwrap_or_else(|| "tmdb".to_string());
     let auto_match = req.auto_match.unwrap_or(true);
-    let download_poster = req.download_poster.unwrap_or(false);
+    let download_images = req.download_images.unwrap_or(false);
     let generate_nfo = req.generate_nfo.unwrap_or(false);
 
     // 提交到任务队列
@@ -139,9 +172,8 @@ pub async fn batch_scrape_metadata(
             Some(format!("批量刮削 {} 个文件", req.file_ids.len())),
             serde_json::json!({
                 "file_ids": req.file_ids,
-                "source": source,
                 "auto_match": auto_match,
-                "download_images": download_poster,
+                "download_images": download_images,
                 "generate_nfo": generate_nfo
             }),
         )

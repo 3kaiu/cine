@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { Surface } from "@heroui/react"
+import { Surface } from "@/ui/heroui"
 
 interface StatCardProps {
   label: string

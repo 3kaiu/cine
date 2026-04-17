@@ -10,7 +10,7 @@ import {
   Label,
   InputGroup,
   Switch
-} from "@heroui/react"
+} from "@/ui/heroui"
 import { Icon } from '@iconify/react'
 import {
   ArrowRotateLeft,
@@ -19,7 +19,7 @@ import {
   Folder,
   Gear,
   FloppyDisk
-} from '@gravity-ui/icons'
+} from '@/ui/icons'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { settingsApi } from '@/api/settings'
 import { handleError } from '@/utils/errorHandler'

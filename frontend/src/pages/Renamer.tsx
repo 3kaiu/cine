@@ -8,10 +8,10 @@ import {
   SearchField,
   Label,
   Selection
-} from '@heroui/react'
+} from '@/ui/heroui'
 import { Icon } from '@iconify/react'
 import VirtualizedTable from '@/components/VirtualizedTable'
-import { Play, Filmstrip, Tv, Check, CircleExclamation } from '@gravity-ui/icons'
+import { Play, Filmstrip, Tv, Check, CircleExclamation } from '@/ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { handleError } from '@/utils/errorHandler'
@@ -55,7 +55,14 @@ export default function Renamer() {
 
   const { data: filesData, refetch: refetchFiles } = useQuery({
     queryKey: ['files', searchTerm],
-    queryFn: () => mediaApi.getFiles({ file_type: 'video', page_size: 1000, name: searchTerm || undefined }),
+    queryFn: () =>
+      mediaApi.getFiles({
+        file_type: 'video',
+        page_size: 1000,
+        name: searchTerm || undefined,
+        include_video_info: false,
+        include_metadata: true,
+      }),
   })
 
   // 搜索防抖

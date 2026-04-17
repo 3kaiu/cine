@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, SqlitePool};
 
 use crate::models::{DuplicateGroup, DuplicateMovieGroup, MediaFile};
-use crate::services::{dedupe, empty_dirs};
 use crate::services::task_queue::{TaskQueue, TaskType};
+use crate::services::{dedupe, empty_dirs};
 
 /// 对媒体库相关操作的统一服务外观，供 HTTP / GraphQL handler 调用。
 pub struct LibraryService {
@@ -50,8 +50,24 @@ impl LibraryService {
         let page = query.page.unwrap_or(1);
         let page_size = query.page_size.unwrap_or(50).min(500);
         let offset = (page - 1) * page_size;
+        let include_video_info = query.include_video_info.unwrap_or(true);
+        let include_metadata = query.include_metadata.unwrap_or(true);
 
-        let mut builder = QueryBuilder::new("SELECT * FROM media_files WHERE 1=1");
+        let mut builder = QueryBuilder::new(
+            "SELECT id, path, name, size, file_type, hash_xxhash, hash_md5, tmdb_id, quality_score, ",
+        );
+        if include_video_info {
+            builder.push("video_info");
+        } else {
+            builder.push("NULL AS video_info");
+        }
+        builder.push(", ");
+        if include_metadata {
+            builder.push("metadata");
+        } else {
+            builder.push("NULL AS metadata");
+        }
+        builder.push(", created_at, updated_at, last_modified FROM media_files WHERE 1=1");
 
         if let Some(ref file_type) = query.file_type {
             builder.push(" AND file_type = ");
@@ -84,8 +100,7 @@ impl LibraryService {
             .await
             .map_err(internal_error)?;
 
-        let mut count_builder =
-            QueryBuilder::new("SELECT COUNT(*) FROM media_files WHERE 1=1");
+        let mut count_builder = QueryBuilder::new("SELECT COUNT(*) FROM media_files WHERE 1=1");
 
         if let Some(ref file_type) = query.file_type {
             count_builder.push(" AND file_type = ");
@@ -164,8 +179,8 @@ impl LibraryService {
         directory: String,
         recursive: bool,
     ) -> Result<EmptyDirsResponse, (StatusCode, String)> {
-        let dirs = empty_dirs::find_empty_directories(&directory, recursive)
-            .map_err(internal_error)?;
+        let dirs =
+            empty_dirs::find_empty_directories(&directory, recursive).map_err(internal_error)?;
 
         let mut by_category = std::collections::HashMap::new();
         for dir in &dirs {
@@ -192,6 +207,8 @@ pub struct FileListQuery {
     pub name: Option<String>,
     pub min_size: Option<i64>,
     pub max_size: Option<i64>,
+    pub include_video_info: Option<bool>,
+    pub include_metadata: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -208,4 +225,3 @@ pub struct EmptyDirsResponse {
     pub total: usize,
     pub by_category: std::collections::HashMap<String, usize>,
 }
-

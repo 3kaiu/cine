@@ -1,66 +1,80 @@
 import { NavLink } from 'react-router-dom'
-import { Icon } from '@iconify/react'
-import {
-  TrashBin,
-  Gear,
-} from '@gravity-ui/icons'
 import clsx from 'clsx'
 import ThemeToggle from './ThemeToggle'
+
+function MenuIcon({ path }: { path: string }) {
+  const common = "w-[18px] h-[18px]"
+  switch (path) {
+    case '/dashboard':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="4" rx="1.5" /><rect x="14" y="10" width="7" height="11" rx="1.5" /><rect x="3" y="13" width="7" height="8" rx="1.5" /></svg>
+    case '/':
+      return <svg viewBox="0 0 24 24" fill="currentColor" className={common}><path d="M8 6.82v10.36c0 .8.89 1.27 1.54.82l8.14-5.18a1 1 0 0 0 0-1.64L9.54 6c-.65-.45-1.54.02-1.54.82Z"/></svg>
+    case '/scanner':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M4 7V5h2M18 5h2v2M20 17v2h-2M6 19H4v-2M7 12h10M15 8l4 4-4 4" /></svg>
+    case '/scraper':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M7 18a4 4 0 1 1 .2-8 5 5 0 1 1 9.56 1.5A3.5 3.5 0 1 1 17.5 18H7Z" /></svg>
+    case '/dedupe':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="m7 12 3 3 7-7" /><circle cx="12" cy="12" r="9" /></svg>
+    case '/renamer':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M4 7h16M9 7v10M15 7v10M6 17h12" /></svg>
+    case '/file-manager':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M3 7.5h18v11A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5v-11Z" /><path d="M3 7.5 6 4h4l2 2h9" /></svg>
+    case '/trash':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M4 7h16M9 7V4h6v3M7 7l1 12h8l1-12M10 11v5M14 11v5" /></svg>
+    case '/tasks':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M9 6h11M9 12h11M9 18h11" /><path d="m4 6 1.5 1.5L7.5 5M4 12l1.5 1.5L7.5 11M4 18l1.5 1.5L7.5 17" /></svg>
+    case '/logs':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M6 4h9l3 3v13H6z" /><path d="M15 4v4h4M9 12h6M9 16h6" /></svg>
+    case '/settings':
+      return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={common}><path d="M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5z" /><path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 1 1-4 0v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 1 1 0-4h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 1 1 4 0v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.2a2 2 0 1 1 0 4h-.2a1 1 0 0 0-.9.6Z" /></svg>
+    default:
+      return <span className={common} />
+  }
+}
 
 const menuItems = [
   {
     path: '/dashboard',
-    icon: <Icon icon="lucide:layout-dashboard" />,
     label: '性能仪表盘',
   },
   {
     path: '/',
-    icon: <Icon icon="lucide:play-circle" />,
     label: '自动化工作流',
   },
   {
     path: '/scanner',
-    icon: <Icon icon="lucide:scan-search" />,
     label: '媒体扫描',
   },
   {
     path: '/scraper',
-    icon: <Icon icon="lucide:cloud" />,
     label: '元数据处理',
   },
   {
     path: '/dedupe',
-    icon: <Icon icon="lucide:check-circle-2" />,
     label: '去重管理',
   },
   {
     path: '/renamer',
-    icon: <Icon icon="lucide:type" />,
     label: '批量重命名',
   },
   {
     path: '/file-manager',
-    icon: <Icon icon="lucide:package" />,
     label: '文件管理',
   },
   {
     path: '/trash',
-    icon: <TrashBin />,
     label: '回收站',
   },
   {
     path: '/tasks',
-    icon: <Icon icon="lucide:list-checks" />,
     label: '任务队列',
   },
   {
     path: '/logs',
-    icon: <Icon icon="lucide:scroll-text" />,
     label: '系统日志',
   },
   {
     path: '/settings',
-    icon: <Gear />,
     label: '设置中心',
   },
 ]
@@ -90,7 +104,7 @@ export default function Sidebar() {
               "transition-transform duration-300 group-hover:scale-110 shrink-0 opacity-90",
               "[&>svg]:w-[18px] [&>svg]:h-[18px]"
             )}>
-              {item.icon}
+              <MenuIcon path={item.path} />
             </div>
             <span className="truncate">{item.label}</span>
           </NavLink>

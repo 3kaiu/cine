@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import clsx from 'clsx'
-import { Button, Checkbox, Chip, Surface, Label, Switch } from "@heroui/react";
+import { Button, Checkbox, Chip, Surface, Label, Switch } from "@/ui/heroui";
 import { Icon } from '@iconify/react'
 import {
   Play,
@@ -10,7 +10,7 @@ import {
   Pencil,
   Clock,
   TrashBin,
-} from '@gravity-ui/icons'
+} from '@/ui/icons'
 import { mediaApi } from '@/api/media'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import ProgressMonitor from '@/components/ProgressMonitor'
@@ -219,11 +219,15 @@ export default function Workflow() {
           break
         case 'scrape': {
           // 获取所有视频文件并批量刮削
-          const files = await mediaApi.getFiles({ file_type: 'video', page_size: 1000 })
+          const files = await mediaApi.getFiles({
+            file_type: 'video',
+            page_size: 1000,
+            include_video_info: false,
+            include_metadata: false,
+          })
           if (files.files && files.files.length > 0) {
             scrapeMutation.mutate({
               file_ids: files.files.map(f => f.id),
-              source: 'tmdb',
               auto_match: true,
               download_images: true,
               generate_nfo: true,
@@ -241,7 +245,12 @@ export default function Workflow() {
         }
         case 'rename': {
           // 获取所有已刮削的文件并重命名
-          const scrapedFiles = await mediaApi.getFiles({ file_type: 'video', page_size: 1000 })
+          const scrapedFiles = await mediaApi.getFiles({
+            file_type: 'video',
+            page_size: 1000,
+            include_video_info: false,
+            include_metadata: true,
+          })
           const filesWithMetadata = scrapedFiles.files?.filter(f => f.metadata) || []
           if (filesWithMetadata.length > 0) {
             renameMutation.mutate({

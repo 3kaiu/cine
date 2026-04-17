@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 /// - `output_path`: 输出文件路径
 ///
 /// # 用途
-/// 用于从 TMDB 等数据源下载媒体海报和背景图
+/// 用于从 TMDb 下载媒体海报和背景图
 pub async fn download_image(url: &str, output_path: &Path) -> anyhow::Result<()> {
     let client = Client::new();
     let response = client.get(url).send().await?;

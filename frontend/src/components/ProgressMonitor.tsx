@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/react";
+import { Chip } from "@/ui/heroui";
 import { useWebSocket, ProgressMessage } from '@/hooks/useWebSocket'
 import { Icon } from '@iconify/react'
 

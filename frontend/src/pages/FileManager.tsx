@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Button, Modal, SearchField, Select, Chip, Surface, ListBox } from "@heroui/react";
-import { Copy, TrashBin, ArrowRight, File, HardDrive, TriangleExclamation, Video, Picture, ArrowDownToLine } from '@gravity-ui/icons'
+import { Button, Modal, SearchField, Select, Chip, Surface, ListBox } from "@/ui/heroui";
+import { Copy, TrashBin, ArrowRight, File, HardDrive, TriangleExclamation, Video, Picture, ArrowDownToLine } from '@/ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import SkeletonCard from '@/components/SkeletonCard'
@@ -31,7 +31,12 @@ export default function FileManager() {
   const { data: filesData, refetch, isPending } = useQuery({
     queryKey: ['files', page, searchTerm, fileTypeFilter],
     queryFn: () => {
-      const params: Record<string, unknown> = { page_size: 50, page: page }
+      const params: Record<string, unknown> = {
+        page_size: 50,
+        page,
+        include_video_info: false,
+        include_metadata: false,
+      }
       if (searchTerm) params.name = searchTerm
       if (fileTypeFilter !== 'all') params.file_type = fileTypeFilter
       return mediaApi.getFiles(params)

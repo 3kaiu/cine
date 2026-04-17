@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Modal, Button, Tabs, Chip, Surface } from "@heroui/react";
-import { Text } from '@gravity-ui/icons'
+import { Modal, Button, Tabs, Chip, Surface } from "@/ui/heroui";
+import { Text } from '@/ui/icons'
 import { Icon } from '@iconify/react'
 import { useQuery } from '@tanstack/react-query'
 import { mediaApi } from '@/api/media'

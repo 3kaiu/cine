@@ -97,14 +97,8 @@ pub fn build_app_router(
             post(handlers::dedupe::delete_empty_dirs),
         )
         .route("/api/large-files", get(handlers::dedupe::find_large_files))
-        .route(
-            "/api/files/:id/move",
-            post(handlers::file_ops::move_file),
-        )
-        .route(
-            "/api/files/:id/copy",
-            post(handlers::file_ops::copy_file),
-        )
+        .route("/api/files/:id/move", post(handlers::file_ops::move_file))
+        .route("/api/files/:id/copy", post(handlers::file_ops::copy_file))
         .route(
             "/api/files/batch-move",
             post(handlers::file_ops::batch_move_files),
@@ -114,10 +108,7 @@ pub fn build_app_router(
             post(handlers::file_ops::batch_copy_files),
         )
         .route("/api/trash", get(handlers::trash::list_trash))
-        .route(
-            "/api/trash/:id",
-            post(handlers::trash::move_to_trash),
-        )
+        .route("/api/trash/:id", post(handlers::trash::move_to_trash))
         .route(
             "/api/trash/:id/restore",
             post(handlers::trash::restore_from_trash),
@@ -126,26 +117,13 @@ pub fn build_app_router(
             "/api/trash/:id/delete",
             delete(handlers::trash::permanently_delete),
         )
-        .route(
-            "/api/trash/cleanup",
-            post(handlers::trash::cleanup_trash),
-        )
-        .route(
-            "/api/logs",
-            get(handlers::log::list_operation_logs),
-        )
-        .route(
-            "/api/logs/:id/undo",
-            post(handlers::log::undo_operation),
-        )
-        .route(
-            "/api/history",
-            get(handlers::history::list_scan_history),
-        )
+        .route("/api/trash/cleanup", post(handlers::trash::cleanup_trash))
+        .route("/api/logs", get(handlers::log::list_operation_logs))
+        .route("/api/logs/:id/undo", post(handlers::log::undo_operation))
+        .route("/api/history", get(handlers::history::list_scan_history))
         .route(
             "/api/watch-folders",
-            get(handlers::watcher::list_watch_folders)
-                .post(handlers::watcher::add_watch_folder),
+            get(handlers::watcher::list_watch_folders).post(handlers::watcher::add_watch_folder),
         )
         .route(
             "/api/watch-folders/:id",
@@ -157,8 +135,7 @@ pub fn build_app_router(
         )
         .route(
             "/api/settings",
-            get(handlers::settings::get_settings)
-                .post(handlers::settings::update_settings),
+            get(handlers::settings::get_settings).post(handlers::settings::update_settings),
         )
         .route("/api/plugins", get(handlers::plugins::list_plugins))
         .route(
@@ -207,4 +184,3 @@ pub fn build_app_router(
         ))
         .with_state(app_state)
 }
-

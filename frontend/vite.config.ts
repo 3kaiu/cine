@@ -57,24 +57,41 @@ export default defineConfig({
     sourcemap: false,
     cssCodeSplit: true,
     minify: 'esbuild',
+    cssMinify: 'lightningcss',
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'vendor-core';
-            }
-            if (id.includes('@heroui')) {
-              return 'vendor-heroui';
-            }
-            if (id.includes('framer-motion')) {
-              return 'vendor-framer';
-            }
-            if (id.includes('@tanstack') || id.includes('axios') || id.includes('zustand')) {
-              return 'vendor-utils';
-            }
-            return 'vendor-others';
+          if (!id.includes('node_modules')) {
+            return undefined
           }
+
+          if (id.includes('/sonner/')) {
+            return 'toast-vendor'
+          }
+
+          if (id.includes('/@iconify/react/')) {
+            return 'iconify-vendor'
+          }
+
+          if (id.includes('/dayjs/')) {
+            return 'dayjs-vendor'
+          }
+
+          if (id.includes('/lodash-es/')) {
+            return 'lodash-vendor'
+          }
+
+          if (
+            id.includes('/@heroui/') ||
+            id.includes('/react-aria/') ||
+            id.includes('/react-aria-components/') ||
+            id.includes('/react-stately/') ||
+            id.includes('/@internationalized/')
+          ) {
+            return 'ui-vendor'
+          }
+
+          return undefined
         },
       },
     },

@@ -195,6 +195,19 @@ async fn calculate_full_hash_mmap(path: &std::path::Path) -> anyhow::Result<(Str
     .await?
 }
 
+/// 基准测试入口：直接执行完整哈希计算，便于 Criterion 复用真实实现。
+pub async fn calculate_full_hash_benchmark(
+    path: &std::path::Path,
+) -> anyhow::Result<(String, String)> {
+    let metadata = tokio::fs::metadata(path).await?;
+    if metadata.len() > 10 * 1024 * 1024 {
+        calculate_full_hash_mmap(path).await
+    } else {
+        let mut ctx = crate::services::task_queue::TaskContext::for_test("hash-bench");
+        calculate_full_hash_stream(path, &mut ctx).await
+    }
+}
+
 /// 降级方案：传统的流式读取
 async fn calculate_full_hash_stream(
     path: &std::path::Path,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react'
-import { Button, Chip, Surface, SearchField, Select, Popover, ListBox, Tabs } from "@heroui/react";
+import { Button, Chip, Surface, SearchField, Select, Popover, ListBox, Tabs } from "@/ui/heroui";
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Icon } from '@iconify/react'
 import {
@@ -8,7 +8,7 @@ import {
   TrashBin,
   ArrowRotateLeft,
   Check,
-} from '@gravity-ui/icons'
+} from '@/ui/icons'
 import { mediaApi, MediaFile } from '@/api/media'
 import { useMutation, type UseMutationResult } from '@tanstack/react-query'
 import { handleError } from '@/utils/errorHandler'

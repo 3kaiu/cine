@@ -1,6 +1,12 @@
 use crate::models::{DuplicateGroup, MediaFile};
 use crate::services::task_queue::TaskContext;
 use sqlx::SqlitePool;
+use std::collections::{HashMap, HashSet};
+
+const DEDUPE_MEDIA_FILE_FIELDS: &str =
+    "id, path, name, size, file_type, NULL AS hash_xxhash, NULL AS hash_md5, tmdb_id, quality_score, video_info, NULL AS metadata, created_at, updated_at, last_modified";
+const DEDUPE_MEDIA_FILE_FIELDS_WITH_METADATA: &str =
+    "id, path, name, size, file_type, NULL AS hash_xxhash, NULL AS hash_md5, tmdb_id, quality_score, video_info, metadata, created_at, updated_at, last_modified";
 
 /// 查找重复文件（优化版本：使用数据库分组）
 pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGroup>> {
@@ -55,7 +61,10 @@ pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGro
 
         for chunk in file_ids.chunks(BATCH_SIZE) {
             let placeholders = vec!["?"; chunk.len()].join(",");
-            let query = format!("SELECT * FROM media_files WHERE id IN ({})", placeholders);
+            let query = format!(
+                "SELECT {} FROM media_files WHERE id IN ({})",
+                DEDUPE_MEDIA_FILE_FIELDS, placeholders
+            );
 
             let mut query_builder = sqlx::query_as::<_, MediaFile>(&query);
             for file_id in chunk {
@@ -96,9 +105,10 @@ pub async fn find_duplicate_movies_by_tmdb(
 
     for (tmdb_id, _) in duplicate_tmdb_ids {
         // 获取该影片的所有文件，按质量得分降序排序
-        let files: Vec<MediaFile> = sqlx::query_as(
-            "SELECT * FROM media_files WHERE tmdb_id = ? ORDER BY quality_score DESC, size DESC",
-        )
+        let files: Vec<MediaFile> = sqlx::query_as(&format!(
+            "SELECT {} FROM media_files WHERE tmdb_id = ? ORDER BY quality_score DESC, size DESC",
+            DEDUPE_MEDIA_FILE_FIELDS_WITH_METADATA
+        ))
         .bind(tmdb_id)
         .fetch_all(db)
         .await?;
@@ -157,6 +167,65 @@ fn normalize_filename(name: &str) -> String {
     re_sep.replace_all(&normalized, " ").trim().to_lowercase()
 }
 
+fn tokenize_normalized_name(name: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "the", "a", "an", "and", "of", "part", "cut", "edition", "extended", "ultimate",
+    ];
+
+    name.split_whitespace()
+        .filter(|token| token.len() >= 2)
+        .filter(|token| !STOP_WORDS.contains(token))
+        .map(|token| token.to_string())
+        .collect()
+}
+
+fn extract_year_token(name: &str) -> Option<String> {
+    static YEAR_RE: once_cell::sync::Lazy<regex::Regex> =
+        once_cell::sync::Lazy::new(|| regex::Regex::new(r"\b(19|20)\d{2}\b").unwrap());
+
+    YEAR_RE.find(name).map(|m| m.as_str().to_string())
+}
+
+fn build_similarity_bucket_keys(normalized_name: &str) -> Vec<String> {
+    let tokens = tokenize_normalized_name(normalized_name);
+    if tokens.is_empty() {
+        return vec![];
+    }
+
+    let year = extract_year_token(normalized_name).unwrap_or_else(|| "unknown".to_string());
+    let token_count = tokens.len();
+    let len_bucket = normalized_name.len() / 5;
+    let first = tokens[0].chars().take(4).collect::<String>();
+    let second = tokens
+        .get(1)
+        .map(|token| token.chars().take(4).collect::<String>())
+        .unwrap_or_default();
+    let longest = tokens
+        .iter()
+        .max_by_key(|token| token.len())
+        .map(|token| token.chars().take(4).collect::<String>())
+        .unwrap_or_default();
+
+    let mut keys = vec![
+        format!("first:{}:{}:{}", year, token_count, first),
+        format!("pair:{}:{}:{}:{}", year, token_count, first, second),
+        format!(
+            "longest:{}:{}:{}:{}",
+            year, len_bucket, token_count, longest
+        ),
+    ];
+
+    if year != "unknown" {
+        keys.push(format!("yearless-first:{}:{}", token_count, first));
+        keys.push(format!(
+            "yearless-longest:{}:{}:{}",
+            len_bucket, token_count, longest
+        ));
+    }
+
+    keys
+}
+
 /// 内部实现：查找相似文件（基于文件名模糊匹配），可选任务上下文用于长任务管理。
 async fn find_similar_files_internal(
     db: &SqlitePool,
@@ -166,21 +235,55 @@ async fn find_similar_files_internal(
     use strsim::jaro_winkler;
 
     // 获取所有视频文件
-    let files: Vec<MediaFile> =
-        sqlx::query_as("SELECT * FROM media_files WHERE file_type = 'video' ORDER BY name")
-            .fetch_all(db)
-            .await?;
+    let files: Vec<MediaFile> = sqlx::query_as(&format!(
+        "SELECT {} FROM media_files WHERE file_type = 'video' ORDER BY name",
+        DEDUPE_MEDIA_FILE_FIELDS
+    ))
+    .fetch_all(db)
+    .await?;
 
     if files.len() < 2 {
         return Ok(vec![]);
     }
 
-    // 标准化所有文件名
+    // 标准化所有文件名，并建立多组候选桶，避免 O(n^2) 全量比较
     let normalized: Vec<(usize, String)> = files
         .iter()
         .enumerate()
         .map(|(i, f)| (i, normalize_filename(&f.name)))
         .collect();
+
+    let mut buckets: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, normalized_name) in &normalized {
+        for bucket_key in build_similarity_bucket_keys(normalized_name) {
+            buckets.entry(bucket_key).or_default().push(*index);
+        }
+    }
+
+    let mut candidate_pairs: HashSet<(usize, usize)> = HashSet::new();
+    for indices in buckets.values() {
+        if indices.len() < 2 {
+            continue;
+        }
+
+        // 超大桶通常说明键过于宽泛，跳过它以避免退化回近似 O(n^2)
+        if indices.len() > 200 {
+            continue;
+        }
+
+        for i in 0..indices.len() {
+            for j in (i + 1)..indices.len() {
+                let left = indices[i];
+                let right = indices[j];
+                let pair = if left < right {
+                    (left, right)
+                } else {
+                    (right, left)
+                };
+                candidate_pairs.insert(pair);
+            }
+        }
+    }
 
     // 使用 Union-Find 来分组
     let mut parent: Vec<usize> = (0..files.len()).collect();
@@ -200,24 +303,35 @@ async fn find_similar_files_internal(
         }
     }
 
-    // 比较所有对（O(n^2)，对于大数据集可能需要优化）
-    let total = normalized.len();
-    for i in 0..total {
+    let candidate_pairs: Vec<(usize, usize)> = candidate_pairs.into_iter().collect();
+    let total = candidate_pairs.len();
+
+    if let Some(ctx) = ctx {
+        ctx.report_progress(5.0, Some(&format!("Prepared {} candidate pairs", total)))
+            .await;
+    }
+
+    // 只比较桶内候选对，避免对整个媒体库做全量两两比较
+    for (idx, (i, j)) in candidate_pairs.iter().enumerate() {
         if let Some(ctx) = ctx {
-            // 允许取消长任务，并按行更新一次进度
             if ctx.is_cancelled().await {
                 return Err(anyhow::anyhow!("similar files analysis cancelled"));
             }
 
-            let progress = (i as f64 / total as f64) * 100.0;
-            ctx.report_progress(progress, Some("Analyzing similar files")).await;
+            if idx == 0 || idx % 500 == 0 {
+                let progress = if total == 0 {
+                    100.0
+                } else {
+                    5.0 + (idx as f64 / total as f64) * 95.0
+                };
+                ctx.report_progress(progress.min(99.0), Some("Analyzing similar files"))
+                    .await;
+            }
         }
 
-        for j in (i + 1)..total {
-            let sim = jaro_winkler(&normalized[i].1, &normalized[j].1);
-            if sim >= threshold {
-                union(&mut parent, i, j);
-            }
+        let sim = jaro_winkler(&normalized[*i].1, &normalized[*j].1);
+        if sim >= threshold {
+            union(&mut parent, *i, *j);
         }
     }
 
@@ -227,8 +341,7 @@ async fn find_similar_files_internal(
     }
 
     // 收集分组
-    let mut groups: std::collections::HashMap<usize, Vec<usize>> =
-        std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     for i in 0..files.len() {
         let root = find(&mut parent, i);
         groups.entry(root).or_default().push(i);
@@ -250,10 +363,7 @@ async fn find_similar_files_internal(
             let mut count = 0;
             for i in 0..indices.len() {
                 for j in (i + 1)..indices.len() {
-                    total_sim += jaro_winkler(
-                        &normalized[indices[i]].1,
-                        &normalized[indices[j]].1,
-                    );
+                    total_sim += jaro_winkler(&normalized[indices[i]].1, &normalized[indices[j]].1);
                     count += 1;
                 }
             }

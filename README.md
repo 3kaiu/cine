@@ -1,4 +1,4 @@
-# Cine - 影视文件刮削工具
+# Cine - 影视文件管理工具
 
 <div align="center">
   <img src="frontend/public/icon.svg" alt="Cine Logo" width="128" height="128">
@@ -7,7 +7,7 @@
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org/)
-  [![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
+  [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev/)
 </div>
 
 支持大型文件（100GB+）的智能刮削、去重、重命名等功能。
@@ -16,7 +16,7 @@
 
 ### 1. 影视刮削
 - 智能识别电影/剧集
-- TMDB/豆瓣元数据获取
+- TMDb 元数据获取
 - 自动下载海报、背景图
 - 生成 NFO 文件（Kodi/Jellyfin 兼容）
 - 批量刮削支持
@@ -61,27 +61,28 @@
 - **WebSocket** - 实时进度推送
 
 ### 前端
-- **React 18** - UI 框架
+- **React 19** - UI 框架
 - **Vite** - 构建工具
 - **TypeScript** - 类型安全
-- **Ant Design** - UI 组件库
-- **Socket.io-client** - WebSocket 客户端
+- **HeroUI** - UI 组件库
+- **原生 WebSocket** - 实时进度客户端
 - **React Query** - 数据获取和缓存
-- **react-window** - 虚拟滚动
+- **@tanstack/react-virtual** - 虚拟滚动
 
 ## 📊 性能特点
 
 ### 后端性能
-- **文件扫描**: 5000+ 文件/秒（5x 提升）
-- **数据库插入**: 20000+ 条/秒（20x 提升）
-- **数据库查询**: 5-10x 提升（索引优化）
-- **去重查询**: 1-2秒（10万文件，5-10x 提升）
-- **哈希计算**: 500MB/秒（多核，10x 提升）
+- **文件扫描**: Criterion 基准下 5000 文件约 `544ms`
+- **快速哈希**: 100MB 文件约 `0.93ms`
+- **完整哈希**: 100MB 文件约 `137ms`
+- **去重查询**: 1000 条记录基准约 `690ms`
+- **工程措施**: 流式哈希、SQLite WAL、批处理、候选集预筛选
 
 ### 前端性能
-- **首屏加载**: 0.5-1秒（3x 提升）
-- **代码分割**: 50-70% 首屏减少
-- **请求优化**: 30-50% 请求减少
+- **路由懒加载**: 业务页面按需加载
+- **虚拟滚动**: 支持大列表渲染
+- **CSS 体积**: 主样式包已从约 `328kB` 降到 `220kB`
+- **现状**: 共享 UI 运行时代码仍偏重，仍需继续优化
 - **虚拟滚动**: 支持万级数据流畅渲染
 
 ### 优化技术
@@ -125,7 +126,7 @@ cine/
 ### 环境要求
 
 - **Rust** 1.70+
-- **Node.js** 18+
+- **Node.js** 20+
 - **FFmpeg** (用于视频信息提取)
 - **SQLite** 3.x
 
@@ -152,7 +153,7 @@ npm install
 4. **配置环境变量**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，设置 TMDB_API_KEY
+# 编辑 .env 文件，设置 TMDb API Key
 ```
 
 5. **启动服务**
@@ -191,7 +192,7 @@ npm test                  # 单元测试
 npm run test:e2e          # E2E 测试
 ```
 
-详细说明请查看 [测试报告](TEST_REPORT.md)
+可使用 `scripts/run_tests.sh` 统一运行后端和前端测试。
 
 ## 📦 部署
 
@@ -208,7 +209,7 @@ docker-compose up -d
 
 ### 飞牛OS (fnOS) 部署
 ```bash
-# 使用 fnpack 打包
+# 当前仅提供实验性打包脚本，未完成安装验证
 ./scripts/fnpack.sh
 ```
 
@@ -229,8 +230,6 @@ docker-compose up -d
 ## 📝 文档
 
 - [部署指南](DEPLOYMENT.md) - 生产环境部署
-- [测试报告](TEST_REPORT.md) - 测试覆盖和执行情况
-- [项目状态](PROJECT_STATUS.md) - 项目当前状态
 - [更新日志](CHANGELOG.md) - 版本更新记录
 
 ## 🎯 功能状态
@@ -239,7 +238,7 @@ docker-compose up -d
 - 文件扫描和索引
 - 流式哈希计算
 - 视频信息提取
-- 元数据刮削（TMDB）
+- 元数据刮削（TMDb）
 - 批量重命名
 - 文件去重
 - 文件移动/复制
@@ -251,16 +250,22 @@ docker-compose up -d
 - 完整测试体系（96+ 测试用例）
 
 ### 🚧 进行中
-- 虚拟滚动集成到页面
+- 前端共享运行时代码瘦身
+- fnOS 打包与部署链路完善
 
 ### 📋 计划中
-- 任务队列系统
-- 分布式处理支持
-- 插件系统
+- 元数据匹配策略优化
+- 部署与监控文档补齐
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issue 和 Pull Request。
+
+## ⚠️ 当前限制
+
+- README 中的性能表述以当前仓库内基准与测试结果为准，不代表所有 NAS 设备上的实际吞吐。
+- `scripts/fnpack.sh` 仍处于实验阶段，当前仓库没有经过完整验证的 FNOS 安装闭环。
+- 后端当前只提供 API / WebSocket / GraphQL 路由，没有内置静态前端托管，需要额外提供前端静态资源服务。
 
 ## 📄 许可证
 
@@ -268,9 +273,9 @@ MIT License
 
 ## 🙏 致谢
 
-- [TMDB](https://www.themoviedb.org/) - 元数据来源
+- [TMDb](https://www.themoviedb.org/) - 元数据来源
 - [FFmpeg](https://ffmpeg.org/) - 视频处理
-- [Ant Design](https://ant.design/) - UI 组件库
+- [HeroUI](https://www.heroui.com/) - UI 组件库
 
 ---
 

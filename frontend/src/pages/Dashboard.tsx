@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { useQuery } from '@tanstack/react-query'
-import { Chip, Surface, Button } from '@heroui/react'
+import { Chip, Surface, Button } from '@/ui/heroui'
 import { Icon } from '@iconify/react'
 import StatCard from '@/components/StatCard'
 import PageHeader from '@/components/PageHeader'

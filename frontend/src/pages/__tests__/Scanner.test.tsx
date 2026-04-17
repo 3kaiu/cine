@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, Mock } from 'vitest'
 import render, { screen } from '../../test/utils'
 import Scanner from '../Scanner'
 import { mediaApi } from '../../api/media'
+import { useWebSocket } from '../../hooks/useWebSocket'
 
 // Mock API
 vi.mock('../../api/media', () => ({
@@ -12,9 +13,19 @@ vi.mock('../../api/media', () => ({
   },
 }))
 
+vi.mock('../../hooks/useWebSocket', () => ({
+  useWebSocket: vi.fn(),
+}))
+
 describe('Scanner Page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ;(useWebSocket as Mock).mockReturnValue({
+      connected: true,
+      messages: [],
+      send: vi.fn(),
+      sendBatch: vi.fn(),
+    })
     ;(mediaApi.getFiles as Mock).mockResolvedValue({
       files: [],
       total: 0,

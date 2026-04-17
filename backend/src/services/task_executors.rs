@@ -94,7 +94,6 @@ impl TaskExecutor for ScrapeExecutor {
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect();
 
-            let source = payload["source"].as_str().unwrap_or("tmdb").to_string();
             let auto_match = payload["auto_match"].as_bool().unwrap_or(true);
             let download_images = payload["download_images"].as_bool().unwrap_or(true);
             let generate_nfo = payload["generate_nfo"].as_bool().unwrap_or(true);
@@ -104,7 +103,6 @@ impl TaskExecutor for ScrapeExecutor {
                 &client,
                 &file_ids,
                 scraper::BatchScrapeMetadataParams {
-                    source: &source,
                     auto_match,
                     config: &config,
                     download_images,
@@ -233,10 +231,7 @@ impl TaskExecutor for SimilarScanExecutor {
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<Option<String>>> + Send>> {
         let db = self.db.clone();
         Box::pin(async move {
-            let threshold = payload["threshold"]
-                .as_f64()
-                .unwrap_or(0.8)
-                .clamp(0.0, 1.0);
+            let threshold = payload["threshold"].as_f64().unwrap_or(0.8).clamp(0.0, 1.0);
 
             ctx.report_progress(0.0, Some("Starting similar files analysis"))
                 .await;

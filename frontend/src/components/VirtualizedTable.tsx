@@ -1,6 +1,7 @@
 import React, { useMemo, useCallback } from 'react';
 import { useVirtualizer, VirtualItem } from '@tanstack/react-virtual';
-import { Spinner, ListBox, Selection } from "@heroui/react";
+import { Spinner, ListBox } from "@/ui/heroui";
+import type { Selection } from "@/ui/heroui";
 
 /**
  * 基础列配置类型（由页面提供）

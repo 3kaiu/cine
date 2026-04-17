@@ -1,4 +1,4 @@
-import { Card } from "@heroui/react"
+import { Card } from "@/ui/heroui"
 import { ReactNode } from 'react'
 
 interface AnimatedCardProps {

@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::services::task_queue::{TaskQueue, TaskStatus as DbTaskStatus, TaskType};
 use crate::config::AppConfig;
+use crate::services::task_queue::{TaskQueue, TaskStatus as DbTaskStatus, TaskType};
 use sysinfo::System;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
 
@@ -36,10 +36,7 @@ pub enum WorkerMessage {
         error: Option<String>,
     },
     /// 任务心跳（续租，不改变业务状态）
-    TaskHeartbeat {
-        node_id: String,
-        task_id: String,
-    },
+    TaskHeartbeat { node_id: String, task_id: String },
     /// 请求任务 (拉取模式)
     RequestTask {
         node_id: String,
@@ -143,7 +140,9 @@ impl DistributedService {
 
                                 let ack = MasterMessage::RegisterAck {
                                     node_id: id,
-                                    heartbeat_interval_secs: self.config.worker_heartbeat_interval_secs,
+                                    heartbeat_interval_secs: self
+                                        .config
+                                        .worker_heartbeat_interval_secs,
                                 };
                                 let _ = sender
                                     .send(Message::Text(serde_json::to_string(&ack).unwrap()))
@@ -178,11 +177,15 @@ impl DistributedService {
                                     )
                                     .await;
                             }
-                            WorkerMessage::TaskHeartbeat { node_id: _, task_id } => {
+                            WorkerMessage::TaskHeartbeat {
+                                node_id: _,
+                                task_id,
+                            } => {
                                 let _ = self.task_queue.heartbeat_task(&task_id).await;
                                 let _ = sender
                                     .send(Message::Text(
-                                        serde_json::to_string(&MasterMessage::HeartbeatAck).unwrap(),
+                                        serde_json::to_string(&MasterMessage::HeartbeatAck)
+                                            .unwrap(),
                                     ))
                                     .await;
                             }
@@ -326,7 +329,8 @@ impl WorkerService {
         let (heartbeat_tx, mut heartbeat_rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(negotiated_heartbeat_secs)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(negotiated_heartbeat_secs))
+                    .await;
 
                 // 获取真实负载
                 let mut sys_guard = sys.lock().await;
@@ -426,7 +430,8 @@ async fn run_task_remote(
         .ok_or_else(|| anyhow::anyhow!("No executor found for task type: {:?}", task_type))?;
 
     // 创建任务上下文
-    let (ctx, mut status_rx) = task_queue.create_remote_context(task_id.clone(), task_type.clone(), None);
+    let (ctx, mut status_rx) =
+        task_queue.create_remote_context(task_id.clone(), task_type.clone(), None);
 
     // 启动状态监听器，将本地进度转发给 update_tx
     let node_id_clone = node_id.clone();
@@ -467,7 +472,8 @@ async fn run_task_remote(
     let hb_node_id = node_id.clone();
     let hb_task_id = task_id.clone();
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(task_heartbeat_secs.max(1)));
+        let mut interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(task_heartbeat_secs.max(1)));
         loop {
             interval.tick().await;
             if heartbeat_tx

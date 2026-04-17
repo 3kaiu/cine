@@ -88,6 +88,16 @@ export interface ScanHistory {
   last_scanned_at: string
 }
 
+export interface GetFilesParams {
+  page?: number
+  page_size?: number
+  file_type?: string
+  name?: string
+  min_size?: number
+  max_size?: number
+  include_video_info?: boolean
+  include_metadata?: boolean
+}
 
 export const mediaApi = {
   // 扫描目录
@@ -95,14 +105,7 @@ export const mediaApi = {
     api.post<ScanResponse>('/scan', data),
 
   // 获取文件列表
-  getFiles: (params?: {
-    page?: number
-    page_size?: number
-    file_type?: string
-    name?: string
-    min_size?: number
-    max_size?: number
-  }) => api.get<{
+  getFiles: (params?: GetFilesParams) => api.get<{
     files: MediaFile[]
     total: number
     page: number
@@ -120,12 +123,10 @@ export const mediaApi = {
   // 刮削元数据
   scrapeMetadata: (data: {
     file_id: string
-    source?: string
     auto_match?: boolean
     download_images?: boolean
     generate_nfo?: boolean
-    tmdb_id?: string
-    douban_id?: string
+    tmdb_id?: number
   }) => api.post<{
     metadata?: Record<string, unknown> | Array<Record<string, unknown>>
     error?: string
@@ -137,7 +138,6 @@ export const mediaApi = {
   // 批量刮削元数据
   batchScrapeMetadata: (data: {
     file_ids: string[]
-    source?: string
     auto_match?: boolean
     download_images?: boolean
     generate_nfo?: boolean

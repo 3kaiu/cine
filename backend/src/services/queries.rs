@@ -3,8 +3,8 @@
 //! 提供按需字段查询，避免SELECT *的性能问题
 //! 使用复合索引优化查询性能
 
-use sqlx::SqlitePool;
 use crate::models::MediaFile;
+use sqlx::SqlitePool;
 
 /// 查询选项
 #[derive(Debug, Clone, Default)]
@@ -20,12 +20,21 @@ pub async fn get_file_by_id_optimized(
     db: &SqlitePool,
     file_id: &str,
     include_video_info: bool,
-    include_metadata: bool
+    include_metadata: bool,
 ) -> anyhow::Result<Option<MediaFile>> {
     let mut fields = vec![
-        "id", "path", "name", "size", "file_type",
-        "hash_xxhash", "hash_md5", "tmdb_id", "quality_score",
-        "created_at", "updated_at", "last_modified"
+        "id",
+        "path",
+        "name",
+        "size",
+        "file_type",
+        "hash_xxhash",
+        "hash_md5",
+        "tmdb_id",
+        "quality_score",
+        "created_at",
+        "updated_at",
+        "last_modified",
     ];
 
     if include_video_info {
@@ -52,16 +61,25 @@ pub async fn get_files_by_ids_optimized(
     db: &SqlitePool,
     file_ids: &[String],
     include_video_info: bool,
-    include_metadata: bool
+    include_metadata: bool,
 ) -> anyhow::Result<Vec<MediaFile>> {
     if file_ids.is_empty() {
         return Ok(Vec::new());
     }
 
     let mut fields = vec![
-        "id", "path", "name", "size", "file_type",
-        "hash_xxhash", "hash_md5", "tmdb_id", "quality_score",
-        "created_at", "updated_at", "last_modified"
+        "id",
+        "path",
+        "name",
+        "size",
+        "file_type",
+        "hash_xxhash",
+        "hash_md5",
+        "tmdb_id",
+        "quality_score",
+        "created_at",
+        "updated_at",
+        "last_modified",
     ];
 
     if include_video_info {
@@ -74,7 +92,10 @@ pub async fn get_files_by_ids_optimized(
 
     let field_list = fields.join(", ");
     let placeholders = vec!["?"; file_ids.len()].join(",");
-    let query = format!("SELECT {} FROM media_files WHERE id IN ({}) ORDER BY name", field_list, placeholders);
+    let query = format!(
+        "SELECT {} FROM media_files WHERE id IN ({}) ORDER BY name",
+        field_list, placeholders
+    );
 
     let mut query_builder = sqlx::query_as::<_, MediaFile>(&query);
     for file_id in file_ids {
@@ -89,7 +110,7 @@ pub async fn get_files_by_ids_optimized(
 pub async fn get_files_paginated_optimized(
     db: &SqlitePool,
     file_type: Option<&str>,
-    options: QueryOptions
+    options: QueryOptions,
 ) -> anyhow::Result<Vec<MediaFile>> {
     let fields = [
         "id",
@@ -146,7 +167,7 @@ pub async fn get_large_files_optimized(
     db: &SqlitePool,
     min_size: i64,
     limit: i64,
-    offset: i64
+    offset: i64,
 ) -> anyhow::Result<Vec<MediaFile>> {
     // 使用复合索引 idx_media_files_file_type_size
     let files = sqlx::query_as::<_, MediaFile>(
@@ -159,7 +180,7 @@ pub async fn get_large_files_optimized(
         WHERE size > ?
         ORDER BY size DESC
         LIMIT ? OFFSET ?
-        "#
+        "#,
     )
     .bind(min_size)
     .bind(limit)
@@ -183,12 +204,20 @@ pub async fn get_file_stats_optimized(db: &SqlitePool) -> anyhow::Result<serde_j
             COUNT(CASE WHEN tmdb_id IS NOT NULL THEN 1 END) as scraped_files,
             COALESCE(SUM(size), 0) as total_size
         FROM media_files
-        "#
+        "#,
     )
     .fetch_one(db)
     .await?;
 
-    let (total_files, video_files, audio_files, image_files, hashed_files, scraped_files, total_size) = stats;
+    let (
+        total_files,
+        video_files,
+        audio_files,
+        image_files,
+        hashed_files,
+        scraped_files,
+        total_size,
+    ) = stats;
 
     Ok(serde_json::json!({
         "total_files": total_files,

@@ -13,9 +13,7 @@ use std::sync::Arc;
 use crate::{
     handlers::AppState,
     models::MediaFile,
-    services::{
-        queries::{get_file_stats_optimized, get_files_paginated_optimized, QueryOptions},
-    },
+    services::queries::{get_file_stats_optimized, get_files_paginated_optimized, QueryOptions},
 };
 
 /// GraphQL 查询根对象

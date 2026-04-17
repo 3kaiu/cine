@@ -12,6 +12,7 @@ vi.mock('sonner', () => ({
 describe('errorHandler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
   describe('formatErrorMessage', () => {

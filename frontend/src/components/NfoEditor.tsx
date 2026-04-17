@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Modal, Button, Input, TextArea, Skeleton, TextField, Label, InputGroup } from "@heroui/react";
+import { Modal, Button, Input, TextArea, Skeleton, TextField, Label, InputGroup } from "@/ui/heroui";
 import { mediaApi, MovieNfo } from '@/api/media'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { CircleInfo, Pencil, FloppyDisk } from '@gravity-ui/icons'
+import { CircleInfo, Pencil, FloppyDisk } from '@/ui/icons'
 
 interface NfoEditorProps {
   fileId: string
