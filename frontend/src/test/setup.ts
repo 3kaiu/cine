@@ -5,21 +5,7 @@ import { afterEach, vi } from 'vitest'
 
 function createComponent(tag = 'div') {
   return React.forwardRef<HTMLElement, React.PropsWithChildren<Record<string, unknown>>>(
-    (
-      {
-        children,
-        onPress,
-        onSelectionChange,
-        onOpenChange,
-        selectionMode,
-        selectedKeys,
-        selectedKey,
-        isOpen,
-        isIconOnly,
-        ...props
-      },
-      ref
-    ) =>
+    ({ children, onPress, ...props }, ref) =>
       React.createElement(tag, { ref, onClick: onPress, ...props }, children as React.ReactNode)
   )
 }
@@ -42,18 +28,7 @@ vi.mock('@/ui/heroui', () => {
   })
 
   const ListBoxRoot = React.forwardRef<HTMLElement, React.PropsWithChildren<Record<string, unknown>>>(
-    (
-      {
-        children,
-        'aria-label': ariaLabel,
-        selectionMode,
-        selectedKeys,
-        selectedKey,
-        onSelectionChange,
-        ...props
-      },
-      ref
-    ) =>
+    ({ children, 'aria-label': ariaLabel, ...props }, ref) =>
       React.createElement(
         'div',
         { ref, role: 'listbox', 'aria-label': ariaLabel, ...props },
