@@ -1,15 +1,11 @@
-version: "3.8"
-
 services:
   cine:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: https://github.com/3kaiu/cine.git#main
     container_name: cine
     ports:
       - "${CINE_PORT:-3000}:3000"
     volumes:
-      - ${CINE_DATA_DIR:-./data}:/app/data
+      - ${CINE_DATA_DIR:-/vol1/docker/cine/data}:/app/data
       - ${CINE_MEDIA_DIR:-/vol1/media}:/media
     environment:
       PORT: "3000"
