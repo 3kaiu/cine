@@ -1,6 +1,6 @@
 services:
   cine:
-    build: https://github.com/3kaiu/cine.git#main
+    image: ghcr.io/3kaiu/cine:latest
     container_name: cine
     ports:
       - "${CINE_PORT:-3000}:3000"

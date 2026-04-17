@@ -17,6 +17,7 @@ env:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   backend:
@@ -80,33 +81,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Dependencies
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Lint
         working-directory: frontend
-        run: pnpm run lint
+        run: npm run lint
 
       - name: Test & Coverage
         working-directory: frontend
-        run: pnpm run test:coverage
+        run: npm run test:coverage
 
       - name: Build
         working-directory: frontend
-        run: pnpm run build
+        run: npm run build
 
       - name: Upload Coverage
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -142,26 +138,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Dependencies
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Get Playwright version
         working-directory: frontend
         id: playwright-version
-        run: echo "version=$(pnpm ls @playwright/test --depth=0 --json | jq -r '.[0].dependencies[\"@playwright/test\"].version')" >> $GITHUB_OUTPUT
+        run: echo "version=$(npm ls @playwright/test --depth=0 --json | jq -r '.dependencies[\"@playwright/test\"].version')" >> $GITHUB_OUTPUT
 
       - name: Cache Playwright
         uses: actions/cache@v4
@@ -173,20 +164,20 @@ jobs:
       - name: Install Playwright
         working-directory: frontend
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm dlx playwright install --with-deps
+        run: npx playwright install --with-deps
 
       - name: Install Playwright system dependencies
         working-directory: frontend
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm dlx playwright install-deps
+        run: npx playwright install-deps
 
       - name: Build
         working-directory: frontend
-        run: pnpm run build
+        run: npm run build
 
       - name: Run E2E
         working-directory: frontend
-        run: pnpm run test:e2e
+        run: npm run test:e2e
 
       - name: Upload Test Results
         if: always()
@@ -197,10 +188,10 @@ jobs:
           retention-days: 7
 
   docker:
-    name: Build Docker Image
+    name: Publish Docker Image
     needs: [backend, frontend, e2e]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -209,13 +200,31 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Build (no push)
-        uses: docker/build-push-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cine
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: false
-          tags: media-toolbox:latest,media-toolbox:${{ github.sha }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -225,6 +234,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
+      - uses: actions/checkout@v4
+
       - name: Prepare Workspace
         run: |
           mkdir -p app/backend app/frontend config cmd
@@ -407,4 +418,3 @@ jobs:
           fail_on_unmatched_files: false
           draft: false
           prerelease: false
-
