@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   cine:
@@ -7,22 +7,23 @@ services:
       dockerfile: Dockerfile
     container_name: cine
     ports:
-      - "3000:3000"
+      - "${CINE_PORT:-3000}:3000"
     volumes:
-      # 数据持久化
-      - ./data:/app/data
-      # 挂载媒体文件目录（根据需要修改）
-      - /path/to/your/media:/media:ro
+      - ${CINE_DATA_DIR:-./data}:/app/data
+      - ${CINE_MEDIA_DIR:-/vol1/media}:/media
     environment:
-      - PORT=3000
-      - DATABASE_URL=sqlite:/app/data/media_toolbox.db
-      - TMDB_API_KEY=${TMDB_API_KEY}
-      - MAX_FILE_SIZE=200000000000
-      - CHUNK_SIZE=67108864
-      - RUST_LOG=cine=info,axum=info
+      PORT: "3000"
+      DATABASE_URL: "sqlite:/app/data/media_toolbox.db"
+      TMDB_API_KEY: "${TMDB_API_KEY}"
+      RUST_LOG: "${RUST_LOG:-cine=info,axum=info}"
+      CINE_MEDIA_DIRECTORIES: "${CINE_MEDIA_DIRECTORIES:-[\"/media\"]}"
+      CINE_ENABLE_PLUGINS: "${CINE_ENABLE_PLUGINS:-false}"
+      CINE_ENABLE_CACHE_WARMUP: "${CINE_ENABLE_CACHE_WARMUP:-true}"
+      CINE_HASH_CACHE_DIR: "/app/data/hash_cache"
+      CINE_TRASH_DIR: "/app/data/trash"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

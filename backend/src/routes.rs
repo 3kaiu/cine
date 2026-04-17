@@ -1,12 +1,17 @@
-use std::sync::Arc;
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
+    body::Body,
     extract::{State, WebSocketUpgrade},
+    http::{Request, StatusCode, Uri},
+    response::IntoResponse,
     routing::{delete, get, post},
     Extension, Router,
 };
+use tower::ServiceExt;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 use utoipa::OpenApi;
 
 use crate::graphql::CineSchema;
@@ -19,6 +24,61 @@ async fn graphql_handler(
     req: GraphQLRequest,
 ) -> GraphQLResponse {
     schema.execute(req.into_inner()).await.into()
+}
+
+fn frontend_root() -> Option<PathBuf> {
+    let app_home = std::env::var("APP_HOME").ok().map(PathBuf::from);
+
+    let candidates = [
+        std::env::var("CINE_FRONTEND_DIST").ok().map(PathBuf::from),
+        app_home.as_ref().map(|app_home| app_home.join("frontend")),
+        Some(PathBuf::from("./frontend/dist")),
+        Some(PathBuf::from("./app/frontend")),
+        Some(PathBuf::from("../frontend/dist")),
+    ];
+
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|path| path.join("index.html").is_file())
+}
+
+fn frontend_service(root: &Path) -> ServeDir<ServeFile> {
+    ServeDir::new(root).not_found_service(ServeFile::new(root.join("index.html")))
+}
+
+async fn frontend_handler(uri: Uri) -> impl IntoResponse {
+    const RESERVED_PREFIXES: [&str; 6] =
+        ["/api", "/graphql", "/metrics", "/ws", "/swagger-ui", "/api-docs"];
+
+    if RESERVED_PREFIXES
+        .iter()
+        .any(|prefix| uri.path().starts_with(prefix))
+    {
+        return (StatusCode::NOT_FOUND, "Not Found").into_response();
+    }
+
+    let Some(frontend_root) = frontend_root() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Frontend assets are not available",
+        )
+            .into_response();
+    };
+
+    let service = frontend_service(&frontend_root);
+    match service
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .body(Body::empty())
+                .expect("failed to build frontend asset request"),
+        )
+        .await
+    {
+        Ok(response) => response.into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve frontend").into_response(),
+    }
 }
 
 pub fn build_app_router(
@@ -171,12 +231,19 @@ pub fn build_app_router(
     let swagger = utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
         .url("/api-docs/openapi.json", openapi::ApiDoc::openapi());
 
+    if let Some(frontend_root) = frontend_root() {
+        tracing::info!("Serving frontend assets from {}", frontend_root.display());
+    } else {
+        tracing::warn!("Frontend assets were not found; UI routes will be unavailable");
+    }
+
     Router::new()
         .route("/graphql", post(graphql_handler))
         .layer(Extension(graphql_schema))
         .merge(api_routes)
         .merge(ws_routes)
         .merge(swagger)
+        .fallback(get(frontend_handler))
         .layer(cors)
         .layer(compression)
         .layer(axum::middleware::from_fn(
