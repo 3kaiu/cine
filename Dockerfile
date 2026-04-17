@@ -37,7 +37,7 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 
 # 安装依赖
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # 复制源代码
 COPY frontend ./
