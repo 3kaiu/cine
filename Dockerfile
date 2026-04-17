@@ -1,7 +1,9 @@
 # 多阶段构建 Dockerfile
 
 # 阶段1: 构建 Rust 后端
-FROM rust:1.87-bookworm AS rust-builder
+# Use a mainland-accessible Docker Hub mirror. This is an inference from current
+# mirror index results and may be adjusted if the mirror policy changes.
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/rust:1.87 AS rust-builder
 
 WORKDIR /app
 
@@ -27,7 +29,7 @@ COPY backend/build.rs ./
 RUN cargo build --release --bin cine-backend
 
 # 阶段2: 构建前端
-FROM node:22-alpine AS frontend-builder
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:22-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -47,7 +49,7 @@ COPY frontend ./
 RUN pnpm run build
 
 # 阶段3: 运行镜像
-FROM debian:bookworm-slim
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim
 
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y \
