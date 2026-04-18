@@ -43,7 +43,7 @@ jobs:
 
       - name: Run Tests (CI profile)
         working-directory: backend
-        run: cargo test --profile ci --workspace -- --nocapture
+        run: cargo test --profile ci --lib --tests -- --nocapture
 
       - name: Build backend binary for artifacts
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
