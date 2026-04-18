@@ -44,6 +44,7 @@ pub struct VideoInfoResult {
     ),
     responses(
         (status = 200, description = "获取视频信息成功", body = VideoInfoResponse),
+        (status = 501, description = "当前构建未包含视频探测能力"),
         (status = 500, description = "服务器内部错误")
     )
 )]
@@ -51,6 +52,13 @@ pub async fn get_video_info(
     State(state): State<Arc<AppState>>,
     Path(file_id): Path<String>,
 ) -> Result<Json<VideoInfoResponse>, (axum::http::StatusCode, String)> {
+    if !video::VIDEO_PROBE_COMPILED {
+        return Err((
+            axum::http::StatusCode::NOT_IMPLEMENTED,
+            "Video probe support is not compiled into this image".to_string(),
+        ));
+    }
+
     // 从数据库获取文件信息（只查询需要的字段）
     let file = crate::services::queries::get_file_by_id_optimized(&state.db, &file_id, true, true)
         .await
@@ -87,6 +95,7 @@ pub async fn get_video_info(
     request_body = BatchVideoInfoRequest,
     responses(
         (status = 200, description = "批量获取视频信息成功", body = BatchVideoInfoResponse),
+        (status = 501, description = "当前构建未包含视频探测能力"),
         (status = 500, description = "服务器内部错误")
     )
 )]
@@ -94,6 +103,13 @@ pub async fn batch_get_video_info(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchVideoInfoRequest>,
 ) -> Result<Json<BatchVideoInfoResponse>, (axum::http::StatusCode, String)> {
+    if !video::VIDEO_PROBE_COMPILED {
+        return Err((
+            axum::http::StatusCode::NOT_IMPLEMENTED,
+            "Video probe support is not compiled into this image".to_string(),
+        ));
+    }
+
     if req.file_ids.is_empty() {
         return Ok(Json(BatchVideoInfoResponse {
             results: Vec::new(),

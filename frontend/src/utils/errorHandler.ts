@@ -28,6 +28,8 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   // 配置错误
   'TMDB API key not configured': 'TMDB API Key 未配置，请在设置中配置',
   'Configuration error': '配置错误，请检查配置',
+  'Plugin support is not compiled into this image': '当前镜像未包含插件功能',
+  'Video probe support is not compiled into this image': '当前镜像未包含视频探测功能',
 
   // 通用错误
   'Internal server error': '服务器内部错误，请稍后重试',

@@ -232,20 +232,67 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/cine
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
             type=sha
-            type=ref,event=tag
+      - name: Compute image tags
+        id: image-tags
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/cine"
+          SHORT_SHA="${GITHUB_SHA::7}"
 
-      - name: Build and push image
+          full_tags=()
+          core_tags=()
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            full_tags+=("${IMAGE}:latest" "${IMAGE}:full" "${IMAGE}:sha-${SHORT_SHA}")
+            core_tags+=("${IMAGE}:latest-core" "${IMAGE}:core" "${IMAGE}:sha-${SHORT_SHA}-core")
+          elif [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
+            full_tags+=("${IMAGE}:develop" "${IMAGE}:sha-${SHORT_SHA}")
+            core_tags+=("${IMAGE}:develop-core" "${IMAGE}:sha-${SHORT_SHA}-core")
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            full_tags+=("${IMAGE}:${TAG_NAME}" "${IMAGE}:full")
+            core_tags+=("${IMAGE}:${TAG_NAME}-core" "${IMAGE}:core")
+          else
+            full_tags+=("${IMAGE}:sha-${SHORT_SHA}")
+            core_tags+=("${IMAGE}:sha-${SHORT_SHA}-core")
+          fi
+
+          {
+            echo "full<<EOF"
+            printf '%s\n' "${full_tags[@]}"
+            echo "EOF"
+            echo "core<<EOF"
+            printf '%s\n' "${core_tags[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push full image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            BACKEND_FEATURES=plugins,video-probe,thumbnail
+            INSTALL_FFMPEG=true
+          tags: ${{ steps.image-tags.outputs.full }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-full
+          cache-to: type=gha,scope=docker-full,mode=max
+
+      - name: Build and push core image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            BACKEND_FEATURES=
+            INSTALL_FFMPEG=false
+          tags: ${{ steps.image-tags.outputs.core }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-core
+          cache-to: type=gha,scope=docker-core,mode=max
 
   package-and-release:
     name: Package fnOS FPK and GitHub Release

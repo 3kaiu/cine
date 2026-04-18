@@ -9,10 +9,20 @@ use std::sync::Arc;
     path = "/api/plugins",
     tag = "system",
     responses(
-        (status = 200, description = "获取插件列表成功", body = Vec<PluginInfo>)
+        (status = 200, description = "获取插件列表成功", body = Vec<PluginInfo>),
+        (status = 501, description = "当前构建未包含插件系统")
     )
 )]
-pub async fn list_plugins(State(state): State<Arc<AppState>>) -> Json<Vec<PluginInfo>> {
+pub async fn list_plugins(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<PluginInfo>>, (axum::http::StatusCode, String)> {
+    if !crate::services::plugin::PluginManager::is_compiled() {
+        return Err((
+            axum::http::StatusCode::NOT_IMPLEMENTED,
+            "Plugin support is not compiled into this image".to_string(),
+        ));
+    }
+
     let plugins = state.plugin_manager.list_plugins().await;
-    Json(plugins)
+    Ok(Json(plugins))
 }

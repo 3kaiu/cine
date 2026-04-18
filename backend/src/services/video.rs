@@ -1,8 +1,13 @@
 use crate::models::{AudioStreamInfo, SubtitleStreamInfo, VideoInfo};
+#[cfg(feature = "video-probe")]
 use serde_json::Value;
+#[cfg(any(feature = "thumbnail", feature = "video-probe"))]
 use std::process::Command;
 
+pub const VIDEO_PROBE_COMPILED: bool = cfg!(feature = "video-probe");
+
 /// 使用 ffprobe 提取视频信息（不加载整个文件）
+#[cfg(feature = "video-probe")]
 pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
     // 检查 ffprobe 是否可用
     let ffprobe_output = Command::new("ffprobe")
@@ -195,6 +200,13 @@ pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
     Ok(video_info)
 }
 
+#[cfg(not(feature = "video-probe"))]
+pub async fn extract_video_info(_file_path: &str) -> anyhow::Result<VideoInfo> {
+    Err(anyhow::anyhow!(
+        "Video probe support is not compiled into this build"
+    ))
+}
+
 /// 生成视频缩略图（用于预览）
 ///
 /// # 参数
@@ -205,6 +217,7 @@ pub async fn extract_video_info(file_path: &str) -> anyhow::Result<VideoInfo> {
 /// # 用途
 /// 用于生成视频预览图，增强用户界面体验
 #[allow(dead_code)]
+#[cfg(feature = "thumbnail")]
 pub async fn generate_thumbnail(
     file_path: &str,
     output_path: &str,
@@ -235,6 +248,18 @@ pub async fn generate_thumbnail(
     }
 
     Ok(())
+}
+
+#[allow(dead_code)]
+#[cfg(not(feature = "thumbnail"))]
+pub async fn generate_thumbnail(
+    _file_path: &str,
+    _output_path: &str,
+    _time_offset: Option<f64>,
+) -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(
+        "Thumbnail generation is not compiled into this build"
+    ))
 }
 
 /// 基于文件名探测视频来源

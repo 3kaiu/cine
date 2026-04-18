@@ -128,6 +128,10 @@ pub fn build_app_router(
         .route("/api/files", get(handlers::scan::list_files))
         .route("/api/files/:id/info", get(handlers::video::get_video_info))
         .route(
+            "/api/files/batch-info",
+            post(handlers::video::batch_get_video_info),
+        )
+        .route(
             "/api/files/:id/subtitles",
             get(handlers::subtitle::find_subtitles),
         )

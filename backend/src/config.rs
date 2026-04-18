@@ -19,7 +19,8 @@ pub struct AppConfig {
     pub media_directories: Vec<PathBuf>,
     pub log_level: String,  // 日志级别
     pub log_format: String, // 日志格式: "pretty" 或 "json"
-    /// 是否启用插件系统（WASM）。设为 false 时不加载 plugins 目录，/api/plugins 返回空列表
+    /// 是否启用插件系统（WASM）。仅当二进制编译进 plugins feature 时生效；
+    /// 设为 false 时不加载 plugins 目录，/api/plugins 返回空列表。
     pub enable_plugins: bool,
     /// 是否启用缓存预热。设为 false 时跳过启动时的 cache warmup，减少启动时间
     pub enable_cache_warmup: bool,

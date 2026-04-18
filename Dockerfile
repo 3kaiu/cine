@@ -7,6 +7,8 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/rust:1.87 AS rust-builde
 
 WORKDIR /app
 
+ARG BACKEND_FEATURES="plugins video-probe thumbnail"
+
 # 复制依赖文件
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
@@ -16,7 +18,11 @@ RUN mkdir -p src benches && \
     touch src/lib.rs && \
     echo "fn main() {}" > benches/hash_bench.rs && \
     echo "fn main() {}" > benches/performance_bench.rs && \
-    cargo build --release --bin cine-backend && \
+    if [ -n "$BACKEND_FEATURES" ]; then \
+      cargo build --release --no-default-features --features "$BACKEND_FEATURES" --bin cine-backend; \
+    else \
+      cargo build --release --no-default-features --bin cine-backend; \
+    fi && \
     rm -rf src benches
 
 # 复制源代码
@@ -26,7 +32,11 @@ COPY backend/benches ./benches
 COPY backend/build.rs ./
 
 # 构建应用
-RUN cargo build --release --bin cine-backend
+RUN if [ -n "$BACKEND_FEATURES" ]; then \
+      cargo build --release --no-default-features --features "$BACKEND_FEATURES" --bin cine-backend; \
+    else \
+      cargo build --release --no-default-features --bin cine-backend; \
+    fi
 
 # 阶段2: 构建前端
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/node:22-alpine AS frontend-builder
@@ -48,12 +58,15 @@ RUN npm run build
 # 阶段3: 运行镜像
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim
 
+ARG INSTALL_FFMPEG=true
+
 # 安装运行时依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    if [ "$INSTALL_FFMPEG" = "true" ]; then \
+      apt-get install -y --no-install-recommends ffmpeg; \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
