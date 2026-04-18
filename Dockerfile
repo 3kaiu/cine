@@ -49,9 +49,8 @@ RUN npm run build
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/debian:bookworm-slim
 
 # 安装运行时依赖
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    sqlite3 \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
