@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{path::PathBuf, sync::Arc};
 
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
@@ -46,10 +43,6 @@ fn frontend_root() -> Option<PathBuf> {
         .find(|path| path.join("index.html").is_file())
 }
 
-fn frontend_service(root: &Path) -> impl tower::Service<Request<Body>> + Clone {
-    ServeDir::new(root).not_found_service(ServeFile::new(root.join("index.html")))
-}
-
 async fn frontend_handler(uri: Uri) -> impl IntoResponse {
     const RESERVED_PREFIXES: [&str; 6] = [
         "/api",
@@ -75,7 +68,8 @@ async fn frontend_handler(uri: Uri) -> impl IntoResponse {
             .into_response();
     };
 
-    let service = frontend_service(&frontend_root);
+    let service = ServeDir::new(&frontend_root)
+        .not_found_service(ServeFile::new(frontend_root.join("index.html")));
     match service
         .oneshot(
             Request::builder()
@@ -85,7 +79,7 @@ async fn frontend_handler(uri: Uri) -> impl IntoResponse {
         )
         .await
     {
-        Ok(response) => response.into_response(),
+        Ok(response) => response.map(Body::new).into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Failed to serve frontend",

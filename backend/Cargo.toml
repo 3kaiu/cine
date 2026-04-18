@@ -11,7 +11,7 @@ repository = "https://github.com/yourusername/cine"
 # Web 框架
 axum = { version = "0.7", features = ["ws", "multipart", "json"] }
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
+tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "fs", "compression-gzip", "compression-deflate", "compression-br"] }
 clap = { version = "4.4", features = ["derive"] }
 
