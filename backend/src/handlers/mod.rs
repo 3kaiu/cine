@@ -9,6 +9,7 @@ use crate::services::task_queue::TaskQueue;
 
 pub mod dedupe;
 pub mod hash;
+pub mod identify;
 pub mod metrics;
 pub mod nfo;
 pub mod performance_monitor;
@@ -49,6 +50,9 @@ pub use dedupe::{
     find_similar_files, start_similar_files_task,
 };
 pub use hash::*;
+pub use identify::{
+    apply_identify, apply_identify_batch, preview_identify, preview_identify_batch,
+};
 pub use nfo::*;
 pub use rename::*;
 pub use scan::*;
@@ -77,4 +81,4 @@ pub mod plugins;
 pub use plugins::list_plugins;
 
 pub mod settings;
-pub use settings::{get_settings, update_settings};
+pub use settings::{get_settings, health_check_settings, update_settings};

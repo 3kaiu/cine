@@ -15,6 +15,7 @@ export interface TaskInfo {
   created_at: string
   updated_at: string
   description: string | null
+  result?: string | null
   retry_count: number
   lease_until?: string | null
   lease_renewed_at?: string | null

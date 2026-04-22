@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::services::smart_cache::SmartCacheManager;
 use crate::services::task_queue::{TaskContext, TaskExecutor};
-use crate::services::{dedupe, hasher, renamer, scanner, scraper};
+use crate::services::{dedupe, hasher, identify, renamer, scanner, scraper};
 
 /// 扫描任务执行器
 pub struct ScanExecutor {
@@ -87,6 +87,90 @@ impl TaskExecutor for ScrapeExecutor {
         let client = self.http_client.clone();
         let config = self.config.clone();
         Box::pin(async move {
+            let operation = payload["operation"].as_str().unwrap_or("scrape");
+
+            if operation == "identify_preview" {
+                let file_ids: Vec<String> = payload["file_ids"]
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("Missing file_ids"))?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
+                let allow_ai = payload["allow_ai"].as_bool().unwrap_or(true);
+                let total = file_ids.len().max(1);
+                let mut results = Vec::new();
+
+                for (index, file_id) in file_ids.iter().enumerate() {
+                    let previews = identify::preview_files(
+                        &db,
+                        &client,
+                        &config,
+                        std::slice::from_ref(file_id),
+                        allow_ai,
+                    )
+                    .await?;
+                    results.extend(previews);
+                    let progress = ((index + 1) as f64 / total as f64) * 100.0;
+                    ctx.report_progress(
+                        progress,
+                        Some(&format!("Previewing {}/{} files", index + 1, total)),
+                    )
+                    .await;
+                }
+
+                return Ok(Some(serde_json::to_string(&serde_json::json!({
+                    "results": results
+                }))?));
+            }
+
+            if operation == "identify_apply" {
+                let selections = payload["selections"]
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("Missing selections"))?;
+                let total = selections.len().max(1);
+                let mut applied = Vec::new();
+
+                for (index, item) in selections.iter().enumerate() {
+                    let selection = identify::ApplySelection {
+                        file_id: item["file_id"]
+                            .as_str()
+                            .ok_or_else(|| anyhow::anyhow!("Missing file_id"))?
+                            .to_string(),
+                        provider: item["provider"]
+                            .as_str()
+                            .ok_or_else(|| anyhow::anyhow!("Missing provider"))?
+                            .to_string(),
+                        external_id: item["external_id"]
+                            .as_str()
+                            .ok_or_else(|| anyhow::anyhow!("Missing external_id"))?
+                            .to_string(),
+                        media_type: item["media_type"]
+                            .as_str()
+                            .ok_or_else(|| anyhow::anyhow!("Missing media_type"))?
+                            .to_string(),
+                        lock_match: item["lock_match"].as_bool().unwrap_or(false),
+                        download_images: item["download_images"].as_bool().unwrap_or(false),
+                        generate_nfo: item["generate_nfo"].as_bool().unwrap_or(false),
+                    };
+                    let metadata =
+                        identify::apply_selection(&db, &client, &config, &selection).await?;
+                    applied.push(serde_json::json!({
+                        "file_id": selection.file_id,
+                        "metadata": metadata
+                    }));
+                    let progress = ((index + 1) as f64 / total as f64) * 100.0;
+                    ctx.report_progress(
+                        progress,
+                        Some(&format!("Applying {}/{} selections", index + 1, total)),
+                    )
+                    .await;
+                }
+
+                return Ok(Some(serde_json::to_string(&serde_json::json!({
+                    "applied": applied
+                }))?));
+            }
+
             let file_ids: Vec<String> = payload["file_ids"]
                 .as_array()
                 .ok_or_else(|| anyhow::anyhow!("Missing file_ids"))?
@@ -248,5 +332,96 @@ impl TaskExecutor for SimilarScanExecutor {
                 total_groups, groups_json
             )))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScrapeExecutor;
+    use crate::config::AppConfig;
+    use crate::services::task_queue::{TaskContext, TaskExecutor};
+    use serde_json::Value;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::sync::Arc;
+
+    async fn create_test_db() -> sqlx::SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("Failed to create in-memory DB");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("Failed to run migrations");
+        pool
+    }
+
+    #[tokio::test]
+    async fn scrape_executor_identify_preview_serializes_results() {
+        let pool = create_test_db().await;
+        sqlx::query(
+            "INSERT INTO media_files (id, path, name, size, file_type, created_at, updated_at, last_modified)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind("file-executor-1")
+        .bind("/tmp/.mkv")
+        .bind(".mkv")
+        .bind(1024_i64)
+        .bind("video")
+        .bind(chrono::Utc::now())
+        .bind(chrono::Utc::now())
+        .bind(chrono::Utc::now())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let executor = ScrapeExecutor {
+            db: pool,
+            http_client: reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("Failed to create test client"),
+            config: Arc::new(AppConfig {
+                database_url: "sqlite::memory:".to_string(),
+                port: 3000,
+                tmdb_api_key: None,
+                hash_cache_dir: std::env::temp_dir().join("cine-hash-cache"),
+                trash_dir: std::env::temp_dir().join("cine-trash"),
+                max_file_size: 200_000_000_000,
+                chunk_size: 64 * 1024 * 1024,
+                media_directories: vec![],
+                log_level: "info".to_string(),
+                log_format: "pretty".to_string(),
+                enable_plugins: false,
+                enable_cache_warmup: false,
+                task_lease_seconds: 60,
+                task_dispatch_interval_ms: 100,
+                task_retries_pure: 1,
+                task_retries_idempotent: 1,
+                task_retries_side_effectful: 0,
+                worker_heartbeat_interval_secs: 1,
+                worker_task_heartbeat_interval_secs: 1,
+            }),
+        };
+
+        let result = executor
+            .execute(
+                TaskContext::for_test("task-identify-preview"),
+                serde_json::json!({
+                    "operation": "identify_preview",
+                    "file_ids": ["file-executor-1"],
+                    "allow_ai": false
+                }),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        let payload: Value = serde_json::from_str(&result).unwrap();
+        let preview = &payload["results"][0];
+        assert_eq!(preview["file_id"], "file-executor-1");
+        assert_eq!(preview["parse"]["title"], "");
+        assert!(preview["candidates"].as_array().unwrap().is_empty());
     }
 }

@@ -1,13 +1,21 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import clsx from 'clsx'
-import { Button, Chip, Modal, Surface } from "@/ui/heroui"
+import { Button, Chip, Checkbox, Label, Modal, Surface } from "@/ui/heroui"
 import { Icon } from '@iconify/react'
 import { ArrowsRotateRight, Pause, Play, Xmark, TrashBin } from '@/ui/icons'
+import { useNavigate } from 'react-router-dom'
 import PageHeader from '@/components/PageHeader'
 import StatCard from '@/components/StatCard'
 import VirtualizedTable from '@/components/VirtualizedTable'
 import { useTasksQuery, useTaskMutations } from '@/hooks/useTasksQuery'
+import { mediaApi } from '@/api/media'
+import { tasksApi } from '@/api/tasks'
 import type { TaskInfo, TaskStatus } from '@/api/tasks'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/config/queryConfig'
+import { showSuccess } from '@/utils/toast'
+import { handleError } from '@/utils/errorHandler'
+import { buildTaskSummary, candidateKey, parseTaskResult } from './tasksResult'
 
 // 任务类型标签
 const taskTypeLabels: Record<string, string> = {
@@ -41,16 +49,18 @@ const statusLabels: Record<string, string> = {
 }
 
 export default function Tasks() {
+  const navigate = useNavigate()
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean; taskId: string | null; action: 'cancel' | 'cleanup' }>({
     isOpen: false,
     taskId: null,
     action: 'cancel',
   })
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
 
   const { data, refetch, isPending } = useTasksQuery()
   const { pauseMutation, resumeMutation, cancelMutation, cleanupMutation, requeueMutation, rerunMutation } = useTaskMutations()
 
-  const tasks = data?.data?.tasks || []
+  const tasks = data?.data?.tasks ?? []
   const activeCount = data?.data?.active || 0
   const totalCount = data?.data?.total || 0
 
@@ -60,6 +70,18 @@ export default function Tasks() {
     completed: tasks.filter(t => t.status.status === 'completed').length,
     failed: tasks.filter(t => t.status.status === 'failed').length,
   }
+  const listedDetailTask = tasks.find((task) => task.id === detailTaskId) || null
+  const { data: detailTaskResponse } = useQuery({
+    queryKey: queryKeys.task(detailTaskId || ''),
+    queryFn: async () => {
+      if (!detailTaskId) return null
+      const res = await tasksApi.get(detailTaskId)
+      return res.data || null
+    },
+    enabled: Boolean(detailTaskId),
+    refetchInterval: detailTaskId ? 2000 : false,
+  })
+  const detailTask = detailTaskResponse || listedDetailTask
 
   const handleCancelSuccess = useCallback(() => {
     setConfirmModal(prev => ({ ...prev, isOpen: false }))
@@ -105,12 +127,22 @@ export default function Tasks() {
     {
       title: '描述',
       dataIndex: 'description',
-      width: 200,
-      render: (desc: unknown) => (
-        <span className="text-sm text-foreground/80 line-clamp-1">
-          {(desc as string) || '-'}
-        </span>
-      ),
+      width: 280,
+      render: (_desc: unknown, task: TaskInfo) => {
+        const summary = buildTaskSummary(task)
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-sm text-foreground/80 line-clamp-1">
+              {task.description || '-'}
+            </span>
+            {summary && (
+              <span className="text-[10px] text-default-400 font-medium line-clamp-2">
+                {summary}
+              </span>
+            )}
+          </div>
+        )
+      },
     },
     {
       title: '状态',
@@ -208,7 +240,7 @@ export default function Tasks() {
     {
       title: '操作',
       dataIndex: 'id',
-      width: 160,
+      width: 200,
       render: (_: unknown, task: TaskInfo) => {
         const status = task.status.status
         const canPause = status === 'running'
@@ -216,9 +248,21 @@ export default function Tasks() {
         const canCancel = status === 'running' || status === 'paused' || status === 'pending'
         const canRequeue = status === 'failed' || status === 'cancelled'
         const canRerun = status === 'failed' || status === 'cancelled' || status === 'completed'
+        const canInspect = Boolean(task.result) || status === 'failed'
 
         return (
           <div className="flex gap-2">
+            {canInspect && (
+              <Button
+                isIconOnly
+                size="sm"
+                variant="secondary"
+                onPress={() => setDetailTaskId(task.id)}
+                className="h-7 w-7 min-w-0 bg-accent/10 text-accent hover:bg-accent/20 border-none shadow-none"
+              >
+                <Icon icon="mdi:file-document-search-outline" className="w-3.5 h-3.5" />
+              </Button>
+            )}
             {canPause && (
               <Button
                 isIconOnly
@@ -401,6 +445,345 @@ export default function Tasks() {
           </Modal.Dialog>
         </Modal.Container>
       </Modal>
+
+      <Modal isOpen={!!detailTaskId} onOpenChange={(open) => !open && setDetailTaskId(null)}>
+        <Modal.Backdrop />
+        <Modal.Container size="lg">
+          <Modal.Dialog className="max-h-[85vh]">
+            <Modal.Header>
+              任务详情
+            </Modal.Header>
+            <Modal.Body className="space-y-4 overflow-y-auto">
+              {detailTask && (
+                <TaskDetailContent
+                  task={detailTask}
+                  onOpenScraper={(taskId, focus = 'review') => navigate(`/scraper?task=${taskId}&focus=${focus}`)}
+                  onOpenTask={setDetailTaskId}
+                />
+              )}
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="ghost" onPress={() => setDetailTaskId(null)}>
+                关闭
+              </Button>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal>
     </div>
   )
+}
+
+function TaskDetailContent({
+  task,
+  onOpenScraper,
+  onOpenTask,
+}: {
+  task: TaskInfo
+  onOpenScraper: (taskId: string, focus?: 'review' | 'matched' | 'all') => void
+  onOpenTask: (taskId: string) => void
+}) {
+  const parsed = parseTaskResult(task)
+  const queryClient = useQueryClient()
+  const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({})
+  const [lockMatch, setLockMatch] = useState(true)
+  const [downloadImages, setDownloadImages] = useState(true)
+  const [generateNfo, setGenerateNfo] = useState(true)
+  const previewSummary = useMemo(() => {
+    if (parsed.type !== 'identify_preview') return null
+
+    return {
+      total: parsed.results.length,
+      review: parsed.results.filter((item) => item.needs_review).length,
+      recommended: parsed.results.filter((item) => item.recommended).length,
+      autoApplicable: parsed.results.filter((item) => !item.needs_review && item.recommended).length,
+      candidates: parsed.results.reduce((sum, item) => sum + item.candidates.length, 0),
+    }
+  }, [parsed])
+  const applySummary = useMemo(() => {
+    if (parsed.type !== 'identify_apply') return null
+
+    const providers = new Set(
+      parsed.applied
+        .map((item) => item.metadata.provider)
+        .filter((provider): provider is string => typeof provider === 'string' && provider.length > 0)
+    )
+
+    return {
+      total: parsed.applied.length,
+      providers: providers.size,
+      locked: parsed.applied.filter((item) => item.metadata.locked === true).length,
+      withImages: parsed.applied.filter((item) => item.metadata.thumb_path || item.metadata.poster_path).length,
+    }
+  }, [parsed])
+
+  useEffect(() => {
+    if (parsed.type !== 'identify_preview') return
+
+    const defaults = parsed.results.reduce<Record<string, string>>((acc, item) => {
+      const preferred = item.recommended || item.candidates[0]
+      if (preferred) {
+        acc[item.file_id] = candidateKey(preferred)
+      }
+      return acc
+    }, {})
+
+    setSelectedCandidates(defaults)
+  }, [parsed])
+
+  const applyBatchMutation = useMutation({
+    mutationFn: (selections: Array<{
+      file_id: string
+      provider: string
+      external_id: string
+      media_type: string
+      lock_match?: boolean
+      download_images?: boolean
+      generate_nfo?: boolean
+    }>) => mediaApi.identifyApplyBatch({ selections }),
+    onSuccess: (result) => {
+      showSuccess(`已创建批量应用任务 ${result.task_id}`)
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.task(result.task_id) })
+      queryClient.invalidateQueries({ queryKey: ['files'] })
+      onOpenTask(result.task_id)
+    },
+    onError: (error: unknown) => handleError(error, '提交批量应用任务失败'),
+  })
+
+  const handleApplySelected = () => {
+    if (parsed.type !== 'identify_preview') return
+
+    const selections = parsed.results
+      .map((item) => {
+        const selected = item.candidates.find((candidate) => candidateKey(candidate) === selectedCandidates[item.file_id])
+        if (!selected) return null
+        return {
+          file_id: item.file_id,
+          provider: selected.provider,
+          external_id: selected.external_id,
+          media_type: selected.media_type,
+          lock_match: lockMatch,
+          download_images: downloadImages,
+          generate_nfo: generateNfo,
+        }
+      })
+      .filter(Boolean) as Array<{
+        file_id: string
+        provider: string
+        external_id: string
+        media_type: string
+        lock_match?: boolean
+        download_images?: boolean
+        generate_nfo?: boolean
+      }>
+
+    if (selections.length === 0) return
+    applyBatchMutation.mutate(selections)
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Surface variant="secondary" className="rounded-xl border border-divider/10 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-default-500">任务</p>
+          <p className="mt-2 text-sm font-semibold">{task.description || '-'}</p>
+          <p className="mt-1 text-xs text-default-400 font-mono">{task.id}</p>
+        </Surface>
+        <Surface variant="secondary" className="rounded-xl border border-divider/10 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-default-500">状态</p>
+          <p className="mt-2 text-sm font-semibold">{statusLabels[task.status.status] || task.status.status}</p>
+          <p className="mt-1 text-xs text-default-400">{new Date(task.updated_at).toLocaleString()}</p>
+        </Surface>
+      </div>
+
+      {parsed.type === 'identify_preview' && (
+        <div className="flex flex-col gap-3">
+          <Surface variant="secondary" className="rounded-xl border border-divider/10 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-default-500">识别结果摘要</p>
+            <p className="mt-2 text-sm text-foreground/80">
+              共 {parsed.results.length} 个文件，推荐 {parsed.results.filter((item) => item.recommended).length} 个，待确认 {parsed.results.filter((item) => item.needs_review).length} 个。
+            </p>
+            {previewSummary && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Chip size="sm" variant="soft" color="default">总计 {previewSummary.total}</Chip>
+                <Chip size="sm" variant="soft" color="warning">待确认 {previewSummary.review}</Chip>
+                <Chip size="sm" variant="soft" color="success">可自动应用 {previewSummary.autoApplicable}</Chip>
+                <Chip size="sm" variant="soft" color="accent">候选 {previewSummary.candidates}</Chip>
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap items-center gap-4">
+              <Checkbox isSelected={lockMatch} onChange={setLockMatch} className="group">
+                <Checkbox.Control className="w-4 h-4 rounded border-divider/50 group-data-[selected=true]:bg-primary group-data-[selected=true]:border-primary">
+                  <Checkbox.Indicator className="w-2.5 h-2.5" />
+                </Checkbox.Control>
+                <Checkbox.Content>
+                  <Label className="text-sm font-medium">锁定匹配</Label>
+                </Checkbox.Content>
+              </Checkbox>
+              <Checkbox isSelected={downloadImages} onChange={setDownloadImages} className="group">
+                <Checkbox.Control className="w-4 h-4 rounded border-divider/50 group-data-[selected=true]:bg-primary group-data-[selected=true]:border-primary">
+                  <Checkbox.Indicator className="w-2.5 h-2.5" />
+                </Checkbox.Control>
+                <Checkbox.Content>
+                  <Label className="text-sm font-medium">下载图片</Label>
+                </Checkbox.Content>
+              </Checkbox>
+              <Checkbox isSelected={generateNfo} onChange={setGenerateNfo} className="group">
+                <Checkbox.Control className="w-4 h-4 rounded border-divider/50 group-data-[selected=true]:bg-primary group-data-[selected=true]:border-primary">
+                  <Checkbox.Indicator className="w-2.5 h-2.5" />
+                </Checkbox.Control>
+                <Checkbox.Content>
+                  <Label className="text-sm font-medium">生成 NFO</Label>
+                </Checkbox.Content>
+              </Checkbox>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onPress={() => onOpenScraper(task.id, 'review')}
+                  isDisabled={!previewSummary || previewSummary.review === 0}
+                >
+                  查看待确认
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onPress={() => onOpenScraper(task.id, 'matched')}
+                  isDisabled={!previewSummary || previewSummary.recommended === 0}
+                >
+                  查看已匹配
+                </Button>
+                <Button variant="ghost" size="md" onPress={() => onOpenScraper(task.id, 'all')}>
+                  查看任务范围
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="md"
+                  onPress={handleApplySelected}
+                  isPending={applyBatchMutation.isPending}
+                  isDisabled={applyBatchMutation.isPending || parsed.results.every((item) => !selectedCandidates[item.file_id])}
+                >
+                  提交批量应用
+                </Button>
+              </div>
+            </div>
+          </Surface>
+          {parsed.results.map((item, index) => (
+            <Surface key={`${item.file_id}-${index}`} variant="secondary" className="rounded-xl border border-divider/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">{item.file_name}</p>
+                  <p className="mt-1 text-xs text-default-400">
+                    {item.parse.title || '未解析标题'}
+                    {item.parse.year ? ` (${item.parse.year})` : ''}
+                    {' / '}
+                    {item.parse.parser_provider}
+                    {' / '}
+                    {Math.round(item.parse.confidence * 100)}%
+                  </p>
+                </div>
+                <Chip size="sm" variant="soft" color={item.needs_review ? 'warning' : 'success'}>
+                  {item.needs_review ? '待确认' : '可自动应用'}
+                </Chip>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {item.candidates.map((candidate, candidateIndex) => {
+                  const isSelected = selectedCandidates[item.file_id] === candidateKey(candidate)
+                  const isRecommended = item.recommended && candidateKey(item.recommended) === candidateKey(candidate)
+
+                  return (
+                    <button
+                      key={`${candidate.provider}:${candidate.external_id}:${candidateIndex}`}
+                      type="button"
+                      onClick={() => setSelectedCandidates((prev) => ({ ...prev, [item.file_id]: candidateKey(candidate) }))}
+                      className={clsx(
+                        "rounded-full border px-3 py-1.5 text-left text-xs transition-colors",
+                        isSelected
+                          ? "border-accent bg-accent/10 text-accent"
+                          : "border-divider/20 bg-default-100/40 text-default-500 hover:bg-default-100"
+                      )}
+                    >
+                      <span className="font-semibold">{candidate.title}</span>
+                      <span className="ml-2">{candidate.provider.toUpperCase()}</span>
+                      <span className="ml-2">{Math.round(candidate.score * 100)}%</span>
+                      {isRecommended && <span className="ml-2 font-semibold">推荐</span>}
+                    </button>
+                  )
+                })}
+              </div>
+            </Surface>
+          ))}
+        </div>
+      )}
+
+      {parsed.type === 'identify_apply' && (
+        <div className="flex flex-col gap-3">
+          <Surface variant="secondary" className="rounded-xl border border-divider/10 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-default-500">批量应用结果</p>
+            <p className="mt-2 text-sm text-foreground/80">已应用 {parsed.applied.length} 个识别结果。</p>
+            {applySummary && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Chip size="sm" variant="soft" color="success">已应用 {applySummary.total}</Chip>
+                <Chip size="sm" variant="soft" color="accent">来源 {applySummary.providers}</Chip>
+                <Chip size="sm" variant="soft" color="warning">已锁定 {applySummary.locked}</Chip>
+                <Chip size="sm" variant="soft" color="default">含图片 {applySummary.withImages}</Chip>
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="md"
+                onPress={() => onOpenScraper(task.id, 'matched')}
+                isDisabled={!applySummary || applySummary.total === 0}
+              >
+                查看已匹配
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                onPress={() => onOpenScraper(task.id, 'all')}
+                isDisabled={!applySummary || applySummary.total === 0}
+              >
+                查看任务范围
+              </Button>
+            </div>
+          </Surface>
+          {parsed.applied.map((item, index) => (
+            <Surface key={`${item.file_id}-${index}`} variant="secondary" className="rounded-xl border border-divider/10 p-4">
+              <p className="text-sm font-semibold">{readTaskMetadataTitle(item.metadata) || item.file_id}</p>
+              <p className="mt-1 text-xs text-default-400">
+                {item.metadata.provider ? `来源 ${String(item.metadata.provider).toUpperCase()} / ` : ''}
+                {item.metadata.media_type ? `类型 ${String(item.metadata.media_type)} / ` : ''}
+                {item.metadata.year ? `年份 ${item.metadata.year}` : '已写入元数据'}
+              </p>
+            </Surface>
+          ))}
+        </div>
+      )}
+
+      {parsed.type === 'raw' && (
+        <Surface variant="secondary" className="rounded-xl border border-divider/10 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-default-500">原始结果</p>
+          <pre className="mt-3 whitespace-pre-wrap break-all text-xs text-default-500 font-mono">{parsed.text}</pre>
+        </Surface>
+      )}
+
+      {task.status.status === 'failed' && 'error' in task.status && (
+        <Surface variant="secondary" className="rounded-xl border border-danger/20 bg-danger/5 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-danger">错误信息</p>
+          <p className="mt-2 text-sm text-danger/80">{task.status.error}</p>
+        </Surface>
+      )}
+    </div>
+  )
+}
+
+function readTaskMetadataTitle(metadata: Record<string, unknown>): string | null {
+  const title = metadata.title ?? metadata.name ?? metadata.original_title
+  return typeof title === 'string' && title ? title : null
 }

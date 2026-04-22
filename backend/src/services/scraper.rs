@@ -1,5 +1,6 @@
 use crate::config::AppConfig;
 use crate::models::{MediaFile, MovieMetadata, TVShowMetadata};
+use crate::services::identify;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use reqwest::Client;
@@ -17,6 +18,20 @@ static EP_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(?:EP|E|Episode|集|第)\s*[. -]?\s*(\d+)").unwrap());
 
 static WHITESPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
+
+pub(crate) fn tmdb_api_base_url() -> String {
+    std::env::var("CINE_TMDB_API_BASE_URL")
+        .unwrap_or_else(|_| "https://api.themoviedb.org/3".to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
+
+pub(crate) fn bangumi_api_base_url() -> String {
+    std::env::var("CINE_BANGUMI_API_BASE_URL")
+        .unwrap_or_else(|_| "https://api.bgm.tv".to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
 
 /// 从文件名提取影视信息（使用预编译正则表达式）
 pub fn parse_filename(filename: &str) -> (String, Option<u32>, Option<u32>, Option<u32>) {
@@ -68,7 +83,8 @@ pub async fn search_movie_tmdb(
     api_key: &str,
 ) -> anyhow::Result<Vec<MovieMetadata>> {
     let mut url = format!(
-        "https://api.themoviedb.org/3/search/movie?api_key={}&query={}",
+        "{}/search/movie?api_key={}&query={}",
+        tmdb_api_base_url(),
         api_key,
         urlencoding::encode(title)
     );
@@ -142,7 +158,8 @@ pub async fn search_tv_tmdb(
     api_key: &str,
 ) -> anyhow::Result<Vec<TVShowMetadata>> {
     let mut url = format!(
-        "https://api.themoviedb.org/3/search/tv?api_key={}&query={}",
+        "{}/search/tv?api_key={}&query={}",
+        tmdb_api_base_url(),
         api_key,
         urlencoding::encode(title)
     );
@@ -325,39 +342,34 @@ pub async fn batch_scrape_metadata(
                     return (file.id.clone(), Err("Task cancelled".to_string()));
                 }
 
-                let result = match scrape_metadata(&client, &file, None, auto_match, &config)
-                    .await
-                {
-                    Ok(metadata) => {
+                let result = match identify::preview_file(&db, &client, &config, &file, true).await {
+                    Ok(preview) => {
+                        let chosen = if auto_match {
+                            preview.recommended
+                        } else {
+                            None
+                        };
+                        if let Some(recommended) = chosen {
+                            let metadata = match identify::apply_selection(
+                                &db,
+                                &client,
+                                &config,
+                                &identify::ApplySelection {
+                                    file_id: file.id.clone(),
+                                    provider: recommended.provider,
+                                    external_id: recommended.external_id,
+                                    media_type: recommended.media_type,
+                                    lock_match: false,
+                                    download_images,
+                                    generate_nfo,
+                                },
+                            )
+                            .await
+                            {
+                                Ok(metadata) => metadata,
+                                Err(err) => return (file.id.clone(), Err(err.to_string())),
+                            };
                         // 1. 下载图片和生成 NFO
-                        if download_images || generate_nfo {
-                            let poster_url = metadata.get("poster_url").and_then(|u| u.as_str());
-                            let backdrop_url =
-                                metadata.get("backdrop_url").and_then(|u| u.as_str());
-
-                            if download_images {
-                                let _ = crate::services::poster::download_media_images(
-                                    &file.path,
-                                    poster_url,
-                                    backdrop_url,
-                                )
-                                .await;
-                            }
-
-                            if generate_nfo {
-                                let media_type =
-                                    if file.name.contains("S") || file.name.contains("E") {
-                                        "tvshow"
-                                    } else {
-                                        "movie"
-                                    };
-                                let _ = crate::services::nfo::generate_nfo_file(
-                                    &file.path, &metadata, media_type,
-                                )
-                                .await;
-                            }
-                        }
-
                         // 2. 执行视频质量分析
                         let video_info = crate::services::video::extract_video_info(&file.path).await.ok();
                         let quality_score = video_info.as_ref().map(crate::services::quality::calculate_quality_score);
@@ -379,7 +391,10 @@ pub async fn batch_scrape_metadata(
                         .execute(&db)
                         .await;
 
-                        Ok(metadata)
+                            Ok(metadata)
+                        } else {
+                            Err("No matching candidate found".to_string())
+                        }
                     }
                     Err(e) => Err(e.to_string()),
                 };

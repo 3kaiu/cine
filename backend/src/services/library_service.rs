@@ -67,7 +67,7 @@ impl LibraryService {
         } else {
             builder.push("NULL AS metadata");
         }
-        builder.push(", created_at, updated_at, last_modified FROM media_files WHERE 1=1");
+        builder.push(", detected_title, detected_year, detected_season, detected_episode, parser_provider, parse_version, confidence_score, review_state, match_provider, match_external_id, locked_match_provider, locked_match_external_id, ai_disabled_reason, created_at, updated_at, last_modified FROM media_files WHERE 1=1");
 
         if let Some(ref file_type) = query.file_type {
             builder.push(" AND file_type = ");

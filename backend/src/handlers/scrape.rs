@@ -4,7 +4,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::handlers::AppState;
-use crate::services::{quality, scraper, video};
+use crate::services::{identify, quality, video};
 use chrono::Utc;
 
 #[derive(Deserialize, ToSchema)]
@@ -60,42 +60,92 @@ pub async fn scrape_metadata(
     let download_images = req.download_images.unwrap_or(false);
     let generate_nfo = req.generate_nfo.unwrap_or(false);
 
-    // 执行刮削（TMDb-only）
-    match scraper::scrape_metadata(
-        &state.http_client,
-        &file,
-        req.tmdb_id,
-        auto_match,
-        &state.config,
-    )
-    .await
-    {
-        Ok(metadata) => {
-            if download_images || generate_nfo {
-                let poster_url = metadata.get("poster_url").and_then(|u| u.as_str());
-                let backdrop_url = metadata.get("backdrop_url").and_then(|u| u.as_str());
+    if !auto_match {
+        let preview =
+            identify::preview_file(&state.db, &state.http_client, &state.config, &file, true)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-                if download_images {
-                    let _ = crate::services::poster::download_media_images(
-                        &file.path,
-                        poster_url,
-                        backdrop_url,
-                    )
-                    .await;
+        let metadata = preview
+            .candidates
+            .into_iter()
+            .map(|candidate| {
+                let mut value = candidate.metadata;
+                if let Some(object) = value.as_object_mut() {
+                    object.insert(
+                        "provider".to_string(),
+                        serde_json::json!(candidate.provider),
+                    );
+                    object.insert(
+                        "external_id".to_string(),
+                        serde_json::json!(candidate.external_id),
+                    );
+                    object.insert(
+                        "media_type".to_string(),
+                        serde_json::json!(candidate.media_type),
+                    );
+                    object.insert("score".to_string(), serde_json::json!(candidate.score));
                 }
+                value
+            })
+            .collect::<Vec<_>>();
+        return Ok(Json(ScrapeResponse {
+            metadata: Some(serde_json::json!(metadata)),
+            error: None,
+        }));
+    }
 
-                if generate_nfo {
-                    let media_type = if metadata.get("name").is_some() {
-                        "tvshow"
-                    } else {
-                        "movie"
-                    };
-                    let _ =
-                        crate::services::nfo::generate_nfo_file(&file.path, &metadata, media_type)
-                            .await;
+    let metadata = if let Some(tmdb_id) = req.tmdb_id {
+        identify::apply_selection(
+            &state.db,
+            &state.http_client,
+            &state.config,
+            &identify::ApplySelection {
+                file_id: file.id.clone(),
+                provider: "tmdb".to_string(),
+                external_id: tmdb_id.to_string(),
+                media_type: if file.name.contains('S') || file.name.contains('E') {
+                    "tv".to_string()
+                } else {
+                    "movie".to_string()
+                },
+                lock_match: false,
+                download_images,
+                generate_nfo,
+            },
+        )
+        .await
+    } else {
+        let preview =
+            identify::preview_file(&state.db, &state.http_client, &state.config, &file, true).await;
+        match preview {
+            Ok(preview) => {
+                if let Some(recommended) = preview.recommended {
+                    identify::apply_selection(
+                        &state.db,
+                        &state.http_client,
+                        &state.config,
+                        &identify::ApplySelection {
+                            file_id: file.id.clone(),
+                            provider: recommended.provider,
+                            external_id: recommended.external_id,
+                            media_type: recommended.media_type,
+                            lock_match: false,
+                            download_images,
+                            generate_nfo,
+                        },
+                    )
+                    .await
+                } else {
+                    Err(anyhow::anyhow!("No matching candidate found"))
                 }
             }
+            Err(err) => Err(err),
+        }
+    };
 
+    match metadata {
+        Ok(metadata) => {
             // 解析 TMDB ID
             let tmdb_id = metadata
                 .get("tmdb_id")

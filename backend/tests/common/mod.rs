@@ -4,6 +4,8 @@ use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
+use tokio::time::{sleep, Duration};
+use tower_http::{compression::CompressionLayer, cors::CorsLayer};
 
 /// 创建测试数据库连接池
 pub async fn create_test_db() -> (SqlitePool, TempDir) {
@@ -57,6 +59,17 @@ pub async fn create_test_app_state() -> (Arc<cine_backend::handlers::AppState>, 
         pool.clone(),
         4,
     ));
+    task_queue.register_executor(
+        cine_backend::services::task_queue::TaskType::Scrape,
+        Arc::new(cine_backend::services::task_executors::ScrapeExecutor {
+            db: pool.clone(),
+            http_client: reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("Failed to create scrape executor HTTP client"),
+            config: config.clone(),
+        }),
+    );
 
     let app_state = Arc::new(cine_backend::handlers::AppState {
         db: pool,
@@ -79,6 +92,58 @@ pub async fn create_test_app_state() -> (Arc<cine_backend::handlers::AppState>, 
     });
 
     (app_state, temp_dir)
+}
+
+/// 创建测试 Router（用于 handler 级集成测试）
+#[allow(dead_code)]
+pub async fn create_test_router() -> (axum::Router, TempDir) {
+    let (app_state, temp_dir) = create_test_app_state().await;
+    let router = cine_backend::routes::build_app_router(
+        app_state,
+        cine_backend::graphql::create_schema(),
+        CorsLayer::permissive(),
+        CompressionLayer::new(),
+    );
+
+    (router, temp_dir)
+}
+
+/// 创建测试 Router 和共享 AppState
+#[allow(dead_code)]
+pub async fn create_test_router_with_state(
+) -> (axum::Router, Arc<cine_backend::handlers::AppState>, TempDir) {
+    let (app_state, temp_dir) = create_test_app_state().await;
+    let router = cine_backend::routes::build_app_router(
+        app_state.clone(),
+        cine_backend::graphql::create_schema(),
+        CorsLayer::permissive(),
+        CompressionLayer::new(),
+    );
+
+    (router, app_state, temp_dir)
+}
+
+/// 轮询等待任务进入终态
+#[allow(dead_code)]
+pub async fn wait_for_task_terminal_state(
+    pool: &SqlitePool,
+    task_id: &str,
+) -> cine_backend::models::DbTask {
+    for _ in 0..50 {
+        let task: cine_backend::models::DbTask = sqlx::query_as("SELECT * FROM tasks WHERE id = ?")
+            .bind(task_id)
+            .fetch_one(pool)
+            .await
+            .expect("Failed to fetch task");
+
+        if matches!(task.status.as_str(), "completed" | "failed" | "cancelled") {
+            return task;
+        }
+
+        sleep(Duration::from_millis(20)).await;
+    }
+
+    panic!("Task {task_id} did not reach terminal state in time");
 }
 
 /// 创建测试文件

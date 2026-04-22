@@ -155,6 +155,7 @@ pub struct TaskInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub description: Option<String>,
+    pub result: Option<String>,
     pub retry_count: i64,
     pub lease_until: Option<chrono::DateTime<chrono::Utc>>,
     pub lease_renewed_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -676,6 +677,7 @@ impl TaskQueue {
             created_at: task.created_at,
             updated_at: task.updated_at,
             description: task.description.clone(),
+            result: task.result.clone(),
             retry_count: task.retry_count,
             lease_until: task.lease_until,
             lease_renewed_at: task.lease_renewed_at,
@@ -970,16 +972,25 @@ impl TaskQueue {
             // 更新内存
             {
                 let mut info = info_arc.write().await;
+                info.result = match &final_status {
+                    TaskStatus::Completed { result, .. } => result.clone(),
+                    _ => None,
+                };
                 info.status = final_status;
                 info.updated_at = now;
             }
 
             // 更新 DB
             if !requeued {
+                let result_value = match &info_arc.read().await.status {
+                    TaskStatus::Completed { result, .. } => result.clone(),
+                    _ => None,
+                };
                 let _ = sqlx::query(
-                    "UPDATE tasks SET status = ?, error = ?, duration_secs = ?, finished_at = ?, updated_at = ? WHERE id = ?"
+                    "UPDATE tasks SET status = ?, result = ?, error = ?, duration_secs = ?, finished_at = ?, updated_at = ? WHERE id = ?"
                 )
                 .bind(final_status_str)
+                .bind(result_value)
                 .bind(error)
                 .bind(duration)
                 .bind(now)
@@ -1172,6 +1183,7 @@ impl TaskQueue {
                 .flatten();
 
         task.map(|t| {
+            let result = t.result.clone();
             let task_type_str = t.task_type.clone();
             let task_type = match task_type_str.as_str() {
                 "scan" => TaskType::Scan,
@@ -1193,7 +1205,7 @@ impl TaskQueue {
                 },
                 "completed" => TaskStatus::Completed {
                     duration_secs: t.duration_secs.unwrap_or(0.0),
-                    result: t.result,
+                    result: result.clone(),
                 },
                 "failed" => TaskStatus::Failed {
                     error: t.error.unwrap_or_default(),
@@ -1209,6 +1221,7 @@ impl TaskQueue {
                 created_at: t.created_at,
                 updated_at: t.updated_at,
                 description: t.description,
+                result,
                 retry_count: t.retry_count,
                 lease_until: t.lease_until,
                 lease_renewed_at: t.lease_renewed_at,
@@ -1238,6 +1251,7 @@ impl TaskQueue {
         let infos: Vec<TaskInfo> = tasks
             .into_iter()
             .map(|t| {
+                let result = t.result.clone();
                 let task_type_str = t.task_type.clone();
                 let task_type = match task_type_str.as_str() {
                     "scan" => TaskType::Scan,
@@ -1258,7 +1272,7 @@ impl TaskQueue {
                     },
                     "completed" => TaskStatus::Completed {
                         duration_secs: t.duration_secs.unwrap_or(0.0),
-                        result: t.result,
+                        result: result.clone(),
                     },
                     "failed" => TaskStatus::Failed {
                         error: t.error.unwrap_or_default(),
@@ -1274,6 +1288,7 @@ impl TaskQueue {
                     created_at: t.created_at,
                     updated_at: t.updated_at,
                     description: t.description,
+                    result,
                     retry_count: t.retry_count,
                     lease_until: t.lease_until,
                     lease_renewed_at: t.lease_renewed_at,

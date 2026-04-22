@@ -12,9 +12,55 @@ export interface MediaFile {
   quality_score?: number
   video_info?: VideoInfo
   metadata?: Record<string, unknown>
+  detected_title?: string
+  detected_year?: number
+  detected_season?: number
+  detected_episode?: number
+  parser_provider?: string
+  parse_version?: string
+  confidence_score?: number
+  review_state?: string
+  match_provider?: string
+  match_external_id?: string
+  locked_match_provider?: string
+  locked_match_external_id?: string
+  ai_disabled_reason?: string
   created_at: string
   updated_at: string
   last_modified: string
+}
+
+export interface IdentifyCandidate {
+  provider: string
+  external_id: string
+  media_type: string
+  title: string
+  original_title?: string
+  year?: number
+  score: number
+  overview?: string
+  poster_url?: string
+  backdrop_url?: string
+  metadata: Record<string, unknown>
+}
+
+export interface IdentifyPreview {
+  file_id: string
+  file_name: string
+  parse: {
+    title: string
+    year?: number
+    season?: number
+    episode?: number
+    confidence: number
+    parser_provider: string
+    ai_disabled_reason?: string
+  }
+  candidates: IdentifyCandidate[]
+  recommended?: IdentifyCandidate
+  needs_review: boolean
+  ai_used: boolean
+  budget_state: string
 }
 
 export interface VideoInfo {
@@ -146,6 +192,55 @@ export const mediaApi = {
     status: string
     message: string
   }>('/scrape/batch', data),
+
+  identifyPreview: (data: {
+    file_id?: string
+    file_ids?: string[]
+    allow_ai?: boolean
+  }) => api.post<{ results: IdentifyPreview[] }>('/identify/preview', data),
+
+  identifyPreviewBatch: (data: {
+    file_id?: string
+    file_ids?: string[]
+    allow_ai?: boolean
+  }) => api.post<{
+    task_id: string
+    status: string
+    message: string
+  }>('/identify/preview/batch', data),
+
+  identifyApply: (data: {
+    selections: Array<{
+      file_id: string
+      provider: string
+      external_id: string
+      media_type: string
+      lock_match?: boolean
+      download_images?: boolean
+      generate_nfo?: boolean
+    }>
+  }) => api.post<{
+    applied: Array<{
+      file_id: string
+      metadata: Record<string, unknown>
+    }>
+  }>('/identify/apply', data),
+
+  identifyApplyBatch: (data: {
+    selections: Array<{
+      file_id: string
+      provider: string
+      external_id: string
+      media_type: string
+      lock_match?: boolean
+      download_images?: boolean
+      generate_nfo?: boolean
+    }>
+  }) => api.post<{
+    task_id: string
+    status: string
+    message: string
+  }>('/identify/apply/batch', data),
 
   // 批量重命名
   batchRename: (data: {

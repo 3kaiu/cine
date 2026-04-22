@@ -6,6 +6,7 @@ pub mod file_ops;
 pub mod hasher;
 pub mod hasher_parallel;
 pub mod history;
+pub mod identify;
 pub mod library_service;
 pub mod log;
 pub mod metrics;

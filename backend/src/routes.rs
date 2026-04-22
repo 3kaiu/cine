@@ -148,6 +148,22 @@ pub fn build_app_router(
             "/api/scrape/batch",
             post(handlers::scrape::batch_scrape_metadata),
         )
+        .route(
+            "/api/identify/preview",
+            post(handlers::identify::preview_identify),
+        )
+        .route(
+            "/api/identify/preview/batch",
+            post(handlers::identify::preview_identify_batch),
+        )
+        .route(
+            "/api/identify/apply",
+            post(handlers::identify::apply_identify),
+        )
+        .route(
+            "/api/identify/apply/batch",
+            post(handlers::identify::apply_identify_batch),
+        )
         .route("/api/rename", post(handlers::rename::batch_rename))
         .route("/api/dedupe", post(handlers::dedupe::find_duplicates))
         .route(
@@ -207,6 +223,10 @@ pub fn build_app_router(
         .route(
             "/api/settings",
             get(handlers::settings::get_settings).post(handlers::settings::update_settings),
+        )
+        .route(
+            "/api/settings/health-check",
+            post(handlers::settings::health_check_settings),
         )
         .route("/api/plugins", get(handlers::plugins::list_plugins))
         .route(
