@@ -223,30 +223,12 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
 
-  docker:
-    name: Publish Docker Image (${{ matrix.display_name }})
+  docker-core:
+    name: Publish Docker Image (core)
     needs: [backend, frontend, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    if: >-
-      github.event_name == 'push' && (
-        (github.ref == 'refs/heads/main' && matrix.variant == 'core') ||
-        startsWith(github.ref, 'refs/tags/v')
-      )
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - variant: full
-            display_name: full
-            scope: docker-full
-            features: plugins,video-probe,thumbnail
-            install_ffmpeg: "true"
-          - variant: core
-            display_name: core
-            scope: docker-core
-            features: ""
-            install_ffmpeg: "false"
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     steps:
       - uses: actions/checkout@v4
         with:
@@ -273,28 +255,15 @@ jobs:
         run: |
           IMAGE="ghcr.io/${{ github.repository_owner }}/cine"
           SHORT_SHA="${GITHUB_SHA::7}"
-          variant="${{ matrix.variant }}"
           tags=()
 
           if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
-            if [[ "${variant}" == "full" ]]; then
-              tags+=("${IMAGE}:latest" "${IMAGE}:full" "${IMAGE}:sha-${SHORT_SHA}")
-            else
-              tags+=("${IMAGE}:latest-core" "${IMAGE}:core" "${IMAGE}:sha-${SHORT_SHA}-core")
-            fi
+            tags+=("${IMAGE}:latest-core" "${IMAGE}:core" "${IMAGE}:sha-${SHORT_SHA}-core")
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
-            if [[ "${variant}" == "full" ]]; then
-              tags+=("${IMAGE}:${TAG_NAME}" "${IMAGE}:full")
-            else
-              tags+=("${IMAGE}:${TAG_NAME}-core" "${IMAGE}:core")
-            fi
+            tags+=("${IMAGE}:${TAG_NAME}-core" "${IMAGE}:core")
           else
-            if [[ "${variant}" == "full" ]]; then
-              tags+=("${IMAGE}:sha-${SHORT_SHA}")
-            else
-              tags+=("${IMAGE}:sha-${SHORT_SHA}-core")
-            fi
+            tags+=("${IMAGE}:sha-${SHORT_SHA}-core")
           fi
 
           {
@@ -303,19 +272,80 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push ${{ matrix.display_name }} image
+      - name: Build and push core image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
           build-args: |
-            BACKEND_FEATURES=${{ matrix.features }}
-            INSTALL_FFMPEG=${{ matrix.install_ffmpeg }}
+            BACKEND_FEATURES=
+            INSTALL_FFMPEG=false
           tags: ${{ steps.image-tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.scope }}
-          cache-to: type=gha,scope=${{ matrix.scope }},mode=max
+          cache-from: type=gha,scope=docker-core
+          cache-to: type=gha,scope=docker-core,mode=max
+
+  docker-full:
+    name: Publish Docker Image (full)
+    needs: [backend, frontend, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cine
+
+      - name: Compute image tags
+        id: image-tags
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/cine"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          tags=()
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            tags+=("${IMAGE}:${TAG_NAME}" "${IMAGE}:full")
+          else
+            tags+=("${IMAGE}:sha-${SHORT_SHA}")
+          fi
+
+          {
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push full image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            BACKEND_FEATURES=plugins,video-probe,thumbnail
+            INSTALL_FFMPEG=true
+          tags: ${{ steps.image-tags.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-full
+          cache-to: type=gha,scope=docker-full,mode=max
 
   package-and-release:
     name: Package fnOS FPK and GitHub Release
