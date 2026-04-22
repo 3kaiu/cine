@@ -4,9 +4,13 @@ use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
 
 const DEDUPE_MEDIA_FILE_FIELDS: &str =
-    "id, path, name, size, file_type, NULL AS hash_xxhash, NULL AS hash_md5, tmdb_id, quality_score, video_info, NULL AS metadata, created_at, updated_at, last_modified";
+    "id, path, name, size, file_type, NULL AS hash_xxhash, hash_md5, tmdb_id, quality_score, video_info, NULL AS metadata, \
+    detected_title, detected_year, detected_season, detected_episode, parser_provider, parse_version, confidence_score, review_state, \
+    match_provider, match_external_id, locked_match_provider, locked_match_external_id, ai_disabled_reason, created_at, updated_at, last_modified";
 const DEDUPE_MEDIA_FILE_FIELDS_WITH_METADATA: &str =
-    "id, path, name, size, file_type, NULL AS hash_xxhash, NULL AS hash_md5, tmdb_id, quality_score, video_info, metadata, created_at, updated_at, last_modified";
+    "id, path, name, size, file_type, NULL AS hash_xxhash, hash_md5, tmdb_id, quality_score, video_info, metadata, \
+    detected_title, detected_year, detected_season, detected_episode, parser_provider, parse_version, confidence_score, review_state, \
+    match_provider, match_external_id, locked_match_provider, locked_match_external_id, ai_disabled_reason, created_at, updated_at, last_modified";
 
 /// 查找重复文件（优化版本：使用数据库分组）
 pub async fn find_duplicates(db: &SqlitePool) -> anyhow::Result<Vec<DuplicateGroup>> {
