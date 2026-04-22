@@ -224,11 +224,29 @@ jobs:
           retention-days: 7
 
   docker:
-    name: Publish Docker Image
+    name: Publish Docker Image (${{ matrix.display_name }})
     needs: [backend, frontend, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    if: github.event_name == 'push'
+    if: >-
+      github.event_name == 'push' && (
+        (github.ref == 'refs/heads/main' && matrix.variant == 'core') ||
+        startsWith(github.ref, 'refs/tags/v')
+      )
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: full
+            display_name: full
+            scope: docker-full
+            features: plugins,video-probe,thumbnail
+            install_ffmpeg: "true"
+          - variant: core
+            display_name: core
+            scope: docker-core
+            features: ""
+            install_ffmpeg: "false"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -249,68 +267,55 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/cine
-          tags: |
-            type=sha
+
       - name: Compute image tags
         id: image-tags
         run: |
           IMAGE="ghcr.io/${{ github.repository_owner }}/cine"
           SHORT_SHA="${GITHUB_SHA::7}"
-
-          full_tags=()
-          core_tags=()
+          variant="${{ matrix.variant }}"
+          tags=()
 
           if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
-            full_tags+=("${IMAGE}:latest" "${IMAGE}:full" "${IMAGE}:sha-${SHORT_SHA}")
-            core_tags+=("${IMAGE}:latest-core" "${IMAGE}:core" "${IMAGE}:sha-${SHORT_SHA}-core")
-          elif [[ "${GITHUB_REF}" == "refs/heads/develop" ]]; then
-            full_tags+=("${IMAGE}:develop" "${IMAGE}:sha-${SHORT_SHA}")
-            core_tags+=("${IMAGE}:develop-core" "${IMAGE}:sha-${SHORT_SHA}-core")
+            if [[ "${variant}" == "full" ]]; then
+              tags+=("${IMAGE}:latest" "${IMAGE}:full" "${IMAGE}:sha-${SHORT_SHA}")
+            else
+              tags+=("${IMAGE}:latest-core" "${IMAGE}:core" "${IMAGE}:sha-${SHORT_SHA}-core")
+            fi
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
-            full_tags+=("${IMAGE}:${TAG_NAME}" "${IMAGE}:full")
-            core_tags+=("${IMAGE}:${TAG_NAME}-core" "${IMAGE}:core")
+            if [[ "${variant}" == "full" ]]; then
+              tags+=("${IMAGE}:${TAG_NAME}" "${IMAGE}:full")
+            else
+              tags+=("${IMAGE}:${TAG_NAME}-core" "${IMAGE}:core")
+            fi
           else
-            full_tags+=("${IMAGE}:sha-${SHORT_SHA}")
-            core_tags+=("${IMAGE}:sha-${SHORT_SHA}-core")
+            if [[ "${variant}" == "full" ]]; then
+              tags+=("${IMAGE}:sha-${SHORT_SHA}")
+            else
+              tags+=("${IMAGE}:sha-${SHORT_SHA}-core")
+            fi
           fi
 
           {
-            echo "full<<EOF"
-            printf '%s\n' "${full_tags[@]}"
-            echo "EOF"
-            echo "core<<EOF"
-            printf '%s\n' "${core_tags[@]}"
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push full image
+      - name: Build and push ${{ matrix.display_name }} image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
           build-args: |
-            BACKEND_FEATURES=plugins,video-probe,thumbnail
-            INSTALL_FFMPEG=true
-          tags: ${{ steps.image-tags.outputs.full }}
+            BACKEND_FEATURES=${{ matrix.features }}
+            INSTALL_FFMPEG=${{ matrix.install_ffmpeg }}
+          tags: ${{ steps.image-tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-full
-          cache-to: type=gha,scope=docker-full,mode=max
-
-      - name: Build and push core image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          build-args: |
-            BACKEND_FEATURES=
-            INSTALL_FFMPEG=false
-          tags: ${{ steps.image-tags.outputs.core }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-core
-          cache-to: type=gha,scope=docker-core,mode=max
+          cache-from: type=gha,scope=${{ matrix.scope }}
+          cache-to: type=gha,scope=${{ matrix.scope }},mode=max
 
   package-and-release:
     name: Package fnOS FPK and GitHub Release

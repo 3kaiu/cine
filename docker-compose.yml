@@ -1,7 +1,8 @@
 services:
   cine:
-    image: ghcr.io/3kaiu/cine:latest
+    image: ghcr.io/3kaiu/cine:${CINE_IMAGE_TAG:-latest-core}
     container_name: cine
+    pull_policy: always
     ports:
       - "${CINE_PORT:-3000}:3000"
     volumes:
@@ -14,7 +15,7 @@ services:
       RUST_LOG: "${RUST_LOG:-cine=info,axum=info}"
       CINE_MEDIA_DIRECTORIES: "${CINE_MEDIA_DIRECTORIES:-[\"/media\"]}"
       CINE_ENABLE_PLUGINS: "${CINE_ENABLE_PLUGINS:-false}"
-      CINE_ENABLE_CACHE_WARMUP: "${CINE_ENABLE_CACHE_WARMUP:-true}"
+      CINE_ENABLE_CACHE_WARMUP: "${CINE_ENABLE_CACHE_WARMUP:-false}"
       CINE_HASH_CACHE_DIR: "/app/data/hash_cache"
       CINE_TRASH_DIR: "/app/data/trash"
     restart: unless-stopped
@@ -23,4 +24,4 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 90s

@@ -1,0 +1,21 @@
+services:
+  cine:
+    image: ghcr.io/3kaiu/cine:${CINE_IMAGE_TAG:-latest-core}
+    pull_policy: always
+    init: true
+    environment:
+      CINE_ENABLE_PLUGINS: "${CINE_ENABLE_PLUGINS:-false}"
+      CINE_ENABLE_CACHE_WARMUP: "${CINE_ENABLE_CACHE_WARMUP:-false}"
+      RUST_LOG: "${RUST_LOG:-cine=info,axum=warn}"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    stop_grace_period: 2m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

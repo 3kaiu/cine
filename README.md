@@ -325,10 +325,18 @@ npm run test:e2e          # E2E 测试
 docker-compose up -d
 ```
 
+默认 `docker-compose.yml` 已切到更适合 NAS 的 `latest-core` 镜像，并默认关闭启动期缓存预热。
+
+如果你明确需要视频探测 / 缩略图 / 更完整的多媒体依赖，再切换为：
+
+```bash
+CINE_IMAGE_TAG=latest docker-compose up -d
+```
+
 ### 飞牛OS (fnOS) 部署
 ```bash
-# 当前仅提供实验性打包脚本，未完成安装验证
-./scripts/fnpack.sh
+# 直接使用更保守的 NAS 覆盖配置
+docker compose -f docker-compose.yml -f docker-compose.fnos.yml up -d
 ```
 
 ## 📈 性能优化
@@ -343,6 +351,15 @@ docker-compose up -d
 - ✅ 前端代码分割（50-70% 首屏减少）
 - ✅ API 请求去重和防抖（30-50% 请求减少）
 - ✅ 虚拟滚动组件（支持万级数据）
+
+### Docker / FNOS 部署建议
+
+- 默认优先使用 `ghcr.io/3kaiu/cine:latest-core`，体积和拉取时间都明显低于 full 镜像
+- 只有在需要 `ffmpeg` 缩略图或视频探测能力时再使用 `latest`
+- FNOS 首次启动建议保持 `CINE_ENABLE_CACHE_WARMUP=false`，避免容器刚起来就做缓存预热
+- 媒体目录很大时，首次真正耗时往往来自扫描和哈希，而不是 HTTP 服务启动本身
+- 如果网络到 `ghcr.io` 较差，应优先复用已拉取镜像，避免在 NAS 本机做完整多阶段构建
+- `docker-compose.fnos.yml` 额外收紧了日志、健康检查和停止宽限期，更适合 NAS 长期开机环境
 
 
 ## 📝 文档

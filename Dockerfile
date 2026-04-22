@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # 多阶段构建 Dockerfile
 
 # 阶段1: 构建 Rust 后端
@@ -8,12 +10,15 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/rust:1.87 AS rust-builde
 WORKDIR /app
 
 ARG BACKEND_FEATURES="plugins video-probe thumbnail"
+ENV CARGO_INCREMENTAL=0
 
 # 复制依赖文件
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
 # 创建虚拟项目以缓存依赖（包含 bench 占位文件，避免 Cargo 报错）
-RUN mkdir -p src benches && \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    mkdir -p src benches && \
     echo "fn main() {}" > src/main.rs && \
     touch src/lib.rs && \
     echo "fn main() {}" > benches/hash_bench.rs && \
@@ -32,7 +37,9 @@ COPY backend/benches ./benches
 COPY backend/build.rs ./
 
 # 构建应用
-RUN if [ -n "$BACKEND_FEATURES" ]; then \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    if [ -n "$BACKEND_FEATURES" ]; then \
       cargo build --release --no-default-features --features "$BACKEND_FEATURES" --bin cine-backend; \
     else \
       cargo build --release --no-default-features --bin cine-backend; \
@@ -47,7 +54,8 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 
 # 安装依赖
-RUN npm ci --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --no-audit --prefer-offline
 
 # 复制源代码
 COPY frontend ./
